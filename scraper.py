@@ -1,7 +1,8 @@
 import requests
 from bs4 import BeautifulSoup
+from typing import Optional
 
-def fetch_stock_data(stock_code: str) -> dict | None:
+def fetch_stock_data(stock_code: str) -> Optional[dict]:
     """
     Yahoo!ファイナンスから指定された銘柄コードの株価、財務指標、配当情報を取得する。
     """

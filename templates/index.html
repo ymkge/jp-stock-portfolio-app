@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>国内株式ポートフォリオ</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <h1>国内株式ポートフォリオ</h1>
+    </header>
+
+    <main>
+        <section class="portfolio-controls">
+            <h2>銘柄管理</h2>
+            <form id="add-stock-form">
+                <input type="text" id="stock-code-input" placeholder="銘柄コード (例: 7203)" required>
+                <button type="submit">追加</button>
+            </form>
+        </section>
+
+        <section class="portfolio-list">
+            <h2>ポートフォリオ一覧</h2>
+            <table id="stock-table">
+                <thead>
+                    <tr>
+                        <th>銘柄コード</th>
+                        <th>銘柄名</th>
+                        <th>現在株価</th>
+                        <th>時価総額</th>
+                        <th>PER(連)</th>
+                        <th>PBR(連)</th>
+                        <th>配当利回り(連)</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- データはJavaScriptで挿入されます -->
+                </tbody>
+            </table>
+            <div id="loading-indicator" style="display: none;">
+                <p>データを読み込み中...</p>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Powered by FastAPI & Yahoo! Finance Japan</p>
+    </footer>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

@@ -112,3 +112,8 @@ sequenceDiagram
     API-->>Browser: 更新された銘柄データリスト
     Browser->>User: テーブルを更新
 ```
+
+### next step
+- UIの改善(リッチにする)
+- CSVダウンロードの機能追加
+- 銘柄情報取得できなかった場合のフォローアップ。（要検討）

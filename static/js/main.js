@@ -3,9 +3,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadingIndicator = document.getElementById('loading-indicator');
     const addStockForm = document.getElementById('add-stock-form');
     const stockCodeInput = document.getElementById('stock-code-input');
+    const tableHeaders = document.querySelectorAll('#stock-table .sortable');
+
+    let stocksData = []; // APIから取得した生のデータを保持
+    let currentSort = {
+        key: 'code', // デフォルトのソートキー
+        order: 'asc'   // 'asc' or 'desc'
+    };
 
     /**
-     * データを取得してテーブルを更新する
+     * データを取得してテーブルを初期表示する
      */
     async function fetchAndDisplayStocks() {
         showLoading(true);
@@ -14,8 +21,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            const stocks = await response.json();
-            renderStockTable(stocks);
+            stocksData = await response.json();
+            sortAndRender(); // 取得したデータをソートして描画
         } catch (error) {
             console.error('Error fetching stocks:', error);
             stockTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center; color: red;">データの読み込みに失敗しました。</td></tr>';
@@ -25,8 +32,59 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * 現在のソート条件でデータをソートし、テーブルを再描画する
+     */
+    function sortAndRender() {
+        sortStocks();
+        renderStockTable(stocksData);
+        updateSortHeaders();
+    }
+
+    /**
+     * 銘柄データの配列をソートする
+     */
+    function sortStocks() {
+        stocksData.sort((a, b) => {
+            const valA = a[currentSort.key];
+            const valB = b[currentSort.key];
+
+            // 汎用的な値のパース関数
+            const parseValue = (value) => {
+                if (typeof value === 'string') {
+                    // "N/A" や "--" のような非数値は比較のために null を返す
+                    if (value === 'N/A' || value === '--' || value === '') return null;
+                    // 数値の前に余計な文字があってもパースできるようにする
+                    const cleanedValue = value.replace(/,/g, '').replace(/%/, '').replace(/倍/, '').replace(/円/, '');
+                    const num = parseFloat(cleanedValue);
+                    return isNaN(num) ? value : num;
+                }
+                return value;
+            };
+
+            const parsedA = parseValue(valA);
+            const parsedB = parseValue(valB);
+
+            // null（非数値）のハンドリング: nullは常に末尾に
+            if (parsedA === null && parsedB !== null) return 1;
+            if (parsedA !== null && parsedB === null) return -1;
+            if (parsedA === null && parsedB === null) return 0;
+
+            // 数値と文字列の比較
+            if (typeof parsedA === 'number' && typeof parsedB === 'number') {
+                return currentSort.order === 'asc' ? parsedA - parsedB : parsedB - parsedA;
+            } else {
+                // 文字列比較
+                return currentSort.order === 'asc'
+                    ? String(parsedA).localeCompare(String(parsedB))
+                    : String(parsedB).localeCompare(String(parsedA));
+            }
+        });
+    }
+
+
+    /**
      * 取得したデータでテーブルを描画する
-     * @param {Array} stocks - 銘柄データの配列
+     * @param {Array} stocks - ソート済みの銘柄データの配列
      */
     function renderStockTable(stocks) {
         stockTableBody.innerHTML = ''; // テーブルをクリア
@@ -51,6 +109,22 @@ document.addEventListener('DOMContentLoaded', () => {
             stockTableBody.appendChild(row);
         });
     }
+
+    /**
+     * ソート中のヘッダーにCSSクラスを付与する
+     */
+    function updateSortHeaders() {
+        tableHeaders.forEach(header => {
+            if (header.dataset.key === currentSort.key) {
+                header.classList.add('sort-active');
+                header.classList.toggle('sort-asc', currentSort.order === 'asc');
+                header.classList.toggle('sort-desc', currentSort.order === 'desc');
+            } else {
+                header.classList.remove('sort-active', 'sort-asc', 'sort-desc');
+            }
+        });
+    }
+
 
     /**
      * ローディングインジケーターの表示を切り替える
@@ -114,6 +188,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('銘柄の削除に失敗しました。');
             }
         }
+    });
+
+    /**
+     * テーブルヘッダーのクリックイベント（ソート処理）
+     */
+    tableHeaders.forEach(header => {
+        header.addEventListener('click', () => {
+            const key = header.dataset.key;
+            if (currentSort.key === key) {
+                // 同じキーなら昇順/降順を切り替え
+                currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+            } else {
+                // 新しいキーならデフォルトで昇順
+                currentSort.key = key;
+                currentSort.order = 'asc';
+            }
+            sortAndRender();
+        });
     });
 
     // 初期表示

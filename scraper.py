@@ -1,11 +1,12 @@
 import requests
-from bs4 import BeautifulSoup
+import json
+import re
 from typing import Optional
 
 def fetch_stock_data(stock_code: str) -> Optional[dict]:
     """
-    Yahoo!ファイナンスから指定された銘柄コードの株価、財務指標、配当情報を取得する。
-    (2025年10月29日時点のHTML構造に対応)
+    Yahoo!ファイナンスのページに埋め込まれたJSONデータから株価情報を取得する。
+    CSSセレクタに依存しないため、より安定している。
     """
     url = f"https://finance.yahoo.co.jp/quote/{stock_code}.T"
     headers = {
@@ -14,43 +15,45 @@ def fetch_stock_data(stock_code: str) -> Optional[dict]:
     try:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
-        soup = BeautifulSoup(response.content, "html.parser")
 
-        # --- 銘柄名 ---
-        name_tag = soup.find('h1', {'class': '_6uUecKH8'})
-        name = name_tag.text.split('(')[0].strip() if name_tag else "N/A"
+        # HTMLから window.__PRELOADED_STATE__ の内容を正規表現で抽出
+        match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", response.text)
+        if not match:
+            print(f"Could not find __PRELOADED_STATE__ for {stock_code}")
+            return None
 
-        # --- 株価 ---
-        price_tag = soup.select_one('span._3j2s_3J-')
-        price = price_tag.text.strip() if price_tag else "N/A"
+        # JSON文字列をPythonの辞書に変換
+        preloaded_state = json.loads(match.group(1))
 
-        # --- 詳細情報テーブルから指標を取得 ---
-        details = {}
-        info_section = soup.find('div', {'class': '_1rB2d3zS'})
-        if info_section:
-            # dl > div のペアで情報が格納されている
-            for item in info_section.find_all('div', {'class': '_2l3c02yI'}):
-                if dt := item.find('dt'):
-                    if dd := item.find('dd'):
-                        key = dt.text.strip()
-                        value = dd.text.strip()
-                        details[key] = value
+        price_board = preloaded_state.get("mainStocksPriceBoard", {}).get("priceBoard", {})
+        reference_index = preloaded_state.get("mainStocksDetail", {}).get("referenceIndex", {})
+
+        # 時価総額の単位を「百万円」から「円」に変換し、数値として扱いやすくする
+        market_cap_str = reference_index.get("totalPrice", "N/A")
+        market_cap = "N/A"
+        if market_cap_str != "N/A":
+            # "50,307,035百万円" のような文字列を想定
+            market_cap_value = int(market_cap_str.replace(",", "").replace("百万円", ""))
+            market_cap = f"{market_cap_value * 1_000_000:,}" # 3桁区切りに戻す
 
         return {
             "code": stock_code,
-            "name": name,
-            "price": price,
-            "market_cap": details.get("時価総額", "N/A"),
-            "per": details.get("PER（株価収益率）", details.get("PER(連)", "N/A")),
-            "pbr": details.get("PBR（株価純資産倍率）", details.get("PBR(連)", "N/A")),
-            "dividend_yield": details.get("配当利回り", details.get("配当利回り(連)", "N/A")),
+            "name": price_board.get("name", "N/A"),
+            "price": price_board.get("price", "N/A"),
+            "market_cap": market_cap,
+            "per": reference_index.get("per", "N/A"),
+            "pbr": reference_index.get("pbr", "N/A"),
+            "dividend_yield": reference_index.get("shareDividendYield", "N/A"),
         }
 
     except requests.exceptions.RequestException as e:
         print(f"Error fetching data for {stock_code}: {e}")
         return None
+    except (json.JSONDecodeError, AttributeError) as e:
+        print(f"An error occurred while parsing JSON for {stock_code}: {e}")
+        return None
     except Exception as e:
-        print(f"An error occurred while parsing data for {stock_code}: {e}")
+        print(f"An unexpected error occurred for {stock_code}: {e}")
         return None
 
 if __name__ == '__main__':

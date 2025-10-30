@@ -127,3 +127,36 @@ footer {
     font-size: 0.9rem;
     color: #777;
 }
+
+/* --- ソート機能用スタイル --- */
+#stock-table .sortable {
+    cursor: pointer;
+    position: relative;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+#stock-table .sortable:hover {
+    background-color: #e9e9e9;
+}
+
+#stock-table .sort-active {
+    background-color: #e0e0e0;
+}
+
+#stock-table .sortable::after {
+    content: '\00a0\00a0'; /* スペースを確保 */
+    position: absolute;
+    right: 8px;
+    opacity: 0.5;
+}
+
+#stock-table .sort-asc::after {
+    content: '▲';
+}
+
+#stock-table .sort-desc::after {
+    content: '▼';
+}

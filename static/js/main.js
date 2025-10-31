@@ -83,6 +83,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     /**
+     * 数値を兆、億、百万円単位にフォーマットする
+     * @param {string | number} value - カンマ区切りの数値文字列または数値
+     * @returns {string} フォーマットされた文字列
+     */
+    function formatMarketCap(value) {
+        if (value === 'N/A' || value === null || value === undefined || value === '--') {
+            return 'N/A';
+        }
+
+        // カンマを削除して数値に変換
+        const num = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
+
+        if (isNaN(num)) {
+            return 'N/A';
+        }
+
+        const trillion = 1_000_000_000_000;
+        const billion = 1_000_000_000;
+        const million = 1_000_000;
+
+        if (num >= trillion) {
+            return `${(num / trillion).toFixed(2)} 兆円`;
+        }
+        if (num >= billion) {
+            // 1兆円未満は億円単位
+            return `${(num / billion).toFixed(2)} 億円`;
+        }
+        if (num >= million) {
+            // 1億円未満は百万円単位
+            return `${Math.round(num / million)} 百万円`;
+        }
+        // 100万円未満
+        return `${num.toLocaleString()} 円`;
+    }
+
+
+    /**
      * 取得したデータでテーブルを描画する
      * @param {Array} stocks - ソート済みの銘柄データの配列
      */
@@ -100,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${stock.code}</td>
                 <td>${stock.name}</td>
                 <td>${stock.price}</td>
-                <td>${stock.market_cap}</td>
+                <td>${formatMarketCap(stock.market_cap)}</td>
                 <td>${stock.per}</td>
                 <td>${stock.pbr}</td>
                 <td>${stock.dividend_yield}</td>

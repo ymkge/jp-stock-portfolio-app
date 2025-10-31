@@ -7,50 +7,62 @@ from bs4 import BeautifulSoup
 
 def fetch_dividend_history(stock_code: str, num_years: int = 4) -> dict:
     """
-    Yahoo!ファイナンスの時系列ページから過去数年分の1株あたり配当を取得する。
-    スマートフォン用のUser-Agentを使用してアクセスする。
+    Yahoo!ファイナンスの配当ページから過去数年分の1株あたり配当を取得する。
     """
-    history_url = f"https://finance.yahoo.co.jp/quote/{stock_code}.T/history"
+    dividend_url = f"https://finance.yahoo.co.jp/quote/{stock_code}.T/dividend"
     headers = {
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 13_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Mobile/15E148 Safari/604.1"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
     try:
-        response = requests.get(history_url, headers=headers, timeout=10)
+        response = requests.get(dividend_url, headers=headers, timeout=10)
         response.raise_for_status()
-
-        soup = BeautifulSoup(response.text, "lxml")
-        # スマートフォン版ページの構造を仮定してセレクタを変更
-        # 日付と配当額がリストアイテム(`li`)の中に含まれていると仮定
-        items = soup.select("li[class*='_HistoryItem_']")
-
+        # パーサーを 'html.parser' に変更
+        soup = BeautifulSoup(response.text, "html.parser")
+        
         yearly_dividends = {}
-        for item in items:
-            if "配当" in item.get_text():
-                try:
-                    date_str = item.select_one("[class*='_Date_']").get_text(strip=True)
-                    dividend_str = item.select_one("[class*='_Price_']").get_text(strip=True)
+        
+        table = soup.find("table", class_=re.compile(r"DpsHistoryTable__table"))
+        if not table or not table.tbody:
+            return {}
 
-                    date_obj = datetime.strptime(date_str, '%Y/%m/%d')
-                    year = date_obj.year
-                    dividend = float(dividend_str.replace('円', '').replace(',', ''))
+        rows = table.tbody.find_all("tr")
+        current_year_text = None
+        for row in rows:
+            # 年度セルを探す
+            year_cell = row.find("th", class_=re.compile(r"DpsHistoryTable__dateCol01__"))
+            if year_cell and "年" in year_cell.get_text():
+                current_year_text = year_cell.get_text(strip=True)
 
-                    if year not in yearly_dividends:
-                        yearly_dividends[year] = 0.0
-                    yearly_dividends[year] += dividend
-                except (AttributeError, ValueError, TypeError):
-                    continue
-
-        current_year = datetime.now().year
+            # 「実績」行かどうかを判断し、かつ年度が特定できている場合
+            if "実績" in row.get_text() and current_year_text:
+                match = re.search(r'(\d{4})年', current_year_text)
+                if match:
+                    year = int(match.group(1))
+                    # 実績行の最初のtdが年間配当(調整後)
+                    dividend_cell = row.find("td")
+                    if dividend_cell:
+                        dividend_text = dividend_cell.get_text(strip=True)
+                        try:
+                            dividend = float(dividend_text)
+                            yearly_dividends[str(year)] = dividend
+                        except (ValueError, TypeError):
+                            # "---" などの場合は 0.0 とする
+                            yearly_dividends[str(year)] = 0.0
+        
+        # 結果を整形する
         result = {}
-        for i in range(num_years):
-            year = current_year - i
-            result[str(year)] = round(yearly_dividends.get(year, 0.0), 2)
+        latest_fiscal_year = 0
+        if yearly_dividends:
+            latest_fiscal_year = max(int(y) for y in yearly_dividends.keys())
+        
+        if latest_fiscal_year > 0:
+             for i in range(num_years):
+                year_to_check = latest_fiscal_year - i
+                result[str(year_to_check)] = yearly_dividends.get(str(year_to_check), 0.0)
+        
+        # キーを降順にソートして返す
+        return {k: v for k, v in sorted(result.items(), key=lambda item: item[0], reverse=True)}
 
-        return result
-
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching dividend history for {stock_code}: {e}")
-        return {}
     except Exception as e:
         print(f"An unexpected error occurred in fetch_dividend_history for {stock_code}: {e}")
         return {}

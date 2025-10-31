@@ -79,11 +79,14 @@ def fetch_stock_data(stock_code: str, num_years_dividend: int = 4) -> Optional[d
 
         market_cap_str = reference_index.get("totalPrice", "N/A")
         market_cap = "N/A"
-        if market_cap_str != "N/A" and "百万円" in market_cap_str:
+        if market_cap_str != "N/A":
             market_cap_value_str = re.sub(r'[^\d]', '', market_cap_str)
             if market_cap_value_str:
-                market_cap_value = int(market_cap_value_str)
-                market_cap = f"{market_cap_value * 1_000_000:,}"
+                try:
+                    market_cap_value = int(market_cap_value_str)
+                    market_cap = f"{market_cap_value * 1_000_000:,}"
+                except (ValueError, TypeError):
+                    market_cap = "N/A"
 
         dividend_history = fetch_dividend_history(stock_code, num_years=num_years_dividend)
 

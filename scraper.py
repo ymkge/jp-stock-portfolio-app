@@ -3,38 +3,42 @@ import json
 import re
 from typing import Optional
 from datetime import datetime
+from bs4 import BeautifulSoup
 
 def fetch_dividend_history(stock_code: str, num_years: int = 4) -> dict:
     """
     Yahoo!ファイナンスの時系列ページから過去数年分の1株あたり配当を取得する。
+    スマートフォン用のUser-Agentを使用してアクセスする。
     """
     history_url = f"https://finance.yahoo.co.jp/quote/{stock_code}.T/history"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 13_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Mobile/15E148 Safari/604.1"
     }
     try:
         response = requests.get(history_url, headers=headers, timeout=10)
         response.raise_for_status()
 
-        # 日付、"配当"、配当額を柔軟に抽出する正規表現
-        pattern = re.compile(r'(\d{4}年\d{1,2}月\d{1,2}日).*?配当.*?([\d,.]+)', re.DOTALL)
-        matches = pattern.findall(response.text)
+        soup = BeautifulSoup(response.text, "lxml")
+        # スマートフォン版ページの構造を仮定してセレクタを変更
+        # 日付と配当額がリストアイテム(`li`)の中に含まれていると仮定
+        items = soup.select("li[class*='_HistoryItem_']")
 
         yearly_dividends = {}
-        for date_str, dividend_str in matches:
-            try:
-                date_obj = datetime.strptime(date_str, '%Y年%m月%d日')
-                year = date_obj.year
-                # 配当額の後に株価などがマッチしてしまうのを防ぐため、数値の妥当性をある程度チェック
-                dividend = float(dividend_str.replace(',', ''))
-                if dividend > 10000: # 1株あたりの配当が1万円を超えることは稀なので、誤マッチと判断
-                    continue
+        for item in items:
+            if "配当" in item.get_text():
+                try:
+                    date_str = item.select_one("[class*='_Date_']").get_text(strip=True)
+                    dividend_str = item.select_one("[class*='_Price_']").get_text(strip=True)
 
-                if year not in yearly_dividends:
-                    yearly_dividends[year] = 0.0
-                yearly_dividends[year] += dividend
-            except (ValueError, TypeError):
-                continue
+                    date_obj = datetime.strptime(date_str, '%Y/%m/%d')
+                    year = date_obj.year
+                    dividend = float(dividend_str.replace('円', '').replace(',', ''))
+
+                    if year not in yearly_dividends:
+                        yearly_dividends[year] = 0.0
+                    yearly_dividends[year] += dividend
+                except (AttributeError, ValueError, TypeError):
+                    continue
 
         current_year = datetime.now().year
         result = {}
@@ -53,8 +57,7 @@ def fetch_dividend_history(stock_code: str, num_years: int = 4) -> dict:
 
 def fetch_stock_data(stock_code: str, num_years_dividend: int = 4) -> Optional[dict]:
     """
-    Yahoo!ファイナンスのページに埋め込まれたJSONデータから株価情報を取得する。
-    配当履歴も追加で取得する。
+    Yahoo!ファイナンスのページから株価情報と配当履歴を取得する。
     """
     url = f"https://finance.yahoo.co.jp/quote/{stock_code}.T"
     headers = {
@@ -95,12 +98,6 @@ def fetch_stock_data(stock_code: str, num_years_dividend: int = 4) -> Optional[d
             "dividend_history": dividend_history,
         }
 
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching data for {stock_code}: {e}")
-        return None
-    except (json.JSONDecodeError, AttributeError) as e:
-        print(f"An error occurred while parsing JSON for {stock_code}: {e}")
-        return None
     except Exception as e:
         print(f"An unexpected error occurred for {stock_code}: {e}")
         return None

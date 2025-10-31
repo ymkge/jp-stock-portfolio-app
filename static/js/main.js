@@ -3,9 +3,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadingIndicator = document.getElementById('loading-indicator');
     const addStockForm = document.getElementById('add-stock-form');
     const stockCodeInput = document.getElementById('stock-code-input');
-    const tableHeaders = document.querySelectorAll('#stock-table .sortable');
+    const tableHeaderRow = document.getElementById('table-header-row');
+    
+    let tableHeaders = document.querySelectorAll('#stock-table .sortable');
 
     let stocksData = []; // APIから取得した生のデータを保持
+    let dividendYears = []; // 配当履歴の年 (例: ["2024", "2023", ...])
+    let headersInitialized = false; // ヘッダーが初期化されたか
+
     let currentSort = {
         key: 'code', // デフォルトのソートキー
         order: 'asc'   // 'asc' or 'desc'
@@ -22,13 +27,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             stocksData = await response.json();
+
+            if (stocksData.length > 0 && !headersInitialized) {
+                // 最初のデータから配当履歴の年を取得し、ヘッダーを更新
+                dividendYears = Object.keys(stocksData[0].dividend_history).sort((a, b) => b - a);
+                updateTableHeaders();
+                headersInitialized = true;
+            }
+
             sortAndRender(); // 取得したデータをソートして描画
         } catch (error) {
             console.error('Error fetching stocks:', error);
-            stockTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center; color: red;">データの読み込みに失敗しました。</td></tr>';
+            const colspan = tableHeaderRow.children.length;
+            stockTableBody.innerHTML = `<tr><td colspan="${colspan}" style="text-align:center; color: red;">データの読み込みに失敗しました。</td></tr>`;
         } finally {
             showLoading(false);
         }
+    }
+
+    /**
+     * 配当履歴の年数に応じてテーブルヘッダーを動的に更新する
+     */
+    function updateTableHeaders() {
+        const operationHeader = tableHeaderRow.querySelector('th:last-child');
+
+        dividendYears.forEach(year => {
+            const th = document.createElement('th');
+            th.className = 'sortable';
+            th.dataset.key = `div_${year}`;
+            th.textContent = `${year}年 配当`;
+            tableHeaderRow.insertBefore(th, operationHeader);
+        });
+
+        // ヘッダーのイベントリスナーを再設定
+        tableHeaders = document.querySelectorAll('#stock-table .sortable');
+        addSortEventListeners();
     }
 
     /**
@@ -45,15 +78,20 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function sortStocks() {
         stocksData.sort((a, b) => {
-            const valA = a[currentSort.key];
-            const valB = b[currentSort.key];
+            let valA, valB;
 
-            // 汎用的な値のパース関数
+            if (currentSort.key.startsWith('div_')) {
+                const year = currentSort.key.split('_')[1];
+                valA = a.dividend_history ? a.dividend_history[year] : null;
+                valB = b.dividend_history ? b.dividend_history[year] : null;
+            } else {
+                valA = a[currentSort.key];
+                valB = b[currentSort.key];
+            }
+
             const parseValue = (value) => {
                 if (typeof value === 'string') {
-                    // "N/A" や "--" のような非数値は比較のために null を返す
                     if (value === 'N/A' || value === '--' || value === '') return null;
-                    // 数値の前に余計な文字があってもパースできるようにする
                     const cleanedValue = value.replace(/,/g, '').replace(/%/, '').replace(/倍/, '').replace(/円/, '');
                     const num = parseFloat(cleanedValue);
                     return isNaN(num) ? value : num;
@@ -64,16 +102,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const parsedA = parseValue(valA);
             const parsedB = parseValue(valB);
 
-            // null（非数値）のハンドリング: nullは常に末尾に
             if (parsedA === null && parsedB !== null) return 1;
             if (parsedA !== null && parsedB === null) return -1;
             if (parsedA === null && parsedB === null) return 0;
 
-            // 数値と文字列の比較
             if (typeof parsedA === 'number' && typeof parsedB === 'number') {
                 return currentSort.order === 'asc' ? parsedA - parsedB : parsedB - parsedA;
             } else {
-                // 文字列比較
                 return currentSort.order === 'asc'
                     ? String(parsedA).localeCompare(String(parsedB))
                     : String(parsedB).localeCompare(String(parsedA));
@@ -81,58 +116,45 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-
     /**
      * 数値を兆、億、百万円単位にフォーマットする
-     * @param {string | number} value - カンマ区切りの数値文字列または数値
-     * @returns {string} フォーマットされた文字列
      */
     function formatMarketCap(value) {
         if (value === 'N/A' || value === null || value === undefined || value === '--') {
             return 'N/A';
         }
-
-        // カンマを削除して数値に変換
         const num = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
-
-        if (isNaN(num)) {
-            return 'N/A';
-        }
+        if (isNaN(num)) return 'N/A';
 
         const trillion = 1_000_000_000_000;
         const billion = 1_000_000_000;
         const million = 1_000_000;
 
-        if (num >= trillion) {
-            return `${(num / trillion).toFixed(2)} 兆円`;
-        }
-        if (num >= billion) {
-            // 1兆円未満は億円単位
-            return `${(num / billion).toFixed(2)} 億円`;
-        }
-        if (num >= million) {
-            // 1億円未満は百万円単位
-            return `${Math.round(num / million)} 百万円`;
-        }
-        // 100万円未満
+        if (num >= trillion) return `${(num / trillion).toFixed(2)} 兆円`;
+        if (num >= billion) return `${(num / billion).toFixed(2)} 億円`;
+        if (num >= million) return `${Math.round(num / million)} 百万円`;
         return `${num.toLocaleString()} 円`;
     }
 
-
     /**
      * 取得したデータでテーブルを描画する
-     * @param {Array} stocks - ソート済みの銘柄データの配列
      */
     function renderStockTable(stocks) {
-        stockTableBody.innerHTML = ''; // テーブルをクリア
+        stockTableBody.innerHTML = '';
+        const colspan = tableHeaderRow.children.length;
 
         if (!stocks || stocks.length === 0) {
-            stockTableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;">登録されている銘柄はありません。</td></tr>';
+            stockTableBody.innerHTML = `<tr><td colspan="${colspan}" style="text-align:center;">登録されている銘柄はありません。</td></tr>`;
             return;
         }
 
         stocks.forEach(stock => {
             const row = document.createElement('tr');
+            let dividendCells = dividendYears.map(year => {
+                const value = stock.dividend_history ? (stock.dividend_history[year] || '0') : 'N/A';
+                return `<td>${value} 円</td>`;
+            }).join('');
+
             row.innerHTML = `
                 <td>${stock.code}</td>
                 <td>${stock.name}</td>
@@ -141,6 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${stock.per}</td>
                 <td>${stock.pbr}</td>
                 <td>${stock.dividend_yield}</td>
+                ${dividendCells}
                 <td><button class="delete-btn" data-code="${stock.code}">削除</button></td>
             `;
             stockTableBody.appendChild(row);
@@ -162,10 +185,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-
     /**
      * ローディングインジケーターの表示を切り替える
-     * @param {boolean} isLoading
      */
     function showLoading(isLoading) {
         loadingIndicator.style.display = isLoading ? 'block' : 'none';
@@ -182,18 +203,12 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch('/api/stocks', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ code: code }),
             });
-
-            if (!response.ok) {
-                throw new Error('Failed to add stock');
-            }
-
-            stockCodeInput.value = ''; // 入力欄をクリア
-            await fetchAndDisplayStocks(); // テーブルを再描画
+            if (!response.ok) throw new Error('Failed to add stock');
+            stockCodeInput.value = '';
+            await fetchAndDisplayStocks();
         } catch (error) {
             console.error('Error adding stock:', error);
             alert('銘柄の追加に失敗しました。');
@@ -206,20 +221,12 @@ document.addEventListener('DOMContentLoaded', () => {
     stockTableBody.addEventListener('click', async (event) => {
         if (event.target.classList.contains('delete-btn')) {
             const code = event.target.dataset.code;
-            if (!confirm(`銘柄コード ${code} を削除しますか？`)) {
-                return;
-            }
+            if (!confirm(`銘柄コード ${code} を削除しますか？`)) return;
 
             try {
-                const response = await fetch(`/api/stocks/${code}`, {
-                    method: 'DELETE',
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to delete stock');
-                }
-
-                await fetchAndDisplayStocks(); // テーブルを再描画
+                const response = await fetch(`/api/stocks/${code}`, { method: 'DELETE' });
+                if (!response.ok) throw new Error('Failed to delete stock');
+                await fetchAndDisplayStocks();
             } catch (error) {
                 console.error('Error deleting stock:', error);
                 alert('銘柄の削除に失敗しました。');
@@ -230,21 +237,22 @@ document.addEventListener('DOMContentLoaded', () => {
     /**
      * テーブルヘッダーのクリックイベント（ソート処理）
      */
-    tableHeaders.forEach(header => {
-        header.addEventListener('click', () => {
-            const key = header.dataset.key;
-            if (currentSort.key === key) {
-                // 同じキーなら昇順/降順を切り替え
-                currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
-            } else {
-                // 新しいキーならデフォルトで昇順
-                currentSort.key = key;
-                currentSort.order = 'asc';
-            }
-            sortAndRender();
+    function addSortEventListeners() {
+        tableHeaders.forEach(header => {
+            header.addEventListener('click', () => {
+                const key = header.dataset.key;
+                if (currentSort.key === key) {
+                    currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+                } else {
+                    currentSort.key = key;
+                    currentSort.order = 'asc';
+                }
+                sortAndRender();
+            });
         });
-    });
+    }
 
     // 初期表示
+    addSortEventListeners();
     fetchAndDisplayStocks();
 });

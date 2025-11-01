@@ -117,6 +117,8 @@ def fetch_stock_data(stock_code: str, num_years_dividend: int = 4) -> Optional[d
             "market_cap": market_cap,
             "per": reference_index.get("per", "N/A"),
             "pbr": reference_index.get("pbr", "N/A"),
+            "roe": reference_index.get("roe", "N/A"),
+            "eps": reference_index.get("eps", "N/A"),
             "yield": dividend_yield,
             "dividend_history": dividend_history,
         }

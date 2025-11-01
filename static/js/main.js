@@ -166,6 +166,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${formatMarketCap(stock.market_cap)}</td>
                 <td>${stock.per}</td>
                 <td>${stock.pbr}</td>
+                <td>${stock.roe === 'N/A' ? 'N/A' : stock.roe + '%'}</td>
+                <td>${stock.eps === 'N/A' ? 'N/A' : stock.eps + '円'}</td>
                 <td>${stock.yield === 'N/A' ? 'N/A' : stock.yield + '%'}</td>
                 <td><button class="delete-btn" data-code="${stock.code}">削除</button></td>
             `;

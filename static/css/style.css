@@ -163,9 +163,9 @@ footer {
 
 /* --- 指標ハイライト --- */
 .undervalued {
-    background-color: #e6ffed; /* 薄い緑 */
+    background-color: #c8e6c9; /* 緑 */
 }
 
 .overvalued {
-    background-color: #ffe6e6; /* 薄い赤 */
+    background-color: #ffcdd2; /* 赤 */
 }

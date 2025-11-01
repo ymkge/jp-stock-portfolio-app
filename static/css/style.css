@@ -160,3 +160,12 @@ footer {
 #stock-table .sort-desc::after {
     content: '▼';
 }
+
+/* --- 指標ハイライト --- */
+.undervalued {
+    background-color: #e6ffed; /* 薄い緑 */
+}
+
+.overvalued {
+    background-color: #ffe6e6; /* 薄い赤 */
+}

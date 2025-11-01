@@ -1,0 +1,16 @@
+{
+  "per": {
+    "undervalued": 15.0,
+    "overvalued": 40.0
+  },
+  "pbr": {
+    "undervalued": 1.0,
+    "overvalued": 5.0
+  },
+  "yield": {
+    "undervalued": 3.0
+  },
+  "roe": {
+    "undervalued": 10.0
+  }
+}

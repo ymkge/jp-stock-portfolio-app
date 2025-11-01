@@ -9,8 +9,18 @@ from datetime import datetime
 
 import scraper
 import portfolio_manager
+import json
 
 app = FastAPI()
+
+# --- ハイライトルールの読み込み ---
+HIGHLIGHT_RULES = {}
+try:
+    with open("highlight_rules.json", "r", encoding="utf-8") as f:
+        HIGHLIGHT_RULES = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError) as e:
+    print(f"Warning: Could not load highlight_rules.json. {e}")
+# --------------------------------
 
 # 静的ファイルのマウント
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -27,6 +37,13 @@ async def read_root(request: Request):
     メインページ (index.html) をレンダリングして返す。
     """
     return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/api/highlight-rules")
+async def get_highlight_rules():
+    """
+    指標をハイライトするためのルール設定を返す。
+    """
+    return HIGHLIGHT_RULES
 
 @app.get("/api/stocks")
 async def get_stocks():

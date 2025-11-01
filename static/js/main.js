@@ -4,43 +4,40 @@ document.addEventListener('DOMContentLoaded', () => {
     const addStockForm = document.getElementById('add-stock-form');
     const stockCodeInput = document.getElementById('stock-code-input');
     const tableHeaderRow = document.getElementById('table-header-row');
-    const downloadCsvButton = document.getElementById('download-csv-button'); // CSVボタン追加
+    const downloadCsvButton = document.getElementById('download-csv-button');
     
     let tableHeaders = document.querySelectorAll('#stock-table .sortable');
 
-    let stocksData = []; // APIから取得した生のデータを保持
-    let dividendYears = []; // 配当履歴の年 (例: ["2024", "2023", ...])
-    let headersInitialized = false; // ヘッダーが初期化されたか
+    let stocksData = [];
+    let highlightRules = {}; // ハイライトルールを保持
 
     let currentSort = {
-        key: 'code', // デフォルトのソートキー
-        order: 'asc'   // 'asc' or 'desc'
+        key: 'code',
+        order: 'asc'
     };
 
     /**
-     * データを取得してテーブルを初期表示する
+     * ページの初期化処理
      */
-    async function fetchAndDisplayStocks() {
+    async function initialize() {
         showLoading(true);
         try {
-            const response = await fetch('/api/stocks');
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            stocksData = await response.json();
+            // 株価データとハイライトルールを並行して取得
+            const [stocksResponse, rulesResponse] = await Promise.all([
+                fetch('/api/stocks'),
+                fetch('/api/highlight-rules')
+            ]);
 
-            // NOTE: CSVダウンロード機能実装に伴い、配当履歴関連の処理は一旦コメントアウト
-            // if (stocksData.length > 0 && !headersInitialized) {
-            //     // 最初のデータから配当履歴の年を取得し、ヘッダーを更新
-            //     dividendYears = stocksData[0].dividend_history ? Object.keys(stocksData[0].dividend_history).sort((a, b) => b - a) : [];
-            //     updateTableHeaders();
-            //     headersInitialized = true;
-            // }
+            if (!stocksResponse.ok) throw new Error(`Failed to fetch stocks: ${stocksResponse.status}`);
+            if (!rulesResponse.ok) throw new Error(`Failed to fetch highlight rules: ${rulesResponse.status}`);
 
-            sortAndRender(); // 取得したデータをソートして描画
+            stocksData = await stocksResponse.json();
+            highlightRules = await rulesResponse.json();
+
+            sortAndRender(); // ソートして描画
         } catch (error) {
-            console.error('Error fetching stocks:', error);
-            const colspan = tableHeaderRow.children.length;
+            console.error('Initialization error:', error);
+            const colspan = tableHeaderRow.children.length || 10;
             stockTableBody.innerHTML = `<tr><td colspan="${colspan}" style="text-align:center; color: red;">データの読み込みに失敗しました。</td></tr>`;
         } finally {
             showLoading(false);
@@ -48,22 +45,39 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * 配当履歴の年数に応じてテーブルヘッダーを動的に更新する
+     * 指標の値に基づいてハイライト用のCSSクラスを返す
+     * @param {string} key - 指標のキー (per, pbr, roe, yield)
+     * @param {string|number} value - 指標の値
+     * @returns {string} - CSSクラス名 ('undervalued', 'overvalued', or '')
      */
-    function updateTableHeaders() {
-        const operationHeader = tableHeaderRow.querySelector('th:last-child');
+    function getHighlightClass(key, value) {
+        const rules = highlightRules[key];
+        if (!rules || value === 'N/A' || value === null || value === undefined || value === '--') {
+            return '';
+        }
 
-        dividendYears.forEach(year => {
-            const th = document.createElement('th');
-            th.className = 'sortable';
-            th.dataset.key = `div_${year}`;
-            th.textContent = `${year}年 配当`;
-            tableHeaderRow.insertBefore(th, operationHeader);
-        });
+        const numericValue = parseFloat(String(value).replace(/[^0-9.-]/g, ''));
+        if (isNaN(numericValue)) {
+            return '';
+        }
 
-        // ヘッダーのイベントリスナーを再設定
-        tableHeaders = document.querySelectorAll('#stock-table .sortable');
-        addSortEventListeners();
+        // 高い方が良い指標 (yield, roe)
+        if (key === 'yield' || key === 'roe') {
+            if (rules.undervalued !== undefined && numericValue >= rules.undervalued) {
+                return 'undervalued';
+            }
+        } 
+        // 低い方が良い指標 (per, pbr)
+        else {
+            if (rules.undervalued !== undefined && numericValue <= rules.undervalued) {
+                return 'undervalued';
+            }
+            if (rules.overvalued !== undefined && numericValue >= rules.overvalued) {
+                return 'overvalued';
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -81,15 +95,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function sortStocks() {
         stocksData.sort((a, b) => {
             let valA, valB;
-
-            if (currentSort.key.startsWith('div_')) {
-                const year = currentSort.key.split('_')[1];
-                valA = a.dividend_history ? a.dividend_history[year] : null;
-                valB = b.dividend_history ? b.dividend_history[year] : null;
-            } else {
-                valA = a[currentSort.key];
-                valB = b[currentSort.key];
-            }
+            valA = a[currentSort.key];
+            valB = b[currentSort.key];
 
             const parseValue = (value) => {
                 if (typeof value === 'string') {
@@ -152,23 +159,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         stocks.forEach(stock => {
             const row = document.createElement('tr');
-            // NOTE: CSVダウンロード機能実装に伴い、配当履歴関連の処理は一旦コメントアウト
-            // let dividendCells = dividendYears.map(year => {
-            //     const value = stock.dividend_history ? (stock.dividend_history[year] || '0') : 'N/A';
-            //     return `<td>${value} 円</td>`;
-            // }).join('');
-
             row.innerHTML = `
                 <td>${stock.code}</td>
                 <td><a href="https://finance.yahoo.co.jp/quote/${stock.code}.T" target="_blank">${stock.name}</a></td>
                 <td>${stock.price}</td>
                 <td>${stock.change} (${stock.change_percent === 'N/A' ? 'N/A' : stock.change_percent + '%'})</td>
                 <td>${formatMarketCap(stock.market_cap)}</td>
-                <td>${stock.per}</td>
-                <td>${stock.pbr}</td>
-                <td>${stock.roe === 'N/A' ? 'N/A' : stock.roe + '%'}</td>
+                <td class="${getHighlightClass('per', stock.per)}">${stock.per}</td>
+                <td class="${getHighlightClass('pbr', stock.pbr)}">${stock.pbr}</td>
+                <td class="${getHighlightClass('roe', stock.roe)}">${stock.roe === 'N/A' ? 'N/A' : stock.roe + '%'}</td>
                 <td>${stock.eps === 'N/A' ? 'N/A' : stock.eps + '円'}</td>
-                <td>${stock.yield === 'N/A' ? 'N/A' : stock.yield + '%'}</td>
+                <td class="${getHighlightClass('yield', stock.yield)}">${stock.yield === 'N/A' ? 'N/A' : stock.yield + '%'}</td>
                 <td><button class="delete-btn" data-code="${stock.code}">削除</button></td>
             `;
             stockTableBody.appendChild(row);
@@ -213,7 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (!response.ok) throw new Error('Failed to add stock');
             stockCodeInput.value = '';
-            await fetchAndDisplayStocks();
+            await initialize();
         } catch (error) {
             console.error('Error adding stock:', error);
             alert('銘柄の追加に失敗しました。');
@@ -231,7 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const response = await fetch(`/api/stocks/${code}`, { method: 'DELETE' });
                 if (!response.ok) throw new Error('Failed to delete stock');
-                await fetchAndDisplayStocks();
+                await initialize();
             } catch (error) {
                 console.error('Error deleting stock:', error);
                 alert('銘柄の削除に失敗しました。');
@@ -295,5 +296,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 初期表示
     addSortEventListeners();
-    fetchAndDisplayStocks();
+    initialize();
 });

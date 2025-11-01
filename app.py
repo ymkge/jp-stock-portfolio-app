@@ -1,9 +1,11 @@
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
+import io
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 import asyncio
+from datetime import datetime
 
 import scraper
 import portfolio_manager
@@ -66,3 +68,32 @@ async def delete_stock(stock_code: str):
         return {"status": "success"}
     else:
         raise HTTPException(status_code=404, detail="Stock code not found")
+
+@app.get("/api/stocks/csv")
+async def download_csv():
+    """
+    現在のポートフォリオをCSV形式でダウンロードする。
+    """
+    codes = portfolio_manager.load_codes()
+    if not codes:
+        # 空のCSVを返す
+        return StreamingResponse(io.StringIO(""), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=portfolio.csv"})
+
+    # 各銘柄のデータ取得を並行して行う
+    tasks = [asyncio.to_thread(scraper.fetch_stock_data, code) for code in codes]
+    results = await asyncio.gather(*tasks)
+
+    # Noneが返されたもの（エラー）を除外
+    data = [res for res in results if res is not None]
+    
+    if not data:
+        return StreamingResponse(io.StringIO(""), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=portfolio.csv"})
+
+    # CSVデータをメモリ上で作成
+    csv_data = portfolio_manager.create_csv_data(data)
+
+    # StreamingResponseを使ってCSVを返す
+    filename = f"portfolio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    response = StreamingResponse(io.StringIO(csv_data), media_type="text/csv")
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    return response

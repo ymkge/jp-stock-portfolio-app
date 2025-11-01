@@ -18,6 +18,9 @@
                 <input type="text" id="stock-code-input" placeholder="銘柄コード (例: 7203)" required>
                 <button type="submit">追加</button>
             </form>
+            <div class="export-controls">
+                <button id="download-csv-button">CSVをダウンロード</button>
+            </div>
         </section>
 
         <section class="portfolio-list">
@@ -28,10 +31,11 @@
                         <th class="sortable" data-key="code">銘柄コード</th>
                         <th class="sortable" data-key="name">銘柄名</th>
                         <th class="sortable" data-key="price">現在株価</th>
+                        <th class="sortable" data-key="change">前日比</th>
                         <th class="sortable" data-key="market_cap">時価総額</th>
-                        <th class="sortable" data-key="per">PER(連)</th>
-                        <th class="sortable" data-key="pbr">PBR(連)</th>
-                        <th class="sortable" data-key="dividend_yield">配当利回り(連)</th>
+                        <th class="sortable" data-key="per">PER</th>
+                        <th class="sortable" data-key="pbr">PBR</th>
+                        <th class="sortable" data-key="yield">配当利回り</th>
                         <th>操作</th>
                     </tr>
                 </thead>

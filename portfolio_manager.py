@@ -1,5 +1,7 @@
 import json
 import os
+import csv
+import io
 
 PORTFOLIO_FILE = "portfolio.json"
 
@@ -27,6 +29,40 @@ def save_codes(codes: list):
     unique_codes = sorted(list(set(codes)))
     with open(PORTFOLIO_FILE, "w", encoding="utf-8") as f:
         json.dump({"codes": unique_codes}, f, indent=4)
+
+def create_csv_data(data: list[dict]) -> str:
+    """
+    銘柄データのリストからCSV文字列を生成する。
+    """
+    if not data:
+        return ""
+
+    # StringIOを使い、メモリ上でCSVを作成
+    output = io.StringIO()
+    # Unicode-BOM付きUTF-8でエンコード指定
+    output.write('\ufeff')
+    writer = csv.writer(output)
+
+    # ヘッダーを書き込む (データのキーから取得)
+    # scraper.pyの返す辞書のキーの順序を想定
+    headers = [
+        "code", "name", "price", "change", "change_percent",
+        "market_cap", "per", "pbr", "yield"
+    ]
+    # 表示用の日本語ヘッダー
+    display_headers = [
+        "銘柄コード", "銘柄名", "現在株価", "前日比", "前日比(%)",
+        "時価総額(億円)", "PER(倍)", "PBR(倍)", "配当利回り(%)"
+    ]
+    writer.writerow(display_headers)
+
+    # 各行のデータを書き込む
+    for item in data:
+        # headersの順序で値を取得して書き出す
+        row = [item.get(h, "") for h in headers]
+        writer.writerow(row)
+
+    return output.getvalue()
 
 if __name__ == '__main__':
     # テスト用

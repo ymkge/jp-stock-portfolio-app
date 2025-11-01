@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const addStockForm = document.getElementById('add-stock-form');
     const stockCodeInput = document.getElementById('stock-code-input');
     const tableHeaderRow = document.getElementById('table-header-row');
+    const downloadCsvButton = document.getElementById('download-csv-button'); // CSVボタン追加
     
     let tableHeaders = document.querySelectorAll('#stock-table .sortable');
 
@@ -28,12 +29,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             stocksData = await response.json();
 
-            if (stocksData.length > 0 && !headersInitialized) {
-                // 最初のデータから配当履歴の年を取得し、ヘッダーを更新
-                dividendYears = Object.keys(stocksData[0].dividend_history).sort((a, b) => b - a);
-                updateTableHeaders();
-                headersInitialized = true;
-            }
+            // NOTE: CSVダウンロード機能実装に伴い、配当履歴関連の処理は一旦コメントアウト
+            // if (stocksData.length > 0 && !headersInitialized) {
+            //     // 最初のデータから配当履歴の年を取得し、ヘッダーを更新
+            //     dividendYears = stocksData[0].dividend_history ? Object.keys(stocksData[0].dividend_history).sort((a, b) => b - a) : [];
+            //     updateTableHeaders();
+            //     headersInitialized = true;
+            // }
 
             sortAndRender(); // 取得したデータをソートして描画
         } catch (error) {
@@ -150,20 +152,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         stocks.forEach(stock => {
             const row = document.createElement('tr');
-            let dividendCells = dividendYears.map(year => {
-                const value = stock.dividend_history ? (stock.dividend_history[year] || '0') : 'N/A';
-                return `<td>${value} 円</td>`;
-            }).join('');
+            // NOTE: CSVダウンロード機能実装に伴い、配当履歴関連の処理は一旦コメントアウト
+            // let dividendCells = dividendYears.map(year => {
+            //     const value = stock.dividend_history ? (stock.dividend_history[year] || '0') : 'N/A';
+            //     return `<td>${value} 円</td>`;
+            // }).join('');
 
             row.innerHTML = `
                 <td>${stock.code}</td>
-                <td>${stock.name}</td>
+                <td><a href="https://finance.yahoo.co.jp/quote/${stock.code}.T" target="_blank">${stock.name}</a></td>
                 <td>${stock.price}</td>
+                <td>${stock.change} (${stock.change_percent})</td>
                 <td>${formatMarketCap(stock.market_cap)}</td>
                 <td>${stock.per}</td>
                 <td>${stock.pbr}</td>
-                <td>${stock.dividend_yield}</td>
-                ${dividendCells}
+                <td>${stock.yield}</td>
                 <td><button class="delete-btn" data-code="${stock.code}">削除</button></td>
             `;
             stockTableBody.appendChild(row);
@@ -251,6 +254,42 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
     }
+
+    /**
+     * CSVダウンロードボタンのクリックイベント
+     */
+    downloadCsvButton.addEventListener('click', async () => {
+        try {
+            const response = await fetch('/api/stocks/csv');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const disposition = response.headers.get('Content-Disposition');
+            let filename = 'portfolio.csv';
+            if (disposition && disposition.indexOf('attachment') !== -1) {
+                const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+                const matches = filenameRegex.exec(disposition);
+                if (matches != null && matches[1]) {
+                    filename = decodeURI(matches[1].replace(/['"]/g, ''));
+                }
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (error) {
+            console.error('Error downloading CSV:', error);
+            alert('CSVファイルのダウンロードに失敗しました。');
+        }
+    });
 
     // 初期表示
     addSortEventListeners();

@@ -31,6 +31,51 @@ templates = Jinja2Templates(directory="templates")
 class StockCode(BaseModel):
     code: str
 
+def calculate_score(stock_data: dict) -> int:
+    """
+    銘柄データに基づいて割安度スコアを計算する (最大8点)
+    """
+    score = 0
+    rules = HIGHLIGHT_RULES
+
+    try:
+        # PER (低いほど良い) - max 2 points
+        per_str = str(stock_data.get("per", "inf")).replace('倍', '')
+        per = float(per_str)
+        if per <= rules.get("per", {}).get("undervalued", 15.0):
+            score += 1
+        if per <= 10.0:
+            score += 1
+            
+        # PBR (低いほど良い) - max 2 points
+        pbr_str = str(stock_data.get("pbr", "inf")).replace('倍', '')
+        pbr = float(pbr_str)
+        if pbr <= rules.get("pbr", {}).get("undervalued", 1.0):
+            score += 1
+        if pbr <= 0.7:
+            score += 1
+
+        # ROE (高いほど良い) - max 2 points
+        roe_str = str(stock_data.get("roe", "0")).replace('%', '')
+        roe = float(roe_str)
+        if roe >= rules.get("roe", {}).get("undervalued", 10.0):
+            score += 1
+        if roe >= 15.0:
+            score += 1
+
+        # 配当利回り (高いほど良い) - max 2 points
+        yield_str = str(stock_data.get("yield", "0")).replace('%', '')
+        yield_val = float(yield_str)
+        if yield_val >= rules.get("yield", {}).get("undervalued", 3.0):
+            score += 1
+        if yield_val >= 4.0:
+            score += 1
+            
+    except (ValueError, TypeError):
+        pass # N/Aなどの変換不可能な値の場合はスコアを加算しない
+        
+    return score
+
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     """
@@ -60,6 +105,11 @@ async def get_stocks():
 
     # Noneが返されたもの（エラー）を除外
     data = [res for res in results if res is not None]
+    
+    # 各銘柄にスコアを付与
+    for item in data:
+        item["score"] = calculate_score(item)
+        
     return data
 
 @app.post("/api/stocks")
@@ -102,6 +152,10 @@ async def download_csv():
 
     # Noneが返されたもの（エラー）を除外
     data = [res for res in results if res is not None]
+
+    # 各銘柄にスコアを付与
+    for item in data:
+        item["score"] = calculate_score(item)
     
     if not data:
         return StreamingResponse(io.StringIO(""), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=portfolio.csv"})

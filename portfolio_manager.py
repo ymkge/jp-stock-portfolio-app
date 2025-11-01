@@ -46,12 +46,12 @@ def create_csv_data(data: list[dict]) -> str:
     # ヘッダーを書き込む (データのキーから取得)
     # scraper.pyの返す辞書のキーの順序を想定
     headers = [
-        "code", "name", "price", "change", "change_percent",
+        "code", "name", "score", "price", "change", "change_percent",
         "market_cap", "per", "pbr", "roe", "eps", "yield"
     ]
     # 表示用の日本語ヘッダー
     display_headers = [
-        "銘柄コード", "銘柄名", "現在株価", "前日比", "前日比(%)",
+        "銘柄コード", "銘柄名", "スコア", "現在株価", "前日比", "前日比(%)",
         "時価総額(億円)", "PER(倍)", "PBR(倍)", "ROE(%)", "EPS(円)", "配当利回り(%)"
     ]
     writer.writerow(display_headers)

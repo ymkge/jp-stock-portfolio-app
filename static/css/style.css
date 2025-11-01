@@ -169,3 +169,10 @@ footer {
 .overvalued {
     background-color: #ffcdd2; /* 赤 */
 }
+
+/* --- スコア表示 --- */
+.score {
+    color: #f8b400; /* 星の色 (オレンジ系) */
+    font-size: 1.1rem;
+    white-space: nowrap; /* 星が改行されないように */
+}

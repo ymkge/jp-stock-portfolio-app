@@ -81,6 +81,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * スコアを星で描画する (最大8点)
+     * @param {number} score - スコア
+     * @returns {string} - 星のHTML文字列
+     */
+    function renderScoreAsStars(score) {
+        if (score === undefined || score === null) {
+            return 'N/A';
+        }
+        const maxScore = 8;
+        const filledStars = '★'.repeat(score);
+        const emptyStars = '☆'.repeat(maxScore - score);
+        return `<span class="score" title="${score}/${maxScore}">${filledStars}${emptyStars}</span>`;
+    }
+
+    /**
      * 現在のソート条件でデータをソートし、テーブルを再描画する
      */
     function sortAndRender() {
@@ -162,6 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
             row.innerHTML = `
                 <td>${stock.code}</td>
                 <td><a href="https://finance.yahoo.co.jp/quote/${stock.code}.T" target="_blank">${stock.name}</a></td>
+                <td>${renderScoreAsStars(stock.score)}</td>
                 <td>${stock.price}</td>
                 <td>${stock.change} (${stock.change_percent === 'N/A' ? 'N/A' : stock.change_percent + '%'})</td>
                 <td>${formatMarketCap(stock.market_cap)}</td>

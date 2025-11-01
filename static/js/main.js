@@ -162,11 +162,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${stock.code}</td>
                 <td><a href="https://finance.yahoo.co.jp/quote/${stock.code}.T" target="_blank">${stock.name}</a></td>
                 <td>${stock.price}</td>
-                <td>${stock.change} (${stock.change_percent})</td>
+                <td>${stock.change} (${stock.change_percent === 'N/A' ? 'N/A' : stock.change_percent + '%'})</td>
                 <td>${formatMarketCap(stock.market_cap)}</td>
                 <td>${stock.per}</td>
                 <td>${stock.pbr}</td>
-                <td>${stock.yield}</td>
+                <td>${stock.yield === 'N/A' ? 'N/A' : stock.yield + '%'}</td>
                 <td><button class="delete-btn" data-code="${stock.code}">削除</button></td>
             `;
             stockTableBody.appendChild(row);

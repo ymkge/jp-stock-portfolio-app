@@ -100,16 +100,24 @@ def fetch_stock_data(stock_code: str, num_years_dividend: int = 4) -> Optional[d
                 except (ValueError, TypeError):
                     market_cap = "N/A"
 
-        dividend_history = fetch_dividend_history(stock_code, num_years=num_years_dividend)
+        # READMEの課題にある通り配当履歴は現在取得できないため、一旦空のデータを返す
+        dividend_history = {}
+
+        # 配当利回りをpriceBoardから優先的に取得し、なければreferenceIndexから取得
+        dividend_yield = price_board.get("shareDividendYield")
+        if dividend_yield is None:
+            dividend_yield = reference_index.get("shareDividendYield", "N/A")
 
         return {
             "code": stock_code,
             "name": price_board.get("name", "N/A"),
             "price": price_board.get("price", "N/A"),
+            "change": price_board.get("priceChange", "N/A"),
+            "change_percent": price_board.get("priceChangeRate", "N/A"),
             "market_cap": market_cap,
             "per": reference_index.get("per", "N/A"),
             "pbr": reference_index.get("pbr", "N/A"),
-            "dividend_yield": reference_index.get("shareDividendYield", "N/A"),
+            "yield": dividend_yield,
             "dividend_history": dividend_history,
         }
 

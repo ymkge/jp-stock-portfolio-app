@@ -58,8 +58,19 @@ def create_csv_data(data: list[dict]) -> str:
 
     # 各行のデータを書き込む
     for item in data:
-        # headersの順序で値を取得して書き出す
-        row = [item.get(h, "") for h in headers]
+        row = []
+        for h in headers:
+            value = item.get(h, "")
+            if h == 'market_cap':
+                try:
+                    # 円単位の値を億円単位に変換
+                    yen_value = float(str(value).replace(',', ''))
+                    oku_yen_value = yen_value / 100_000_000
+                    # 小数点以下2桁にフォーマット
+                    value = f"{oku_yen_value:.2f}"
+                except (ValueError, TypeError):
+                    value = "N/A" # 変換に失敗した場合はN/A
+            row.append(value)
         writer.writerow(row)
 
     return output.getvalue()

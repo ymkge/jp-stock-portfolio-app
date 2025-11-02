@@ -151,13 +151,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isNaN(num)) return 'N/A';
 
         const trillion = 1_000_000_000_000;
-        const billion = 1_000_000_000;
+        const oku = 100_000_000; // 1億円
         const million = 1_000_000;
 
-        if (num >= trillion) return `${(num / trillion).toFixed(2)} 兆円`;
-        if (num >= billion) return `${(num / billion).toFixed(2)} 億円`;
-        if (num >= million) return `${Math.round(num / million)} 百万円`;
-        return `${num.toLocaleString()} 円`;
+        if (num >= trillion) {
+            return `${(num / trillion).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}兆円`;
+        }
+        if (num >= oku) {
+            return `${(num / oku).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}億円`;
+        }
+        if (num >= million) {
+            return `${(num / million).toLocaleString()}百万円`;
+        }
+        return `${num.toLocaleString()}円`;
     }
 
     /**

@@ -31,50 +31,71 @@ templates = Jinja2Templates(directory="templates")
 class StockCode(BaseModel):
     code: str
 
-def calculate_score(stock_data: dict) -> int:
+def calculate_score(stock_data: dict) -> tuple[int, dict]:
     """
-    銘柄データに基づいて割安度スコアを計算する (最大8点)
+    銘柄データに基づいて割安度スコアと詳細を計算する (最大8点)
+    スコアが計算不能な場合は-1を返す
     """
-    score = 0
+    details = {"per": 0, "pbr": 0, "roe": 0, "yield": 0}
+    total_score = 0
+    is_calculable = False # 少なくとも1つの指標が計算可能だったか
     rules = HIGHLIGHT_RULES
 
+    # PER (低いほど良い) - max 2 points
     try:
-        # PER (低いほど良い) - max 2 points
         per_str = str(stock_data.get("per", "inf")).replace('倍', '')
         per = float(per_str)
+        is_calculable = True
         if per <= rules.get("per", {}).get("undervalued", 15.0):
-            score += 1
+            details["per"] += 1
         if per <= 10.0:
-            score += 1
-            
-        # PBR (低いほど良い) - max 2 points
+            details["per"] += 1
+    except (ValueError, TypeError):
+        pass
+
+    # PBR (低いほど良い) - max 2 points
+    try:
         pbr_str = str(stock_data.get("pbr", "inf")).replace('倍', '')
         pbr = float(pbr_str)
+        is_calculable = True
         if pbr <= rules.get("pbr", {}).get("undervalued", 1.0):
-            score += 1
+            details["pbr"] += 1
         if pbr <= 0.7:
-            score += 1
+            details["pbr"] += 1
+    except (ValueError, TypeError):
+        pass
 
-        # ROE (高いほど良い) - max 2 points
+    # ROE (高いほど良い) - max 2 points
+    try:
         roe_str = str(stock_data.get("roe", "0")).replace('%', '')
         roe = float(roe_str)
+        is_calculable = True
         if roe >= rules.get("roe", {}).get("undervalued", 10.0):
-            score += 1
+            details["roe"] += 1
         if roe >= 15.0:
-            score += 1
+            details["roe"] += 1
+    except (ValueError, TypeError):
+        pass
 
-        # 配当利回り (高いほど良い) - max 2 points
+    # 配当利回り (高いほど良い) - max 2 points
+    try:
         yield_str = str(stock_data.get("yield", "0")).replace('%', '')
         yield_val = float(yield_str)
+        is_calculable = True
         if yield_val >= rules.get("yield", {}).get("undervalued", 3.0):
-            score += 1
+            details["yield"] += 1
         if yield_val >= 4.0:
-            score += 1
-            
+            details["yield"] += 1
     except (ValueError, TypeError):
-        pass # N/Aなどの変換不可能な値の場合はスコアを加算しない
+        pass
         
-    return score
+    total_score = sum(details.values())
+
+    # どの指標も計算できなかった場合、スコアを-1として返す
+    if not is_calculable:
+        return -1, details
+        
+    return total_score, details
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -106,9 +127,11 @@ async def get_stocks():
     # Noneが返されたもの（エラー）を除外
     data = [res for res in results if res is not None]
     
-    # 各銘柄にスコアを付与
+    # 各銘柄にスコアと詳細を付与
     for item in data:
-        item["score"] = calculate_score(item)
+        score, details = calculate_score(item)
+        item["score"] = score
+        item["score_details"] = details
         
     return data
 
@@ -153,9 +176,11 @@ async def download_csv():
     # Noneが返されたもの（エラー）を除外
     data = [res for res in results if res is not None]
 
-    # 各銘柄にスコアを付与
+    # 各銘柄にスコアと詳細を付与
     for item in data:
-        item["score"] = calculate_score(item)
+        score, details = calculate_score(item)
+        item["score"] = score
+        item["score_details"] = details
     
     if not data:
         return StreamingResponse(io.StringIO(""), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=portfolio.csv"})

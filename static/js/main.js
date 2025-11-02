@@ -81,18 +81,38 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * スコアを星で描画する (最大8点)
-     * @param {number} score - スコア
+     * スコアを星で描画し、詳細をツールチップで表示する
+     * @param {number} score - スコア (-1の場合は計算不可)
+     * @param {object} details - スコアの詳細
      * @returns {string} - 星のHTML文字列
      */
-    function renderScoreAsStars(score) {
+    function renderScoreAsStars(score, details) {
+        // スコアが計算不能（-1）の場合
+        if (score === -1) {
+            return `<span class="score-na" title="評価指標なし">N/A</span>`;
+        }
+
         if (score === undefined || score === null) {
             return 'N/A';
         }
+
         const maxScore = 8;
         const filledStars = '★'.repeat(score);
         const emptyStars = '☆'.repeat(maxScore - score);
-        return `<span class="score" title="${score}/${maxScore}">${filledStars}${emptyStars}</span>`;
+        
+        // ツールチップ用のテキストを生成
+        let tooltipText = `合計: ${score}/${maxScore}`;
+        if (details) {
+            const detailParts = [
+                `PER: ${details.per}/2`,
+                `PBR: ${details.pbr}/2`,
+                `ROE: ${details.roe}/2`,
+                `利回り: ${details.yield}/2`
+            ];
+            tooltipText += ` (${detailParts.join(', ')})`;
+        }
+
+        return `<span class="score" title="${tooltipText}">${filledStars}${emptyStars}</span>`;
     }
 
     /**
@@ -184,7 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${stock.code}</td>
                 <td><a href="https://finance.yahoo.co.jp/quote/${stock.code}.T" target="_blank">${stock.name}</a></td>
                 <td>${stock.industry || 'N/A'}</td>
-                <td>${renderScoreAsStars(stock.score)}</td>
+                <td>${renderScoreAsStars(stock.score, stock.score_details)}</td>
                 <td>${stock.price}</td>
                 <td>${stock.change} (${stock.change_percent === 'N/A' ? 'N/A' : stock.change_percent + '%'})</td>
                 <td>${formatMarketCap(stock.market_cap)}</td>

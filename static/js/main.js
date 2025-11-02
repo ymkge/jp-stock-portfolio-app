@@ -177,6 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
             row.innerHTML = `
                 <td>${stock.code}</td>
                 <td><a href="https://finance.yahoo.co.jp/quote/${stock.code}.T" target="_blank">${stock.name}</a></td>
+                <td>${stock.industry || 'N/A'}</td>
                 <td>${renderScoreAsStars(stock.score)}</td>
                 <td>${stock.price}</td>
                 <td>${stock.change} (${stock.change_percent === 'N/A' ? 'N/A' : stock.change_percent + '%'})</td>

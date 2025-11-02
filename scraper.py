@@ -86,6 +86,8 @@ def fetch_stock_data(stock_code: str, num_years_dividend: int = 4) -> Optional[d
 
         preloaded_state = json.loads(match.group(1))
 
+        
+
         price_board = preloaded_state.get("mainStocksPriceBoard", {}).get("priceBoard", {})
         reference_index = preloaded_state.get("mainStocksDetail", {}).get("referenceIndex", {})
 
@@ -111,6 +113,7 @@ def fetch_stock_data(stock_code: str, num_years_dividend: int = 4) -> Optional[d
         return {
             "code": stock_code,
             "name": price_board.get("name", "N/A"),
+            "industry": price_board.get("industry", {}).get("industryName", "N/A"),
             "price": price_board.get("price", "N/A"),
             "change": price_board.get("priceChange", "N/A"),
             "change_percent": price_board.get("priceChangeRate", "N/A"),

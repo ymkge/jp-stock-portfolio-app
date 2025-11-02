@@ -175,4 +175,11 @@ footer {
     color: #f8b400; /* 星の色 (オレンジ系) */
     font-size: 1.1rem;
     white-space: nowrap; /* 星が改行されないように */
+    display: inline-block; /* 当たり判定を広げる */
+}
+
+.score-na {
+    color: #999;
+    font-size: 0.9rem;
+    display: inline-block;
 }

@@ -215,35 +215,74 @@ document.addEventListener('DOMContentLoaded', () => {
      * 取得したデータでテーブルを描画する
      */
     function renderStockTable(stocks) {
-        stockTableBody.innerHTML = '';
+        stockTableBody.innerHTML = ''; // 既存の行をクリア
         const colspan = tableHeaderRow.children.length;
 
         if (!stocks || stocks.length === 0) {
-            stockTableBody.innerHTML = `<tr><td colspan="${colspan}" style="text-align:center;">登録されている銘柄はありません。</td></tr>`;
+            const row = stockTableBody.insertRow();
+            const cell = row.insertCell();
+            cell.colSpan = colspan;
+            cell.textContent = '登録されている銘柄はありません。';
+            cell.style.textAlign = 'center';
             return;
         }
 
         stocks.forEach(stock => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${stock.code}</td>
-                <td><a href="https://finance.yahoo.co.jp/quote/${stock.code}.T" target="_blank">${stock.name}</a></td>
-                <td>${stock.industry || 'N/A'}</td>
-                <td>${renderScoreAsStars(stock.score, stock.score_details)}</td>
-                <td>${stock.price}</td>
-                <td>${stock.change} (${stock.change_percent === 'N/A' ? 'N/A' : stock.change_percent + '%'})</td>
-                <td>${formatMarketCap(stock.market_cap)}</td>
-                <td class="${getHighlightClass('per', stock.per)}">${stock.per}</td>
-                <td class="${getHighlightClass('pbr', stock.pbr)}">${stock.pbr}</td>
-                <td class="${getHighlightClass('roe', stock.roe)}">${stock.roe === 'N/A' ? 'N/A' : stock.roe + '%'}</td>
-                <td>${stock.eps === 'N/A' ? 'N/A' : stock.eps + '円'}</td>
-                <td class="${getHighlightClass('yield', stock.yield)}">${stock.yield === 'N/A' ? 'N/A' : stock.yield + '%'}</td>
-                <td title="${formatDividendHistory(stock.dividend_history)}">
-                    ${stock.consecutive_increase_years > 0 ? `<span class="increase-badge">${stock.consecutive_increase_years}年連続</span>` : '-'}
-                </td>
-                <td><button class="delete-btn" data-code="${stock.code}">削除</button></td>
-            `;
-            stockTableBody.appendChild(row);
+            const row = stockTableBody.insertRow();
+
+            // セル作成をヘルパー関数化
+            const createCell = (html, className = '') => {
+                const cell = row.insertCell();
+                cell.innerHTML = html;
+                if (className) cell.className = className;
+                return cell;
+            };
+            
+            const createTextCell = (text, className = '') => {
+                const cell = row.insertCell();
+                cell.textContent = text;
+                if (className) cell.className = className;
+                return cell;
+            };
+
+            // 各セルの生成
+            createTextCell(stock.code);
+            createCell(`<a href="https://finance.yahoo.co.jp/quote/${stock.code}.T" target="_blank">${stock.name}</a>`);
+            createTextCell(stock.industry || 'N/A');
+            createCell(renderScoreAsStars(stock.score, stock.score_details));
+            createTextCell(stock.price);
+            createTextCell(`${stock.change} (${stock.change_percent === 'N/A' ? 'N/A' : stock.change_percent + '%'})`);
+            createTextCell(formatMarketCap(stock.market_cap));
+            createTextCell(stock.per, getHighlightClass('per', stock.per));
+            createTextCell(stock.pbr, getHighlightClass('pbr', stock.pbr));
+            createTextCell(stock.roe === 'N/A' ? 'N/A' : stock.roe + '%', getHighlightClass('roe', stock.roe));
+            createTextCell(stock.eps === 'N/A' ? 'N/A' : stock.eps + '円');
+            createTextCell(stock.yield === 'N/A' ? 'N/A' : stock.yield + '%', getHighlightClass('yield', stock.yield));
+
+            // 連続増配セル
+            const dividendCell = row.insertCell();
+            dividendCell.title = formatDividendHistory(stock.dividend_history);
+            const dividendLink = document.createElement('a');
+            dividendLink.href = `https://finance.yahoo.co.jp/quote/${stock.code}.T/dividend`;
+            dividendLink.target = '_blank';
+            dividendLink.className = 'dividend-link';
+            if (stock.consecutive_increase_years > 0) {
+                const badge = document.createElement('span');
+                badge.className = 'increase-badge';
+                badge.textContent = `${stock.consecutive_increase_years}年連続`;
+                dividendLink.appendChild(badge);
+            } else {
+                dividendLink.textContent = '-';
+            }
+            dividendCell.appendChild(dividendLink);
+
+            // 削除ボタンセル
+            const deleteCell = row.insertCell();
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-btn';
+            deleteBtn.textContent = '削除';
+            deleteBtn.dataset.code = stock.code;
+            deleteCell.appendChild(deleteBtn);
         });
     }
 

@@ -193,4 +193,16 @@ footer {
     font-size: 0.85em;
     font-weight: bold;
     white-space: nowrap; /* 改行させない */
+    transition: opacity 0.2s; /* ホバーエフェクト用 */
+}
+
+/* --- 連続増配リンク --- */
+.dividend-link {
+    text-decoration: none;
+    color: inherit;
+    display: inline-block;
+}
+
+.dividend-link:hover .increase-badge {
+    opacity: 0.8;
 }

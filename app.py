@@ -67,10 +67,10 @@ def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
 
 def calculate_score(stock_data: dict) -> tuple[int, dict]:
     """
-    銘柄データに基づいて割安度スコアと詳細を計算する (最大8点)
+    銘柄データに基づいて割安度スコアと詳細を計算する (最大10点)
     スコアが計算不能な場合は-1を返す
     """
-    details = {"per": 0, "pbr": 0, "roe": 0, "yield": 0}
+    details = {"per": 0, "pbr": 0, "roe": 0, "yield": 0, "consecutive_increase": 0}
     total_score = 0
     is_calculable = False # 少なくとも1つの指標が計算可能だったか
     rules = HIGHLIGHT_RULES
@@ -120,6 +120,17 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
             details["yield"] += 1
         if yield_val >= 4.0:
             details["yield"] += 1
+    except (ValueError, TypeError):
+        pass
+
+    # 連続増配年数 - max 2 points
+    try:
+        increase_years = int(stock_data.get("consecutive_increase_years", 0))
+        is_calculable = True # 連続増配年数は常に計算可能（0の場合も含む）
+        if increase_years >= rules.get("consecutive_increase", {}).get("good", 3):
+            details["consecutive_increase"] += 1
+        if increase_years >= rules.get("consecutive_increase", {}).get("excellent", 7):
+            details["consecutive_increase"] += 1
     except (ValueError, TypeError):
         pass
         

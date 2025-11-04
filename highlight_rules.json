@@ -12,5 +12,9 @@
   },
   "roe": {
     "undervalued": 10.0
+  },
+  "consecutive_increase": {
+    "good": 3,
+    "excellent": 7
   }
 }

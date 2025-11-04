@@ -96,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return 'N/A';
         }
 
-        const maxScore = 8;
+        const maxScore = 10;
         const filledStars = '★'.repeat(score);
         const emptyStars = '☆'.repeat(maxScore - score);
         
@@ -104,10 +104,11 @@ document.addEventListener('DOMContentLoaded', () => {
         let tooltipText = `合計: ${score}/${maxScore}`;
         if (details) {
             const detailParts = [
-                `PER: ${details.per}/2`,
-                `PBR: ${details.pbr}/2`,
-                `ROE: ${details.roe}/2`,
-                `利回り: ${details.yield}/2`
+                `PER: ${details.per || 0}/2`,
+                `PBR: ${details.pbr || 0}/2`,
+                `ROE: ${details.roe || 0}/2`,
+                `利回り: ${details.yield || 0}/2`,
+                `連続増配: ${details.consecutive_increase || 0}/2`
             ];
             tooltipText += ` (${detailParts.join(', ')})`;
         }

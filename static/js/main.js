@@ -196,8 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // 年（キー）の降順でソート
         const sortedYears = Object.keys(history).sort((a, b) => b - a);
         
-        return sortedYears.map(year => `${year}年: ${history[year]}円`).join('
-');
+        return sortedYears.map(year => `${year}年: ${history[year]}円`).join(' | ');
     }
 
     /**

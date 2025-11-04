@@ -31,6 +31,40 @@ templates = Jinja2Templates(directory="templates")
 class StockCode(BaseModel):
     code: str
 
+def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
+    """
+    配当履歴から連続増配（配当維持を含む）年数を計算する。
+    """
+    if not dividend_history or len(dividend_history) < 2:
+        return 0
+
+    # 履歴を年で降順にソート
+    sorted_years = sorted(dividend_history.keys(), reverse=True)
+    
+    consecutive_years = 0
+    for i in range(len(sorted_years) - 1):
+        current_year_str = sorted_years[i]
+        previous_year_str = sorted_years[i+1]
+        
+        # キーが存在するか確認
+        if current_year_str not in dividend_history or previous_year_str not in dividend_history:
+            break
+
+        try:
+            current_dividend = float(dividend_history[current_year_str])
+            previous_dividend = float(dividend_history[previous_year_str])
+        except (ValueError, TypeError):
+            # 数値に変換できないデータがあれば、そこで計算を打ち切る
+            break
+
+        # 減配していたらループを抜ける (配当維持はOK)
+        if current_dividend < previous_dividend:
+            break
+        
+        consecutive_years += 1
+        
+    return consecutive_years
+
 def calculate_score(stock_data: dict) -> tuple[int, dict]:
     """
     銘柄データに基づいて割安度スコアと詳細を計算する (最大8点)
@@ -127,11 +161,12 @@ async def get_stocks():
     # Noneが返されたもの（エラー）を除外
     data = [res for res in results if res is not None]
     
-    # 各銘柄にスコアと詳細を付与
+    # 各銘柄にスコアと詳細、連続増配年数を付与
     for item in data:
         score, details = calculate_score(item)
         item["score"] = score
         item["score_details"] = details
+        item["consecutive_increase_years"] = calculate_consecutive_dividend_increase(item.get("dividend_history", {}))
         
     return data
 
@@ -176,11 +211,12 @@ async def download_csv():
     # Noneが返されたもの（エラー）を除外
     data = [res for res in results if res is not None]
 
-    # 各銘柄にスコアと詳細を付与
+    # 各銘柄にスコアと詳細、連続増配年数を付与
     for item in data:
         score, details = calculate_score(item)
         item["score"] = score
         item["score_details"] = details
+        item["consecutive_increase_years"] = calculate_consecutive_dividend_increase(item.get("dividend_history", {}))
     
     if not data:
         return StreamingResponse(io.StringIO(""), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=portfolio.csv"})

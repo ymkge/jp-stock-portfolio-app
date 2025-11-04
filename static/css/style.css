@@ -183,3 +183,14 @@ footer {
     font-size: 0.9rem;
     display: inline-block;
 }
+
+/* --- 連続増配バッジ --- */
+.increase-badge {
+    background-color: #28a745; /* 緑色 */
+    color: white;
+    padding: 3px 8px;
+    border-radius: 12px; /* 角を丸くする */
+    font-size: 0.85em;
+    font-weight: bold;
+    white-space: nowrap; /* 改行させない */
+}

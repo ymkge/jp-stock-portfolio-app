@@ -5,7 +5,7 @@ from typing import Optional
 from datetime import datetime
 from bs4 import BeautifulSoup
 
-def fetch_dividend_history(stock_code: str, num_years: int = 4) -> dict:
+def fetch_dividend_history(stock_code: str, num_years: int = 10) -> dict:
     """
     Yahoo!ファイナンスの配当ページから過去数年分の1株あたり配当を取得する。
     ページの__PRELOADED_STATE__からJSONデータを抽出する。
@@ -50,7 +50,7 @@ def fetch_dividend_history(stock_code: str, num_years: int = 4) -> dict:
         print(f"An unexpected error occurred in fetch_dividend_history for {stock_code}: {e}")
         return {}
 
-def fetch_stock_data(stock_code: str, num_years_dividend: int = 4) -> Optional[dict]:
+def fetch_stock_data(stock_code: str, num_years_dividend: int = 10) -> Optional[dict]:
     """
     Yahoo!ファイナンスのページから株価情報と配当履歴を取得する。
     """

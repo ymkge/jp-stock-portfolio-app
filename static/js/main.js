@@ -187,6 +187,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * 配当履歴オブジェクトをHTML文字列にフォーマットする
+     */
+    function formatDividendHistory(history) {
+        if (!history || Object.keys(history).length === 0) {
+            return 'N/A';
+        }
+        // 年（キー）の降順でソート
+        const sortedYears = Object.keys(history).sort((a, b) => b - a);
+        
+        return sortedYears.map(year => `${year}年: ${history[year]}円`).join('<br>');
+    }
+
+    /**
      * 取得したデータでテーブルを描画する
      */
     function renderStockTable(stocks) {
@@ -213,6 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="${getHighlightClass('roe', stock.roe)}">${stock.roe === 'N/A' ? 'N/A' : stock.roe + '%'}</td>
                 <td>${stock.eps === 'N/A' ? 'N/A' : stock.eps + '円'}</td>
                 <td class="${getHighlightClass('yield', stock.yield)}">${stock.yield === 'N/A' ? 'N/A' : stock.yield + '%'}</td>
+                <td class="dividend-history">${formatDividendHistory(stock.dividend_history)}</td>
                 <td><button class="delete-btn" data-code="${stock.code}">削除</button></td>
             `;
             stockTableBody.appendChild(row);

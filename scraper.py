@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 def fetch_dividend_history(stock_code: str, num_years: int = 4) -> dict:
     """
     Yahoo!ファイナンスの配当ページから過去数年分の1株あたり配当を取得する。
+    ページの__PRELOADED_STATE__からJSONデータを抽出する。
     """
     dividend_url = f"https://finance.yahoo.co.jp/quote/{stock_code}.T/dividend"
     headers = {
@@ -16,52 +17,34 @@ def fetch_dividend_history(stock_code: str, num_years: int = 4) -> dict:
     try:
         response = requests.get(dividend_url, headers=headers, timeout=10)
         response.raise_for_status()
-        # パーサーを 'html.parser' に変更
-        soup = BeautifulSoup(response.text, "html.parser")
-        
-        yearly_dividends = {}
-        
-        table = soup.find("table", class_=re.compile(r"DpsHistoryTable__table"))
-        if not table or not table.tbody:
+
+        match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", response.text)
+        if not match:
+            print(f"Could not find __PRELOADED_STATE__ for {stock_code} on dividend page.")
             return {}
 
-        rows = table.tbody.find_all("tr")
-        current_year_text = None
-        for row in rows:
-            # 年度セルを探す
-            year_cell = row.find("th", class_=re.compile(r"DpsHistoryTable__dateCol01__"))
-            if year_cell and "年" in year_cell.get_text():
-                current_year_text = year_cell.get_text(strip=True)
+        preloaded_state = json.loads(match.group(1))
+        
+        dividend_data = preloaded_state.get("mainStocksDividend", {}).get("dps", [])
+        if not dividend_data:
+            return {}
 
-            # 「実績」行かどうかを判断し、かつ年度が特定できている場合
-            if "実績" in row.get_text() and current_year_text:
-                match = re.search(r'(\d{4})年', current_year_text)
-                if match:
-                    year = int(match.group(1))
-                    # 実績行の最初のtdが年間配当(調整後)
-                    dividend_cell = row.find("td")
-                    if dividend_cell:
-                        dividend_text = dividend_cell.get_text(strip=True)
-                        try:
-                            dividend = float(dividend_text)
-                            yearly_dividends[str(year)] = dividend
-                        except (ValueError, TypeError):
-                            # "---" などの場合は 0.0 とする
-                            yearly_dividends[str(year)] = 0.0
+        yearly_dividends = {}
+        for item in dividend_data:
+            if item.get("valueType") == "actual" and "annualCorrectedActualValue" in item:
+                year_match = re.search(r"(\d{4})", item.get("settlementDate", ""))
+                if year_match:
+                    year = year_match.group(1)
+                    yearly_dividends[year] = item["annualCorrectedActualValue"]
+
+        # num_years に基づいて結果をフィルタリングし、降順にソート
+        sorted_years = sorted(yearly_dividends.keys(), reverse=True)
         
-        # 結果を整形する
         result = {}
-        latest_fiscal_year = 0
-        if yearly_dividends:
-            latest_fiscal_year = max(int(y) for y in yearly_dividends.keys())
+        for year in sorted_years[:num_years]:
+            result[year] = yearly_dividends[year]
         
-        if latest_fiscal_year > 0:
-             for i in range(num_years):
-                year_to_check = latest_fiscal_year - i
-                result[str(year_to_check)] = yearly_dividends.get(str(year_to_check), 0.0)
-        
-        # キーを降順にソートして返す
-        return {k: v for k, v in sorted(result.items(), key=lambda item: item[0], reverse=True)}
+        return result
 
     except Exception as e:
         print(f"An unexpected error occurred in fetch_dividend_history for {stock_code}: {e}")
@@ -102,8 +85,8 @@ def fetch_stock_data(stock_code: str, num_years_dividend: int = 4) -> Optional[d
                 except (ValueError, TypeError):
                     market_cap = "N/A"
 
-        # READMEの課題にある通り配当履歴は現在取得できないため、一旦空のデータを返す
-        dividend_history = {}
+        # 配当履歴を取得
+        dividend_history = fetch_dividend_history(stock_code, num_years_dividend)
 
         # 配当利回りをpriceBoardから優先的に取得し、なければreferenceIndexから取得
         dividend_yield = price_board.get("shareDividendYield")

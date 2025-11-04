@@ -97,8 +97,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const maxScore = 10;
-        const filledStars = '★'.repeat(score);
-        const emptyStars = '☆'.repeat(maxScore - score);
+        let starsHtml = '';
+        
+        // 1行目
+        const firstRowScore = Math.min(score, 5);
+        starsHtml += '★'.repeat(firstRowScore);
+        starsHtml += '☆'.repeat(5 - firstRowScore);
+        
+        starsHtml += '<br>'; // 改行
+
+        // 2行目
+        const secondRowScore = Math.max(0, score - 5);
+        starsHtml += '★'.repeat(secondRowScore);
+        starsHtml += '☆'.repeat(5 - secondRowScore);
         
         // ツールチップ用のテキストを生成
         let tooltipText = `合計: ${score}/${maxScore}`;
@@ -113,7 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tooltipText += ` (${detailParts.join(', ')})`;
         }
 
-        return `<span class="score" title="${tooltipText}">${filledStars}${emptyStars}</span>`;
+        return `<span class="score" title="${tooltipText}">${starsHtml}</span>`;
     }
 
     /**

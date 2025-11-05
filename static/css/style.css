@@ -1,6 +1,6 @@
 /* --- 基本スタイル --- */
 :root {
-    --sidebar-width: 220px;
+    --sidebar-width: 180px;
     --primary-color: #007bff;
     --primary-hover-color: #0056b3;
     --danger-color: #dc3545;

@@ -1,6 +1,6 @@
 /* --- 基本スタイル --- */
 :root {
-    --sidebar-width: 320px;
+    --sidebar-width: 220px;
     --primary-color: #007bff;
     --primary-hover-color: #0056b3;
     --danger-color: #dc3545;
@@ -250,4 +250,13 @@ button {
 
 .dividend-link:hover .increase-badge {
     opacity: 0.8;
+}
+
+/* 銘柄名カラムのテキストを折り返すためのスタイル */
+#stock-table th:nth-child(2),
+#stock-table td:nth-child(2) {
+    white-space: normal; /* テキストの折り返しを許可 */
+    min-width: 180px;    /* 列の最小幅を指定 */
+    max-width: 250px;    /* 列の最大幅を指定 */
+    word-break: break-word; /* 単語の途中でも適切に改行 */
 }

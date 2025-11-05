@@ -1,62 +1,49 @@
-/* 基本的なスタイルリセット */
-body, h1, h2, p, table, form {
+/* --- 基本スタイル --- */
+:root {
+    --sidebar-width: 320px;
+    --primary-color: #007bff;
+    --primary-hover-color: #0056b3;
+    --danger-color: #dc3545;
+    --danger-hover-color: #c82333;
+    --background-color: #f8f9fa;
+    --content-background-color: #ffffff;
+    --text-color: #343a40;
+    --border-color: #dee2e6;
+    --header-bg-color: #f1f3f5;
+    --star-color: #f8b400;
+    --badge-bg-color: #28a745;
+    --undervalued-bg: #c8e6c9;
+    --overvalued-bg: #ffcdd2;
+}
+
+body, html {
     margin: 0;
     padding: 0;
+    height: 100%;
     font-family: 'Helvetica Neue', Arial, sans-serif;
+    background-color: var(--background-color);
+    color: var(--text-color);
 }
 
-body {
-    background-color: #f4f4f9;
-    color: #333;
-    line-height: 1.6;
+h1, h2 {
+    margin: 0;
+    padding: 0;
 }
 
-header {
-    background: #333;
-    color: #fff;
-    padding: 1rem 0;
-    text-align: center;
-    margin-bottom: 2rem;
-}
-
-main {
-    width: 90%;
-    max-width: 1200px;
-    margin: 0 auto;
+h1 {
+    font-size: 1.5rem;
 }
 
 h2 {
-    color: #333;
-    border-bottom: 2px solid #333;
+    font-size: 1.2rem;
+    color: var(--text-color);
+    border-bottom: 2px solid var(--border-color);
     padding-bottom: 0.5rem;
     margin-bottom: 1rem;
 }
 
-/* 銘柄管理セクション */
-.portfolio-controls {
-    background: #fff;
-    padding: 1.5rem;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    margin-bottom: 2rem;
-}
-
-#add-stock-form {
-    display: flex;
-    gap: 10px;
-}
-
-#stock-code-input {
-    flex-grow: 1;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 1rem;
-}
-
-#add-stock-form button {
+button {
     padding: 10px 20px;
-    background-color: #007bff;
     color: white;
     border: none;
     border-radius: 4px;
@@ -65,34 +52,114 @@ h2 {
     transition: background-color 0.3s;
 }
 
-#add-stock-form button:hover {
-    background-color: #0056b3;
+/* --- 全体レイアウト --- */
+.container {
+    display: flex;
+    height: 100vh;
 }
 
-/* ポートフォリオ一覧セクション */
-.portfolio-list {
-    background: #fff;
+.sidebar {
+    width: var(--sidebar-width);
+    flex-shrink: 0;
+    background-color: var(--content-background-color);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
     padding: 1.5rem;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+}
+
+.main-content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* --- サイドバー --- */
+.sidebar header {
+    margin-bottom: 2rem;
+}
+
+.sidebar section {
+    margin-bottom: 2rem;
+}
+
+.sidebar footer {
+    margin-top: auto; /* フッターを一番下に配置 */
+    font-size: 0.9rem;
+    color: #777;
+}
+
+/* 銘柄管理フォーム */
+#add-stock-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#stock-code-input {
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+#add-stock-form button {
+    background-color: var(--primary-color);
+}
+
+#add-stock-form button:hover {
+    background-color: var(--primary-hover-color);
+}
+
+/* ポートフォリオ操作 */
+#download-csv-button {
+    width: 100%;
+    background-color: var(--badge-bg-color);
+}
+#download-csv-button:hover {
+    background-color: #218838;
+}
+
+
+/* --- メインコンテンツ --- */
+.main-header {
+    padding: 1.5rem 2rem 0;
+    background-color: var(--background-color);
+}
+
+.portfolio-list {
+    flex-grow: 1;
+    overflow-y: auto; /* テーブルが縦に長くなった場合にスクロール */
+    padding: 0 2rem 2rem;
+}
+
+.table-container {
+    overflow-x: auto; /* テーブルが横にはみ出す場合にスクロール */
+    background: var(--content-background-color);
     border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    overflow-x: auto; /* テーブルがはみ出す場合スクロール */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
 #stock-table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 1rem;
 }
 
 #stock-table th, #stock-table td {
     padding: 12px 15px;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid var(--border-color);
     text-align: left;
+    white-space: nowrap; /* セルの内容が改行されないように */
 }
 
 #stock-table thead th {
-    background-color: #f2f2f2;
+    background-color: var(--header-bg-color);
     font-weight: bold;
+    position: sticky;
+    top: 0;
+    z-index: 1;
 }
 
 #stock-table tbody tr:hover {
@@ -101,40 +168,24 @@ h2 {
 
 #stock-table .delete-btn {
     padding: 5px 10px;
-    background-color: #dc3545;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.3s;
+    background-color: var(--danger-color);
 }
 
 #stock-table .delete-btn:hover {
-    background-color: #c82333;
+    background-color: var(--danger-hover-color);
 }
 
 #loading-indicator {
     text-align: center;
-    padding: 2rem;
+    padding: 3rem;
     font-size: 1.2rem;
     color: #666;
 }
 
-footer {
-    text-align: center;
-    margin-top: 2rem;
-    padding: 1rem 0;
-    font-size: 0.9rem;
-    color: #777;
-}
-
-/* --- ソート機能用スタイル --- */
+/* --- ソート機能 --- */
 #stock-table .sortable {
     cursor: pointer;
     position: relative;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
     user-select: none;
 }
 
@@ -147,7 +198,7 @@ footer {
 }
 
 #stock-table .sortable::after {
-    content: '\00a0\00a0'; /* スペースを確保 */
+    content: '\00a0\00a0';
     position: absolute;
     right: 8px;
     opacity: 0.5;
@@ -162,20 +213,15 @@ footer {
 }
 
 /* --- 指標ハイライト --- */
-.undervalued {
-    background-color: #c8e6c9; /* 緑 */
-}
-
-.overvalued {
-    background-color: #ffcdd2; /* 赤 */
-}
+.undervalued { background-color: var(--undervalued-bg); }
+.overvalued { background-color: var(--overvalued-bg); }
 
 /* --- スコア表示 --- */
 .score {
-    color: #f8b400; /* 星の色 (オレンジ系) */
+    color: var(--star-color);
     font-size: 1.1rem;
-    display: inline-block; /* 当たり判定を広げる */
-    line-height: 1.2; /* 星の行間を詰める */
+    display: inline-block;
+    line-height: 1.2;
 }
 
 .score-na {
@@ -186,17 +232,16 @@ footer {
 
 /* --- 連続増配バッジ --- */
 .increase-badge {
-    background-color: #28a745; /* 緑色 */
+    background-color: var(--badge-bg-color);
     color: white;
     padding: 3px 8px;
-    border-radius: 12px; /* 角を丸くする */
+    border-radius: 12px;
     font-size: 0.85em;
     font-weight: bold;
-    white-space: nowrap; /* 改行させない */
-    transition: opacity 0.2s; /* ホバーエフェクト用 */
+    white-space: nowrap;
+    transition: opacity 0.2s;
 }
 
-/* --- 連続増配リンク --- */
 .dividend-link {
     text-decoration: none;
     color: inherit;

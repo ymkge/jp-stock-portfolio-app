@@ -7,56 +7,63 @@
     <link rel="stylesheet" href="/static/css/style.css?v=1.2">
 </head>
 <body>
-    <header>
-        <h1>国内株式ポートフォリオ</h1>
-    </header>
-
-    <main>
-        <section class="portfolio-controls">
-            <h2>銘柄管理</h2>
-            <form id="add-stock-form">
-                <input type="text" id="stock-code-input" placeholder="銘柄コード (例: 7203)" required>
-                <button type="submit">追加</button>
-            </form>
-            <div class="export-controls">
+    <div class="container">
+        <aside class="sidebar">
+            <header>
+                <h1>JP Stock Portfolio</h1>
+            </header>
+            <section class="portfolio-controls">
+                <h2>銘柄管理</h2>
+                <form id="add-stock-form">
+                    <input type="text" id="stock-code-input" placeholder="銘柄コード (例: 7203)" required>
+                    <button type="submit">追加</button>
+                </form>
+            </section>
+            <section class="portfolio-actions">
+                <h2>ポートフォリオ操作</h2>
                 <button id="download-csv-button">CSVをダウンロード</button>
-            </div>
-        </section>
+            </section>
+            <footer>
+                <p>Powered by FastAPI & Yahoo! Finance Japan</p>
+            </footer>
+        </aside>
 
-        <section class="portfolio-list">
-            <h2>ポートフォリオ一覧</h2>
-            <table id="stock-table">
-                <thead>
-                    <tr id="table-header-row">
-                        <th class="sortable" data-key="code">銘柄コード</th>
-                        <th class="sortable" data-key="name">銘柄名</th>
-                        <th class="sortable" data-key="industry">業種</th>
-                        <th class="sortable" data-key="score">総合評価スコア</th>
-                        <th class="sortable" data-key="price">現在株価</th>
-                        <th class="sortable" data-key="change">前日比</th>
-                        <th class="sortable" data-key="market_cap">時価総額</th>
-                        <th class="sortable" data-key="per">PER</th>
-                        <th class="sortable" data-key="pbr">PBR</th>
-                        <th class="sortable" data-key="roe">ROE</th>
-                        <th class="sortable" data-key="eps">EPS</th>
-                        <th class="sortable" data-key="yield">配当利回り</th>
-                        <th class="sortable" data-key="consecutive_increase_years">連続増配(直近10年)</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <!-- データはJavaScriptで挿入されます -->
-                </tbody>
-            </table>
-            <div id="loading-indicator" style="display: none;">
-                <p>データを読み込み中...</p>
-            </div>
-        </section>
-    </main>
-
-    <footer>
-        <p>Powered by FastAPI & Yahoo! Finance Japan</p>
-    </footer>
+        <main class="main-content">
+            <header class="main-header">
+                <h2>ポートフォリオ一覧</h2>
+            </header>
+            <section class="portfolio-list">
+                <div id="loading-indicator" style="display: none;">
+                    <p>データを読み込み中...</p>
+                </div>
+                <div class="table-container">
+                    <table id="stock-table">
+                        <thead>
+                            <tr id="table-header-row">
+                                <th class="sortable" data-key="code">銘柄コード</th>
+                                <th class="sortable" data-key="name">銘柄名</th>
+                                <th class="sortable" data-key="industry">業種</th>
+                                <th class="sortable" data-key="score">総合評価スコア</th>
+                                <th class="sortable" data-key="price">現在株価</th>
+                                <th class="sortable" data-key="change">前日比</th>
+                                <th class="sortable" data-key="market_cap">時価総額</th>
+                                <th class="sortable" data-key="per">PER</th>
+                                <th class="sortable" data-key="pbr">PBR</th>
+                                <th class="sortable" data-key="roe">ROE</th>
+                                <th class="sortable" data-key="eps">EPS</th>
+                                <th class="sortable" data-key="yield">配当利回り</th>
+                                <th class="sortable" data-key="consecutive_increase_years">連続増配(直近10年)</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- データはJavaScriptで挿入されます -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
 
     <script src="/static/js/main.js?v=1.2"></script>
 </body>

@@ -14,6 +14,9 @@
     --badge-bg-color: #28a745;
     --undervalued-bg: #c8e6c9;
     --overvalued-bg: #ffcdd2;
+    --error-bg: #f8d7da;
+    --error-text: #721c24;
+    --error-hover-bg: #f5c6cb;
 }
 
 body, html {
@@ -124,6 +127,53 @@ button {
 
 
 /* --- メインコンテンツ --- */
+#alert-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1050;
+    width: 350px;
+}
+
+.alert {
+    position: relative;
+    padding: 0.75rem 1.25rem;
+    margin-bottom: 1rem;
+    border: 1px solid transparent;
+    border-radius: 0.25rem;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: opacity 0.3s, transform 0.4s;
+}
+
+.alert.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.alert.hide {
+    opacity: 0;
+    transform: translateX(100%);
+}
+
+.alert-success {
+    color: #155724;
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+}
+
+.alert-danger {
+    color: #721c24;
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+}
+
+.alert-warning {
+    color: #856404;
+    background-color: #fff3cd;
+    border-color: #ffeeba;
+}
+
 .main-header {
     padding: 1.5rem 2rem 0;
     background-color: var(--background-color);
@@ -259,4 +309,18 @@ button {
     min-width: 180px;    /* 列の最小幅を指定 */
     max-width: 250px;    /* 列の最大幅を指定 */
     word-break: break-word; /* 単語の途中でも適切に改行 */
+}
+
+/* --- エラー行のスタイル --- */
+.error-row {
+    background-color: var(--error-bg) !important;
+    color: var(--error-text) !important;
+}
+
+.error-row:hover {
+    background-color: var(--error-hover-bg) !important;
+}
+
+.error-row a {
+    color: var(--error-text) !important;
 }

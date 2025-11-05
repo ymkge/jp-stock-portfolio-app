@@ -11,6 +11,13 @@ from typing import List, Dict
 import scraper
 import portfolio_manager
 import json
+import logging
+
+# --- ロギング設定 ---
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+# --------------------
 
 app = FastAPI()
 
@@ -20,7 +27,7 @@ try:
     with open("highlight_rules.json", "r", encoding="utf-8") as f:
         HIGHLIGHT_RULES = json.load(f)
 except (FileNotFoundError, json.JSONDecodeError) as e:
-    print(f"Warning: Could not load highlight_rules.json. {e}")
+    logger.warning(f"highlight_rules.json の読み込みに失敗しました。デフォルト値で動作します。: {e}")
 # --------------------------------
 
 # 静的ファイルのマウント
@@ -121,15 +128,16 @@ async def _get_processed_stock_data() -> List[Dict]:
     tasks = [asyncio.to_thread(scraper.fetch_stock_data, code) for code in codes]
     results = await asyncio.gather(*tasks)
 
-    data = [res for res in results if res is not None]
-    
-    for item in data:
-        item["consecutive_increase_years"] = calculate_consecutive_dividend_increase(item.get("dividend_history", {}))
-        score, details = calculate_score(item)
-        item["score"] = score
-        item["score_details"] = details
+    processed_data = []
+    for item in results:
+        if item and "error" not in item:
+            item["consecutive_increase_years"] = calculate_consecutive_dividend_increase(item.get("dividend_history", {}))
+            score, details = calculate_score(item)
+            item["score"] = score
+            item["score_details"] = details
+        processed_data.append(item)
         
-    return data
+    return processed_data
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -149,10 +157,21 @@ async def get_stocks():
 @app.post("/api/stocks")
 async def add_stock(stock: StockCode):
     codes = portfolio_manager.load_codes()
-    if stock.code not in codes:
+    if stock.code in codes:
+        return {"status": "exists", "message": f"銘柄コード {stock.code} は既に追加されています。"}
+
+    # 追加する銘柄のデータをすぐに取得してみる
+    new_stock_data = await asyncio.to_thread(scraper.fetch_stock_data, stock.code)
+
+    if new_stock_data and "error" not in new_stock_data:
+        # 成功した場合のみポートフォリオに保存
         codes.append(stock.code)
         portfolio_manager.save_codes(codes)
-    return {"status": "success"}
+        return {"status": "success", "stock": new_stock_data}
+    else:
+        # 失敗した場合は、エラー情報を返す
+        error_message = new_stock_data.get("error", "不明なエラーが発生しました。）")
+        return {"status": "error", "message": error_message, "code": stock.code}
 
 @app.delete("/api/stocks/{stock_code}")
 async def delete_stock(stock_code: str):

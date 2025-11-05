@@ -5,7 +5,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const stockCodeInput = document.getElementById('stock-code-input');
     const tableHeaderRow = document.getElementById('table-header-row');
     const downloadCsvButton = document.getElementById('download-csv-button');
-    
+    const alertContainer = document.getElementById('alert-container');
+
     let tableHeaders = document.querySelectorAll('#stock-table .sortable');
 
     let stocksData = [];
@@ -17,12 +18,42 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     /**
+     * メッセージボックス（アラート）を表示する
+     * @param {string} message - 表示するメッセージ
+     * @param {string} type - アラートの種類 ('success', 'danger', 'warning')
+     */
+    function showAlert(message, type = 'danger') {
+        const alert = document.createElement('div');
+        alert.className = `alert alert-${type}`;
+        alert.textContent = message;
+
+        alertContainer.appendChild(alert);
+
+        // 表示アニメーション
+        requestAnimationFrame(() => {
+            alert.classList.add('show');
+        });
+
+        // 5秒後に非表示アニメーションを開始
+        setTimeout(() => {
+            alert.classList.remove('show');
+            alert.classList.add('hide');
+        }, 5000);
+
+        // アニメーション終了後に要素を削除
+        alert.addEventListener('transitionend', () => {
+            if (alert.classList.contains('hide')) {
+                alert.remove();
+            }
+        });
+    }
+
+    /**
      * ページの初期化処理
      */
     async function initialize() {
         showLoading(true);
         try {
-            // 株価データとハイライトルールを並行して取得
             const [stocksResponse, rulesResponse] = await Promise.all([
                 fetch('/api/stocks'),
                 fetch('/api/highlight-rules')
@@ -34,11 +65,10 @@ document.addEventListener('DOMContentLoaded', () => {
             stocksData = await stocksResponse.json();
             highlightRules = await rulesResponse.json();
 
-            sortAndRender(); // ソートして描画
+            sortAndRender();
         } catch (error) {
             console.error('Initialization error:', error);
-            const colspan = tableHeaderRow.children.length || 10;
-            stockTableBody.innerHTML = `<tr><td colspan="${colspan}" style="text-align:center; color: red;">データの読み込みに失敗しました。</td></tr>`;
+            showAlert('データの読み込みに失敗しました。サーバーが起動しているか確認してください。', 'danger');
         } finally {
             showLoading(false);
         }
@@ -46,72 +76,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /**
      * 指標の値に基づいてハイライト用のCSSクラスを返す
-     * @param {string} key - 指標のキー (per, pbr, roe, yield)
-     * @param {string|number} value - 指標の値
-     * @returns {string} - CSSクラス名 ('undervalued', 'overvalued', or '')
      */
     function getHighlightClass(key, value) {
         const rules = highlightRules[key];
         if (!rules || value === 'N/A' || value === null || value === undefined || value === '--') {
             return '';
         }
-
         const numericValue = parseFloat(String(value).replace(/[^0-9.-]/g, ''));
-        if (isNaN(numericValue)) {
-            return '';
-        }
+        if (isNaN(numericValue)) return '';
 
-        // 高い方が良い指標 (yield, roe)
         if (key === 'yield' || key === 'roe') {
-            if (rules.undervalued !== undefined && numericValue >= rules.undervalued) {
-                return 'undervalued';
-            }
-        } 
-        // 低い方が良い指標 (per, pbr)
-        else {
-            if (rules.undervalued !== undefined && numericValue <= rules.undervalued) {
-                return 'undervalued';
-            }
-            if (rules.overvalued !== undefined && numericValue >= rules.overvalued) {
-                return 'overvalued';
-            }
+            if (rules.undervalued !== undefined && numericValue >= rules.undervalued) return 'undervalued';
+        } else {
+            if (rules.undervalued !== undefined && numericValue <= rules.undervalued) return 'undervalued';
+            if (rules.overvalued !== undefined && numericValue >= rules.overvalued) return 'overvalued';
         }
-
         return '';
     }
 
     /**
      * スコアを星で描画し、詳細をツールチップで表示する
-     * @param {number} score - スコア (-1の場合は計算不可)
-     * @param {object} details - スコアの詳細
-     * @returns {string} - 星のHTML文字列
      */
     function renderScoreAsStars(score, details) {
-        // スコアが計算不能（-1）の場合
-        if (score === -1) {
-            return `<span class="score-na" title="評価指標なし">N/A</span>`;
-        }
-
-        if (score === undefined || score === null) {
-            return 'N/A';
-        }
+        if (score === -1) return `<span class="score-na" title="評価指標なし">N/A</span>`;
+        if (score === undefined || score === null) return 'N/A';
 
         const maxScore = 10;
         let starsHtml = '';
-        
-        // 1行目
         const firstRowScore = Math.min(score, 5);
-        starsHtml += '★'.repeat(firstRowScore);
-        starsHtml += '☆'.repeat(5 - firstRowScore);
-        
-        starsHtml += '<br>'; // 改行
-
-        // 2行目
+        starsHtml += '★'.repeat(firstRowScore) + '☆'.repeat(5 - firstRowScore);
+        starsHtml += '<br>';
         const secondRowScore = Math.max(0, score - 5);
-        starsHtml += '★'.repeat(secondRowScore);
-        starsHtml += '☆'.repeat(5 - secondRowScore);
+        starsHtml += '★'.repeat(secondRowScore) + '☆'.repeat(5 - secondRowScore);
         
-        // ツールチップ用のテキストを生成
         let tooltipText = `合計: ${score}/${maxScore}`;
         if (details) {
             const detailParts = [
@@ -123,7 +120,6 @@ document.addEventListener('DOMContentLoaded', () => {
             ];
             tooltipText += ` (${detailParts.join(', ')})`;
         }
-
         return `<span class="score" title="${tooltipText}">${starsHtml}</span>`;
     }
 
@@ -141,13 +137,12 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function sortStocks() {
         stocksData.sort((a, b) => {
-            let valA, valB;
-            valA = a[currentSort.key];
-            valB = b[currentSort.key];
+            let valA = a[currentSort.key];
+            let valB = b[currentSort.key];
 
             const parseValue = (value) => {
+                if (value === undefined || value === null || value === 'N/A' || value === '--' || value === '') return -Infinity;
                 if (typeof value === 'string') {
-                    if (value === 'N/A' || value === '--' || value === '') return null;
                     const cleanedValue = value.replace(/,/g, '').replace(/%/, '').replace(/倍/, '').replace(/円/, '');
                     const num = parseFloat(cleanedValue);
                     return isNaN(num) ? value : num;
@@ -157,10 +152,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const parsedA = parseValue(valA);
             const parsedB = parseValue(valB);
-
-            if (parsedA === null && parsedB !== null) return 1;
-            if (parsedA !== null && parsedB === null) return -1;
-            if (parsedA === null && parsedB === null) return 0;
 
             if (typeof parsedA === 'number' && typeof parsedB === 'number') {
                 return currentSort.order === 'asc' ? parsedA - parsedB : parsedB - parsedA;
@@ -176,25 +167,17 @@ document.addEventListener('DOMContentLoaded', () => {
      * 数値を兆、億、百万円単位にフォーマットする
      */
     function formatMarketCap(value) {
-        if (value === 'N/A' || value === null || value === undefined || value === '--') {
-            return 'N/A';
-        }
+        if (value === 'N/A' || value === null || value === undefined || value === '--') return 'N/A';
         const num = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
         if (isNaN(num)) return 'N/A';
 
         const trillion = 1_000_000_000_000;
-        const oku = 100_000_000; // 1億円
+        const oku = 100_000_000;
         const million = 1_000_000;
 
-        if (num >= trillion) {
-            return `${(num / trillion).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}兆円`;
-        }
-        if (num >= oku) {
-            return `${(num / oku).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}億円`;
-        }
-        if (num >= million) {
-            return `${(num / million).toLocaleString()}百万円`;
-        }
+        if (num >= trillion) return `${(num / trillion).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}兆円`;
+        if (num >= oku) return `${(num / oku).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}億円`;
+        if (num >= million) return `${(num / million).toLocaleString()}百万円`;
         return `${num.toLocaleString()}円`;
     }
 
@@ -202,12 +185,8 @@ document.addEventListener('DOMContentLoaded', () => {
      * 配当履歴オブジェクトをHTML文字列にフォーマットする
      */
     function formatDividendHistory(history) {
-        if (!history || Object.keys(history).length === 0) {
-            return 'N/A';
-        }
-        // 年（キー）の降順でソート
+        if (!history || Object.keys(history).length === 0) return 'N/A';
         const sortedYears = Object.keys(history).sort((a, b) => b - a);
-        
         return sortedYears.map(year => `${year}年: ${history[year]}円`).join(' | ');
     }
 
@@ -215,22 +194,50 @@ document.addEventListener('DOMContentLoaded', () => {
      * 取得したデータでテーブルを描画する
      */
     function renderStockTable(stocks) {
-        stockTableBody.innerHTML = ''; // 既存の行をクリア
+        stockTableBody.innerHTML = '';
         const colspan = tableHeaderRow.children.length;
 
         if (!stocks || stocks.length === 0) {
-            const row = stockTableBody.insertRow();
-            const cell = row.insertCell();
-            cell.colSpan = colspan;
-            cell.textContent = '登録されている銘柄はありません。';
-            cell.style.textAlign = 'center';
+            stockTableBody.innerHTML = `<tr><td colspan="${colspan}" style="text-align:center;">登録されている銘柄はありません。</td></tr>`;
             return;
         }
 
         stocks.forEach(stock => {
             const row = stockTableBody.insertRow();
 
-            // セル作成をヘルパー関数化
+            if (stock.error) {
+                row.className = 'error-row';
+                row.title = stock.error;
+
+                const createTextCell = (text) => {
+                    const cell = row.insertCell();
+                    cell.textContent = text;
+                    return cell;
+                };
+
+                createTextCell(stock.code);
+                createTextCell(stock.name || `銘柄 ${stock.code}`);
+                createTextCell('N/A'); // industry
+                createTextCell('N/A'); // score
+                createTextCell('N/A'); // price
+                createTextCell('N/A'); // change
+                createTextCell('N/A'); // market_cap
+                createTextCell('N/A'); // per
+                createTextCell('N/A'); // pbr
+                createTextCell('N/A'); // roe
+                createTextCell('N/A'); // eps
+                createTextCell('N/A'); // yield
+                createTextCell('N/A'); // consecutive_increase_years
+
+                const deleteCell = row.insertCell();
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-btn';
+                deleteBtn.textContent = '削除';
+                deleteBtn.dataset.code = stock.code;
+                deleteCell.appendChild(deleteBtn);
+                return;
+            }
+
             const createCell = (html, className = '') => {
                 const cell = row.insertCell();
                 cell.innerHTML = html;
@@ -245,7 +252,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 return cell;
             };
 
-            // 各セルの生成
             createTextCell(stock.code);
             createCell(`<a href="https://finance.yahoo.co.jp/quote/${stock.code}.T" target="_blank">${stock.name}</a>`);
             createTextCell(stock.industry || 'N/A');
@@ -259,7 +265,6 @@ document.addEventListener('DOMContentLoaded', () => {
             createTextCell(stock.eps === 'N/A' ? 'N/A' : stock.eps + '円');
             createTextCell(stock.yield === 'N/A' ? 'N/A' : stock.yield + '%', getHighlightClass('yield', stock.yield));
 
-            // 連続増配セル
             const dividendCell = row.insertCell();
             dividendCell.title = formatDividendHistory(stock.dividend_history);
             const dividendLink = document.createElement('a');
@@ -276,7 +281,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             dividendCell.appendChild(dividendLink);
 
-            // 削除ボタンセル
             const deleteCell = row.insertCell();
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'delete-btn';
@@ -306,6 +310,7 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function showLoading(isLoading) {
         loadingIndicator.style.display = isLoading ? 'block' : 'none';
+        stockTableBody.style.display = isLoading ? 'none' : '';
     }
 
     /**
@@ -322,12 +327,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ code: code }),
             });
-            if (!response.ok) throw new Error('Failed to add stock');
+            
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                showAlert(`銘柄 ${data.stock.name} (${code}) を追加しました。`, 'success');
+            } else if (data.status === 'exists') {
+                showAlert(data.message, 'warning');
+            } else if (data.status === 'error') {
+                showAlert(`銘柄 ${data.code} の追加に失敗しました: ${data.message}`, 'danger');
+            }
+
             stockCodeInput.value = '';
-            await initialize();
+            await initialize(); // テーブルを再描画
+
         } catch (error) {
             console.error('Error adding stock:', error);
-            alert('銘柄の追加に失敗しました。');
+            showAlert('銘柄の追加中に予期せぬエラーが発生しました。', 'danger');
         }
     });
 
@@ -342,10 +358,11 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const response = await fetch(`/api/stocks/${code}`, { method: 'DELETE' });
                 if (!response.ok) throw new Error('Failed to delete stock');
+                showAlert(`銘柄 ${code} を削除しました。`, 'success');
                 await initialize();
             } catch (error) {
                 console.error('Error deleting stock:', error);
-                alert('銘柄の削除に失敗しました。');
+                showAlert('銘柄の削除に失敗しました。', 'danger');
             }
         }
     });
@@ -374,9 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
     downloadCsvButton.addEventListener('click', async () => {
         try {
             const response = await fetch('/api/stocks/csv');
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
             const disposition = response.headers.get('Content-Disposition');
             let filename = 'portfolio.csv';
@@ -400,7 +415,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.removeChild(a);
         } catch (error) {
             console.error('Error downloading CSV:', error);
-            alert('CSVファイルのダウンロードに失敗しました。');
+            showAlert('CSVファイルのダウンロードに失敗しました。', 'danger');
         }
     });
 

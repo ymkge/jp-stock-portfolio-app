@@ -1,26 +1,49 @@
 import requests
 import json
 import re
+import time
 from typing import Optional
-from datetime import datetime
+from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
+import logging
+
+logger = logging.getLogger(__name__)
+
+MAX_RETRIES = 3
+RETRY_DELAY = 2 # seconds
+
+def _make_request(url: str, headers: dict) -> Optional[requests.Response]:
+    """指定されたURLに対してリトライ機能付きでリクエストを送信する"""
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status() # 4xx or 5xx status will raise an HTTPError
+            return response
+        except RequestException as e:
+            logger.warning(f"リクエスト失敗 (試行 {attempt + 1}/{MAX_RETRIES}): {url} - {e}")
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_DELAY)
+            else:
+                logger.error(f"リクエストに最終的に失敗しました: {url}", exc_info=True)
+    return None
 
 def fetch_dividend_history(stock_code: str, num_years: int = 10) -> dict:
     """
     Yahoo!ファイナンスの配当ページから過去数年分の1株あたり配当を取得する。
-    ページの__PRELOADED_STATE__からJSONデータを抽出する。
     """
     dividend_url = f"https://finance.yahoo.co.jp/quote/{stock_code}.T/dividend"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
-    try:
-        response = requests.get(dividend_url, headers=headers, timeout=10)
-        response.raise_for_status()
+    
+    response = _make_request(dividend_url, headers)
+    if not response:
+        return {}
 
+    try:
         match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", response.text)
         if not match:
-            print(f"Could not find __PRELOADED_STATE__ for {stock_code} on dividend page.")
+            logger.warning(f"銘柄 {stock_code} の配当ページで __PRELOADED_STATE__ が見つかりませんでした。")
             return {}
 
         preloaded_state = json.loads(match.group(1))
@@ -37,7 +60,6 @@ def fetch_dividend_history(stock_code: str, num_years: int = 10) -> dict:
                     year = year_match.group(1)
                     yearly_dividends[year] = item["annualCorrectedActualValue"]
 
-        # num_years に基づいて結果をフィルタリングし、降順にソート
         sorted_years = sorted(yearly_dividends.keys(), reverse=True)
         
         result = {}
@@ -46,8 +68,8 @@ def fetch_dividend_history(stock_code: str, num_years: int = 10) -> dict:
         
         return result
 
-    except Exception as e:
-        print(f"An unexpected error occurred in fetch_dividend_history for {stock_code}: {e}")
+    except (json.JSONDecodeError, KeyError) as e:
+        logger.error(f"銘柄 {stock_code} の配当データ解析中にエラーが発生しました。", exc_info=True)
         return {}
 
 def fetch_stock_data(stock_code: str, num_years_dividend: int = 10) -> Optional[dict]:
@@ -58,18 +80,18 @@ def fetch_stock_data(stock_code: str, num_years_dividend: int = 10) -> Optional[
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
+    
+    response = _make_request(url, headers)
+    if not response:
+        return {"code": stock_code, "name": f"{stock_code}", "error": "ネットワークエラーにより情報を取得できませんでした。"}
 
+    try:
         match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", response.text)
         if not match:
-            print(f"Could not find __PRELOADED_STATE__ for {stock_code}")
-            return None
+            logger.warning(f"銘柄 {stock_code} の株価ページで __PRELOADED_STATE__ が見つかりませんでした。銘柄が存在しない可能性があります。")
+            return {"code": stock_code, "name": f"{stock_code}", "error": "銘柄情報が見つかりません。コードを確認してください。"}
 
         preloaded_state = json.loads(match.group(1))
-
-        
 
         price_board = preloaded_state.get("mainStocksPriceBoard", {}).get("priceBoard", {})
         reference_index = preloaded_state.get("mainStocksDetail", {}).get("referenceIndex", {})
@@ -85,10 +107,8 @@ def fetch_stock_data(stock_code: str, num_years_dividend: int = 10) -> Optional[
                 except (ValueError, TypeError):
                     market_cap = "N/A"
 
-        # 配当履歴を取得
         dividend_history = fetch_dividend_history(stock_code, num_years_dividend)
 
-        # 配当利回りをpriceBoardから優先的に取得し、なければreferenceIndexから取得
         dividend_yield = price_board.get("shareDividendYield")
         if dividend_yield is None:
             dividend_yield = reference_index.get("shareDividendYield", "N/A")
@@ -109,9 +129,9 @@ def fetch_stock_data(stock_code: str, num_years_dividend: int = 10) -> Optional[
             "dividend_history": dividend_history,
         }
 
-    except Exception as e:
-        print(f"An unexpected error occurred for {stock_code}: {e}")
-        return None
+    except (json.JSONDecodeError, KeyError) as e:
+        logger.error(f"銘柄 {stock_code} の株価データ解析中にエラーが発生しました。", exc_info=True)
+        return {"code": stock_code, "name": f"{stock_code}", "error": "データ解析に失敗しました。サイトの仕様が変更された可能性があります。"}
 
 if __name__ == '__main__':
     data = fetch_stock_data("8306", num_years_dividend=5)

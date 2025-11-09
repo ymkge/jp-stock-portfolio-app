@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectAllStocksCheckbox = document.getElementById('select-all-stocks'); // 追加
     const deleteSelectedStocksButton = document.getElementById('delete-selected-stocks-button'); // 追加
     const recentStocksList = document.getElementById('recent-stocks-list'); // 追加
+    const filterInput = document.getElementById('filter-input'); // 追加
 
     let tableHeaders = document.querySelectorAll('#stock-table .sortable');
 
@@ -72,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const recentStocks = await recentStocksResponse.json(); // 追加
             renderRecentStocksList(recentStocks); // 追加
 
-            sortAndRender();
+            filterAndRender(); // フィルタリングとレンダリングを実行
         } catch (error) {
             console.error('Initialization error:', error);
             showAlert('データの読み込みに失敗しました。サーバーが起動しているか確認してください。', 'danger');
@@ -103,6 +104,26 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             recentStocksList.appendChild(li);
         });
+    }
+
+    /**
+     * 銘柄データをフィルタリングし、テーブルを再描画する
+     */
+    function filterAndRender() {
+        const filterText = filterInput ? filterInput.value.toLowerCase() : '';
+        let filteredStocks = stocksData;
+
+        if (filterText) {
+            filteredStocks = stocksData.filter(stock => {
+                const codeMatch = String(stock.code).toLowerCase().includes(filterText);
+                const nameMatch = String(stock.name || '').toLowerCase().includes(filterText);
+                return codeMatch || nameMatch;
+            });
+        }
+        sortStocks(filteredStocks); // フィルタリングされたデータをソート
+        renderStockTable(filteredStocks);
+        updateSortHeaders();
+        updateDeleteSelectedButtonState(); // フィルタリング後もボタンの状態を更新
     }
 
     /**
@@ -155,19 +176,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * 現在のソート条件でデータをソートし、テーブルを再描画する
-     */
-    function sortAndRender() {
-        sortStocks();
-        renderStockTable(stocksData);
-        updateSortHeaders();
-    }
-
-    /**
      * 銘柄データの配列をソートする
      */
-    function sortStocks() {
-        stocksData.sort((a, b) => {
+    function sortStocks(data) { // 引数にdataを追加
+        data.sort((a, b) => {
             let valA = a[currentSort.key];
             let valB = b[currentSort.key];
 
@@ -387,7 +399,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             stockCodeInput.value = '';
-            await initialize(); // テーブルと直近追加銘柄リストを再描画
+            filterAndRender(); // テーブルと直近追加銘柄リストを再描画
 
         } catch (error) {
             console.error('Error adding stock:', error);
@@ -407,7 +419,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const response = await fetch(`/api/stocks/${code}`, { method: 'DELETE' });
                 if (!response.ok) throw new Error('Failed to delete stock');
                 showAlert(`銘柄 ${code} を削除しました。`, 'success');
-                await initialize();
+                filterAndRender(); // テーブルを再描画
             } catch (error) {
                 console.error('Error deleting stock:', error);
                 showAlert('銘柄の削除に失敗しました。', 'danger');
@@ -536,7 +548,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 showAlert(`${codesToDelete.length} 件の銘柄を削除しました。`, 'success');
-                await initialize(); // テーブルを再描画
+                filterAndRender(); // テーブルを再描画
                 if (selectAllStocksCheckbox) {
                     selectAllStocksCheckbox.checked = false; // 全選択チェックボックスを解除
                 }
@@ -552,4 +564,11 @@ document.addEventListener('DOMContentLoaded', () => {
     addSortEventListeners();
     initialize();
     updateDeleteSelectedButtonState(); // 初期ロード時にボタンの状態を更新
+
+    // フィルタ入力フィールドのイベントリスナー
+    if (filterInput) {
+        filterInput.addEventListener('input', () => {
+            filterAndRender();
+        });
+    }
 });

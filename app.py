@@ -67,7 +67,7 @@ def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
         except (ValueError, TypeError):
             break
 
-        if current_dividend < previous_dividend:
+        if current_dividend <= previous_dividend: # 変更点: 減配だけでなく、維持も連続増配を中断
             break
         
         consecutive_years += 1

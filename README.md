@@ -12,8 +12,8 @@
 - **指標ハイライト**: PERやPBRなどの指標が、設定ファイル(`highlight_rules.json`)の基準に応じて色付けされ、割安・割高が一目で分かります。
 - **総合評価スコア**: 複数の指標（PER, PBR, ROE, 利回り, **連続増配**）を総合的に評価した「スコア」を**最大10点**の星印（★★★★★<br/>★★★★★）で表示し、銘柄の魅力を多角的に判断できます。
 - **連続増配分析**: 過去10年間の配当データから**連続増配年数**（配当維持を含む）を自動で計算し、バッジで表示します。詳細な配当履歴はツールチップで確認できます。
-- **銘柄追加・削除**: 銘柄コードを指定して、ポートフォリオの銘柄を管理します。
-- **ソート機能**: ポートフォリオ一覧の各項目（スコア、連続増配年数など）をクリックすることで、データを昇順・降順に並び替えることができます。
+- **銘柄追加・削除**: 銘柄コードを指定して、ポートフォリオの銘柄を管理します。複数銘柄の一括削除、および直近追加した銘柄10件のリスト表示・入力補助機能も搭載しています。
+- **ソート機能**: ポートフォリオ一覧の各項目（スコア、連続増配年数など）をクリックすることで、データを昇順・降順に並び替えることができます。銘柄コードや銘柄名でのリアルタイムフィルタリング機能も利用可能です。
 - **外部リンク**: 銘柄名や連続増配バッジをクリックすると、Yahoo!ファイナンスの該当ページを新しいタブで開きます。
 - **CSVダウンロード**: 表示しているポートフォリオ全体をCSVファイルとしてダウンロードできます。
 
@@ -75,25 +75,31 @@ sequenceDiagram
     participant Scraper as Webスクレイパー
     participant Portfolio as portfolio.json
     participant Rules as highlight_rules.json
+    participant RecentStocks as recent_stocks.json
 
     User->>Browser: ページ読み込み
     Browser->>API: GET /api/stocks (全銘柄データ要求)
     Browser->>API: GET /api/highlight-rules (ハイライトルール要求)
+    Browser->>API: GET /api/recent-stocks (直近追加銘柄要求)
     
     API->>Portfolio: 銘柄コードリスト読み込み
     API->>Rules: ハイライトルール読み込み
+    API->>RecentStocks: 直近追加銘柄リスト読み込み
     Rules-->>API: ルールJSON
     Portfolio-->>API: ["7203", "9432", ...]
+    RecentStocks-->>API: ["1234", "5678", ...]
     
     API->>Scraper: 各銘柄コードのデータ取得を並行依頼
     Scraper-->>API: 銘柄データ (株価, PER, 配当履歴など)
     
-    API->>API: 連続増配年数を計算
+    API->>API: 連続増配年数を計算 (前期比増配のみをカウントするよう変更)
     API->>API: 総合評価スコアを計算
     API-->>Browser: JSON (スコア・連続増配年数付き銘柄データリスト)
     API-->>Browser: JSON (ハイライトルール)
+    API-->>Browser: JSON (直近追加銘柄リスト)
     
     Browser->>User: ルールに基づきハイライトし、スコア(★)や連続増配バッジと共にテーブルを描画
+    Browser->>User: 直近追加銘柄リストを表示
 ```
 
 ### CSVダウンロードフロー
@@ -122,7 +128,31 @@ sequenceDiagram
     Browser->>User: ファイルをダウンロード
 ```
 
-(銘柄追加・削除フローは変更なしのため省略)
+### 銘柄追加フロー
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant Browser as ブラウザ (JS)
+    participant API as FastAPIバックエンド
+    participant Scraper as Webスクレイパー
+    participant Portfolio as portfolio.json
+    participant RecentStocks as recent_stocks.json
+
+    User->>Browser: 銘柄コードを入力し「追加」ボタンをクリック
+    Browser->>API: POST /api/stocks (銘柄追加要求)
+    
+    API->>Portfolio: 銘柄コードリスト読み込み
+    API->>Scraper: 銘柄データ取得
+    Scraper-->>API: 銘柄データ
+    
+    API->>Portfolio: 銘柄コードをリストに追加し保存
+    API->>RecentStocks: 銘柄コードを直近追加リストに追加し保存
+    Portfolio-->>API: 更新された銘柄コードリスト
+    RecentStocks-->>API: 更新された直近追加銘柄リスト
+    
+    API-->>Browser: 成功/失敗メッセージ
+    Browser->>User: メッセージ表示、ポートフォリオ一覧と直近追加銘柄リストを更新
+```
 
 ## 課題 (next step)
 
@@ -134,11 +164,11 @@ sequenceDiagram
 
 2. 銘柄追加した場合、直近の追加した銘柄10件をリストに保存しておいて、銘柄管理の追加ボタンの下にリストで表示する機能を追加[実装済み]
 
-3. 銘柄コードと銘柄名に関して、フィルタ機能を追加
+3. 銘柄コードと銘柄名に関して、フィルタ機能を追加[実装済み]
   - フィルタに124と入れたら、その情報を銘柄コードまたは銘柄名に含む情報だけを一覧表示
     - フィルタにリクなどの日本語文字を入力してもフィルタされる（銘柄名から検索）
 
-4. 連続増配の仕様変更
+4. 連続増配の仕様変更[実装済み]
   - 現在は、前回と比較して配当が減っていない場合でも連続増配の年数が加算されているが、前期比較で少しでも増配されているかどうか？で判定できるようにしたい。
 
 5. 銘柄の「保有管理区分」の追加と、分析ページの追加
@@ -162,6 +192,9 @@ sequenceDiagram
 テスト用高配当銘柄
 7272 ヤマハ発動機(株)
 9434 ソフトバンク
+
+### 課題 (next step)
+- ソート機能の修正: 現在、ソート機能が正しく動作していません。フィルタリングとソートが連携して機能するように修正が必要です。
 
 ---
 

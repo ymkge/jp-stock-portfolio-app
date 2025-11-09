@@ -176,6 +176,15 @@ async def add_stock(stock: StockCode):
         error_message = new_stock_data.get("error", "不明なエラーが発生しました。）")
         return {"status": "error", "message": error_message, "code": stock.code}
 
+@app.delete("/api/stocks/bulk-delete") # 追加
+async def bulk_delete_stocks(stock_codes: StockCodesToDelete): # 追加
+    if not stock_codes.codes:
+        raise HTTPException(status_code=400, detail="No stock codes provided for deletion.")
+    
+    logger.info(f"Received bulk delete request for codes: {stock_codes.codes}")
+    portfolio_manager.delete_multiple_codes(stock_codes.codes)
+    return {"status": "success", "message": f"{len(stock_codes.codes)} stocks deleted."}
+
 @app.delete("/api/stocks/{stock_code}")
 async def delete_stock(stock_code: str):
     codes = portfolio_manager.load_codes()
@@ -185,14 +194,6 @@ async def delete_stock(stock_code: str):
         return {"status": "success"}
     else:
         raise HTTPException(status_code=404, detail="Stock code not found")
-
-@app.delete("/api/stocks/bulk-delete") # 追加
-async def bulk_delete_stocks(stock_codes: StockCodesToDelete): # 追加
-    if not stock_codes.codes:
-        raise HTTPException(status_code=400, detail="No stock codes provided for deletion.")
-    
-    portfolio_manager.delete_multiple_codes(stock_codes.codes)
-    return {"status": "success", "message": f"{len(stock_codes.codes)} stocks deleted."}
 
 @app.get("/api/stocks/csv")
 async def download_csv():

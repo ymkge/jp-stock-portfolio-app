@@ -117,12 +117,28 @@ button {
 }
 
 /* ポートフォリオ操作 */
+.portfolio-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px; /* ボタン間のスペース */
+}
+
 #download-csv-button {
     width: 100%;
     background-color: var(--badge-bg-color);
 }
 #download-csv-button:hover {
     background-color: #218838;
+}
+
+/* 選択した銘柄を削除ボタンのスタイル */
+#delete-selected-stocks-button {
+    width: 100%; /* 幅を100%にする */
+    background-color: var(--danger-color); /* 赤色に設定 */
+}
+
+#delete-selected-stocks-button:hover {
+    background-color: var(--danger-hover-color); /* ホバー時の色 */
 }
 
 

@@ -10,6 +10,7 @@ from typing import List, Dict
 
 import scraper
 import portfolio_manager
+import recent_stocks_manager # 追加
 import json
 import logging
 
@@ -150,6 +151,10 @@ async def read_root(request: Request):
 async def get_highlight_rules():
     return HIGHLIGHT_RULES
 
+@app.get("/api/recent-stocks") # 追加
+async def get_recent_stocks(): # 追加
+    return recent_stocks_manager.load_recent_codes() # 追加
+
 @app.get("/api/stocks")
 async def get_stocks():
     """
@@ -170,6 +175,7 @@ async def add_stock(stock: StockCode):
         # 成功した場合のみポートフォリオに保存
         codes.append(stock.code)
         portfolio_manager.save_codes(codes)
+        recent_stocks_manager.add_recent_code(stock.code) # 追加
         return {"status": "success", "stock": new_stock_data}
     else:
         # 失敗した場合は、エラー情報を返す

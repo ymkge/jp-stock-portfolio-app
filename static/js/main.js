@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const alertContainer = document.getElementById('alert-container');
     const selectAllStocksCheckbox = document.getElementById('select-all-stocks'); // 追加
     const deleteSelectedStocksButton = document.getElementById('delete-selected-stocks-button'); // 追加
+    const recentStocksList = document.getElementById('recent-stocks-list'); // 追加
 
     let tableHeaders = document.querySelectorAll('#stock-table .sortable');
 
@@ -56,16 +57,20 @@ document.addEventListener('DOMContentLoaded', () => {
     async function initialize() {
         showLoading(true);
         try {
-            const [stocksResponse, rulesResponse] = await Promise.all([
+            const [stocksResponse, rulesResponse, recentStocksResponse] = await Promise.all([ // recentStocksResponseを追加
                 fetch('/api/stocks'),
-                fetch('/api/highlight-rules')
+                fetch('/api/highlight-rules'),
+                fetch('/api/recent-stocks') // 追加
             ]);
 
             if (!stocksResponse.ok) throw new Error(`Failed to fetch stocks: ${stocksResponse.status}`);
             if (!rulesResponse.ok) throw new Error(`Failed to fetch highlight rules: ${rulesResponse.status}`);
+            if (!recentStocksResponse.ok) throw new Error(`Failed to fetch recent stocks: ${recentStocksResponse.status}`); // 追加
 
             stocksData = await stocksResponse.json();
             highlightRules = await rulesResponse.json();
+            const recentStocks = await recentStocksResponse.json(); // 追加
+            renderRecentStocksList(recentStocks); // 追加
 
             sortAndRender();
         } catch (error) {
@@ -74,6 +79,30 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             showLoading(false);
         }
+    }
+
+    /**
+     * 直近追加銘柄リストを描画する
+     */
+    function renderRecentStocksList(codes) {
+        if (!recentStocksList) return; // 要素がない場合は何もしない
+
+        recentStocksList.innerHTML = '';
+        if (codes.length === 0) {
+            recentStocksList.innerHTML = '<li>最近追加した銘柄はありません。</li>';
+            return;
+        }
+
+        codes.forEach(code => {
+            const li = document.createElement('li');
+            li.className = 'recent-stock-item';
+            li.textContent = code;
+            li.dataset.code = code;
+            li.addEventListener('click', () => {
+                stockCodeInput.value = code;
+            });
+            recentStocksList.appendChild(li);
+        });
     }
 
     /**
@@ -358,7 +387,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             stockCodeInput.value = '';
-            await initialize(); // テーブルを再描画
+            await initialize(); // テーブルと直近追加銘柄リストを再描画
 
         } catch (error) {
             console.error('Error adding stock:', error);

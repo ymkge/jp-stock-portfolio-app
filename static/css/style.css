@@ -214,7 +214,7 @@ button {
 }
 
 #stock-table th, #stock-table td {
-    padding: 12px 15px;
+    padding: 8px 10px; /* 全体のデフォルトpaddingを調整 */
     border-bottom: 1px solid var(--border-color);
     text-align: left;
     white-space: nowrap; /* セルの内容が改行されないように */
@@ -318,12 +318,20 @@ button {
     opacity: 0.8;
 }
 
-/* 銘柄名カラムのテキストを折り返すためのスタイル */
+/* 銘柄コードカラムのスタイル (チェックボックスの次なので2列目) */
 #stock-table th:nth-child(2),
 #stock-table td:nth-child(2) {
+    white-space: nowrap; /* 改行しない */
+    min-width: 80px;
+    max-width: 100px;
+}
+
+/* 銘柄名カラムのスタイル (3列目) */
+#stock-table th:nth-child(3),
+#stock-table td:nth-child(3) {
     white-space: normal; /* テキストの折り返しを許可 */
-    min-width: 180px;    /* 列の最小幅を指定 */
-    max-width: 250px;    /* 列の最大幅を指定 */
+    min-width: 120px;
+    max-width: 180px;
     word-break: break-word; /* 単語の途中でも適切に改行 */
 }
 

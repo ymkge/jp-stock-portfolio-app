@@ -30,6 +30,14 @@ def save_codes(codes: list):
     with open(PORTFOLIO_FILE, "w", encoding="utf-8") as f:
         json.dump({"codes": unique_codes}, f, indent=4)
 
+def delete_multiple_codes(codes_to_delete: list[str]):
+    """
+    指定された複数の銘柄コードをportfolio.jsonから削除する。
+    """
+    current_codes = load_codes()
+    updated_codes = [code for code in current_codes if code not in codes_to_delete]
+    save_codes(updated_codes)
+
 def create_csv_data(data: list[dict]) -> str:
     """
     銘柄データのリストからCSV文字列を生成する。

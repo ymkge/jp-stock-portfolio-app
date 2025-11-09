@@ -6,6 +6,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const tableHeaderRow = document.getElementById('table-header-row');
     const downloadCsvButton = document.getElementById('download-csv-button');
     const alertContainer = document.getElementById('alert-container');
+    const selectAllStocksCheckbox = document.getElementById('select-all-stocks'); // 追加
+    const deleteSelectedStocksButton = document.getElementById('delete-selected-stocks-button'); // 追加
 
     let tableHeaders = document.querySelectorAll('#stock-table .sortable');
 
@@ -215,6 +217,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     return cell;
                 };
 
+                // チェックボックスセルを追加 (無効化)
+                const checkboxCell = row.insertCell();
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'stock-checkbox';
+                checkbox.dataset.code = stock.code;
+                checkbox.disabled = true; // エラー行は選択不可
+                checkboxCell.appendChild(checkbox);
+
                 createTextCell(stock.code);
                 createTextCell(stock.name || `銘柄 ${stock.code}`);
                 createTextCell('N/A'); // industry
@@ -251,6 +262,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (className) cell.className = className;
                 return cell;
             };
+
+            // チェックボックスセルを追加
+            const checkboxCell = row.insertCell();
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'stock-checkbox';
+            checkbox.dataset.code = stock.code;
+            checkboxCell.appendChild(checkbox);
 
             createTextCell(stock.code);
             createCell(`<a href="https://finance.yahoo.co.jp/quote/${stock.code}.T" target="_blank">${stock.name}</a>`);
@@ -419,7 +438,89 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    /**
+     * 選択された銘柄の削除ボタンの有効/無効を切り替える
+     */
+    function updateDeleteSelectedButtonState() {
+        const checkedCheckboxes = document.querySelectorAll('.stock-checkbox:checked');
+        deleteSelectedStocksButton.disabled = checkedCheckboxes.length === 0;
+    }
+
+    /**
+     * 全選択チェックボックスのイベントリスナー
+     */
+    if (selectAllStocksCheckbox) {
+        selectAllStocksCheckbox.addEventListener('change', () => {
+            const isChecked = selectAllStocksCheckbox.checked;
+            document.querySelectorAll('.stock-checkbox').forEach(checkbox => {
+                if (!checkbox.disabled) { // エラー行のチェックボックスは操作しない
+                    checkbox.checked = isChecked;
+                }
+            });
+            updateDeleteSelectedButtonState();
+        });
+    }
+
+    /**
+     * 個別銘柄チェックボックスのイベントリスナー（イベントデリゲーション）
+     */
+    stockTableBody.addEventListener('change', (event) => {
+        if (event.target.classList.contains('stock-checkbox')) {
+            updateDeleteSelectedButtonState();
+
+            // 全てのチェックボックスがチェックされているか確認し、全選択チェックボックスの状態を更新
+            const allCheckboxes = document.querySelectorAll('.stock-checkbox:not(:disabled)');
+            const checkedCheckboxes = document.querySelectorAll('.stock-checkbox:checked:not(:disabled)');
+            if (selectAllStocksCheckbox) {
+                selectAllStocksCheckbox.checked = allCheckboxes.length > 0 && allCheckboxes.length === checkedCheckboxes.length;
+            }
+        }
+    });
+
+    /**
+     * 選択した銘柄を削除ボタンのイベントリスナー
+     */
+    if (deleteSelectedStocksButton) {
+        deleteSelectedStocksButton.addEventListener('click', async () => {
+            const checkedCheckboxes = document.querySelectorAll('.stock-checkbox:checked');
+            const codesToDelete = Array.from(checkedCheckboxes).map(checkbox => checkbox.dataset.code);
+
+            if (codesToDelete.length === 0) {
+                showAlert('削除する銘柄が選択されていません。', 'warning');
+                return;
+            }
+
+            if (!confirm(`選択された ${codesToDelete.length} 件の銘柄を削除しますか？\nこの操作は元に戻せません。`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/stocks/bulk-delete', { // 新しいAPIエンドポイントを想定
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ codes: codesToDelete }),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || '一括削除に失敗しました。');
+                }
+
+                showAlert(`${codesToDelete.length} 件の銘柄を削除しました。`, 'success');
+                await initialize(); // テーブルを再描画
+                if (selectAllStocksCheckbox) {
+                    selectAllStocksCheckbox.checked = false; // 全選択チェックボックスを解除
+                }
+                updateDeleteSelectedButtonState(); // ボタンの状態を更新
+            } catch (error) {
+                console.error('Error bulk deleting stocks:', error);
+                showAlert(`一括削除に失敗しました: ${error.message}`, 'danger');
+            }
+        });
+    }
+
     // 初期表示
     addSortEventListeners();
     initialize();
+    updateDeleteSelectedButtonState(); // 初期ロード時にボタンの状態を更新
 });

@@ -39,6 +39,9 @@ templates = Jinja2Templates(directory="templates")
 class StockCode(BaseModel):
     code: str
 
+class StockCodesToDelete(BaseModel): # 追加
+    codes: List[str] # 追加
+
 def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
     """
     配当履歴から連続増配（配当維持を含む）年数を計算する。
@@ -182,6 +185,14 @@ async def delete_stock(stock_code: str):
         return {"status": "success"}
     else:
         raise HTTPException(status_code=404, detail="Stock code not found")
+
+@app.delete("/api/stocks/bulk-delete") # 追加
+async def bulk_delete_stocks(stock_codes: StockCodesToDelete): # 追加
+    if not stock_codes.codes:
+        raise HTTPException(status_code=400, detail="No stock codes provided for deletion.")
+    
+    portfolio_manager.delete_multiple_codes(stock_codes.codes)
+    return {"status": "success", "message": f"{len(stock_codes.codes)} stocks deleted."}
 
 @app.get("/api/stocks/csv")
 async def download_csv():

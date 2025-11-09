@@ -164,6 +164,7 @@ async def get_stocks():
 
 @app.post("/api/stocks")
 async def add_stock(stock: StockCode):
+    logger.info(f"Received add stock request for code: {stock.code}") # 追加
     codes = portfolio_manager.load_codes()
     if stock.code in codes:
         return {"status": "exists", "message": f"銘柄コード {stock.code} は既に追加されています。"}

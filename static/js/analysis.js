@@ -74,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         summarySection.innerHTML = `
             <ul>
-                <li><strong>保有口座数:</strong> ${holdings.length}</li>
+                <li><strong>口座別保有銘柄件数:</strong> ${holdings.length}</li>
                 <li><strong>総投資額:</strong> ${formatNumber(totalInvestment)}円</li>
                 <li><strong>総評価額:</strong> ${formatNumber(totalMarketValue)}円</li>
                 <li class="${getProfitClass(totalProfitLoss)}">

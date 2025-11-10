@@ -1,7 +1,20 @@
 [
     {
         "code": "1605",
-        "holdings": []
+        "holdings": [
+            {
+                "account_type": "旧NISA",
+                "purchase_price": 2172.0,
+                "quantity": 5,
+                "id": "588e678f-41da-4fab-9f9e-35a2a4af36fb"
+            },
+            {
+                "account_type": "新NISA",
+                "purchase_price": 1962.0,
+                "quantity": 140,
+                "id": "989ec06d-905f-4fd1-92f1-f171c8a0e574"
+            }
+        ]
     },
     {
         "code": "1662",
@@ -69,7 +82,14 @@
     },
     {
         "code": "4452",
-        "holdings": []
+        "holdings": [
+            {
+                "account_type": "旧NISA",
+                "purchase_price": 5642.0,
+                "quantity": 4,
+                "id": "8bd6ec59-c398-4b67-ba99-87198e974713"
+            }
+        ]
     },
     {
         "code": "4480",
@@ -93,7 +113,20 @@
     },
     {
         "code": "4751",
-        "holdings": []
+        "holdings": [
+            {
+                "account_type": "旧NISA",
+                "purchase_price": 921.0,
+                "quantity": 220,
+                "id": "1042de91-353e-4144-b8f9-12b4d30a004e"
+            },
+            {
+                "account_type": "新NISA",
+                "purchase_price": 954.0,
+                "quantity": 280,
+                "id": "f8d60b3a-0cb1-411d-bdb0-f5d6d7cea0c5"
+            }
+        ]
     },
     {
         "code": "4755",
@@ -236,7 +269,26 @@
     },
     {
         "code": "8593",
-        "holdings": []
+        "holdings": [
+            {
+                "account_type": "旧NISA",
+                "purchase_price": 704.0,
+                "quantity": 100,
+                "id": "424320eb-eb9f-41f7-85e2-d5c23ed8d526"
+            },
+            {
+                "account_type": "新NISA",
+                "purchase_price": 999.0,
+                "quantity": 210,
+                "id": "bc5f88f5-ae0e-48a5-b499-77ca298c0c50"
+            },
+            {
+                "account_type": "特定口座",
+                "purchase_price": 1201.0,
+                "quantity": 30,
+                "id": "f051f1bc-daf3-4739-9d15-1e0881a73852"
+            }
+        ]
     },
     {
         "code": "8601",
@@ -260,7 +312,26 @@
     },
     {
         "code": "9432",
-        "holdings": []
+        "holdings": [
+            {
+                "account_type": "旧NISA",
+                "purchase_price": 173.0,
+                "quantity": 200,
+                "id": "eefbbe46-dd6f-4b5d-b0d6-7d3f5d143a2a"
+            },
+            {
+                "account_type": "新NISA",
+                "purchase_price": 152.0,
+                "quantity": 2000,
+                "id": "2c841257-8240-4fed-8f52-0333d92d31b0"
+            },
+            {
+                "account_type": "特定口座",
+                "purchase_price": 156.0,
+                "quantity": 300,
+                "id": "d648479c-5745-4a06-b6c5-1d3c38e2a4fc"
+            }
+        ]
     },
     {
         "code": "9433",
@@ -280,7 +351,26 @@
     },
     {
         "code": "9513",
-        "holdings": []
+        "holdings": [
+            {
+                "account_type": "旧NISA",
+                "purchase_price": 2285.0,
+                "quantity": 20,
+                "id": "7753e284-0f44-4d20-b144-b63821137384"
+            },
+            {
+                "account_type": "特定口座",
+                "purchase_price": 2867.0,
+                "quantity": 15,
+                "id": "9c61cf6c-2e0f-4e4b-92a4-91ec9eb3aecc"
+            },
+            {
+                "account_type": "新NISA",
+                "purchase_price": 2435.0,
+                "quantity": 135,
+                "id": "aa039eea-0c1b-41f2-aa66-e0f802fdf8f0"
+            }
+        ]
     },
     {
         "code": "9551",

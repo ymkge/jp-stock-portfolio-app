@@ -97,7 +97,20 @@
     },
     {
         "code": "4755",
-        "holdings": []
+        "holdings": [
+            {
+                "account_type": "旧NISA",
+                "purchase_price": 568.0,
+                "quantity": 50,
+                "id": "e48b26db-971d-4780-8f54-78f883f4193c"
+            },
+            {
+                "account_type": "新NISA",
+                "purchase_price": 780.0,
+                "quantity": 160,
+                "id": "9fa9311f-6b3f-4e33-a938-3a17257cb626"
+            }
+        ]
     },
     {
         "code": "4996",

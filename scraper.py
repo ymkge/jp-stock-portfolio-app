@@ -113,6 +113,8 @@ def fetch_stock_data(stock_code: str, num_years_dividend: int = 10) -> Optional[
         if dividend_yield is None:
             dividend_yield = reference_index.get("shareDividendYield", "N/A")
 
+        annual_dividend = reference_index.get("shareAnnualDividend", "N/A")
+
         return {
             "code": stock_code,
             "name": price_board.get("name", "N/A"),
@@ -126,6 +128,7 @@ def fetch_stock_data(stock_code: str, num_years_dividend: int = 10) -> Optional[
             "roe": reference_index.get("roe", "N/A"),
             "eps": reference_index.get("eps", "N/A"),
             "yield": dividend_yield,
+            "annual_dividend": annual_dividend,
             "dividend_history": dividend_history,
         }
 

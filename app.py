@@ -36,11 +36,19 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # テンプレートの設定
 templates = Jinja2Templates(directory="templates")
 
+# --- Pydanticモデル ---
 class StockCode(BaseModel):
     code: str
 
 class StockCodesToDelete(BaseModel):
     codes: List[str]
+
+class StockManagementData(BaseModel):
+    is_managed: bool
+    purchase_price: float | None = None
+    quantity: int | None = None
+
+# --- 計算ヘルパー関数 ---
 
 def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
     """配当履歴から連続増配年数を計算する（増配のみカウント）。"""
@@ -53,10 +61,8 @@ def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
         try:
             current_dividend = float(dividend_history[current_year_str])
             previous_dividend = float(dividend_history[previous_year_str])
-        except (ValueError, TypeError):
-            break
-        if current_dividend <= previous_dividend:
-            break
+        except (ValueError, TypeError): break
+        if current_dividend <= previous_dividend: break
         consecutive_years += 1
     return consecutive_years
 
@@ -98,6 +104,34 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
     total_score = sum(details.values())
     return total_score if is_calculable else -1, details
 
+def _calculate_management_data(stock_data: Dict[str, Any]) -> Dict[str, Any]:
+    """保有管理銘柄の追加データを計算する"""
+    defaults = {
+        "investment_amount": None, "market_value": None, "profit_loss": None,
+        "profit_loss_rate": None, "estimated_annual_dividend": None,
+    }
+    if not stock_data.get("is_managed"):
+        return defaults
+    try:
+        purchase_price = float(stock_data["purchase_price"])
+        quantity = int(stock_data["quantity"])
+        price = float(str(stock_data.get("price", "0")).replace(',', ''))
+        annual_dividend = float(str(stock_data.get("annual_dividend", "0")).replace(',', ''))
+
+        investment_amount = purchase_price * quantity
+        market_value = price * quantity
+        profit_loss = market_value - investment_amount
+        profit_loss_rate = (profit_loss / investment_amount) * 100 if investment_amount != 0 else 0
+        estimated_annual_dividend = annual_dividend * quantity
+
+        return {
+            "investment_amount": investment_amount, "market_value": market_value,
+            "profit_loss": profit_loss, "profit_loss_rate": profit_loss_rate,
+            "estimated_annual_dividend": estimated_annual_dividend,
+        }
+    except (ValueError, TypeError, KeyError, ZeroDivisionError):
+        return defaults
+
 async def _get_processed_stock_data() -> List[Dict[str, Any]]:
     """データ取得とスコア計算などの処理を共通化したヘルパー関数"""
     portfolio = portfolio_manager.load_portfolio()
@@ -107,26 +141,28 @@ async def _get_processed_stock_data() -> List[Dict[str, Any]]:
     codes = [stock['code'] for stock in portfolio]
     tasks = [asyncio.to_thread(scraper.fetch_stock_data, code) for code in codes]
     scraped_results = await asyncio.gather(*tasks)
-
     scraped_data_map = {item['code']: item for item in scraped_results if item}
 
     processed_data = []
     for stock_info in portfolio:
         code = stock_info['code']
         scraped_data = scraped_data_map.get(code)
-
-        # マージ: ポートフォリオ情報（is_managedなど）とスクレイピング結果を統合
-        merged_data = {**stock_info, **(scraped_data or {"error": "データ取得失敗"}) }
+        merged_data = {**stock_info, **(scraped_data or {"error": "データ取得失敗"})}
 
         if "error" not in merged_data:
             merged_data["consecutive_increase_years"] = calculate_consecutive_dividend_increase(merged_data.get("dividend_history", {}))
             score, details = calculate_score(merged_data)
             merged_data["score"] = score
             merged_data["score_details"] = details
+            
+            # 保有銘柄の追加データを計算
+            management_calcs = _calculate_management_data(merged_data)
+            merged_data.update(management_calcs)
         
         processed_data.append(merged_data)
-        
     return processed_data
+
+# --- APIエンドポイント ---
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -142,37 +178,28 @@ async def get_recent_stocks():
 
 @app.get("/api/stocks")
 async def get_stocks():
-    """登録されている全銘柄の最新データを取得する。"""
     return await _get_processed_stock_data()
 
 @app.post("/api/stocks")
 async def add_stock_endpoint(stock: StockCode):
     logger.info(f"Received add stock request for code: {stock.code}")
-    
-    # 銘柄をポートフォリオに追加試行
     is_added = portfolio_manager.add_stock(stock.code)
     if not is_added:
         return {"status": "exists", "message": f"銘柄コード {stock.code} は既に追加されています。"}
 
-    # 追加した銘柄のデータをすぐに取得
     new_stock_data = await asyncio.to_thread(scraper.fetch_stock_data, stock.code)
-
     if new_stock_data and "error" not in new_stock_data:
         recent_stocks_manager.add_recent_code(stock.code)
         return {"status": "success", "stock": new_stock_data}
     else:
-        # データ取得に失敗した場合でも、銘柄は追加済みなのでその旨を返す
-        # ただし、エラーがあったことをフロントに伝える
-        error_message = new_stock_data.get("error", "不明なエラー")
-        # 失敗した場合は、一旦追加した銘柄を削除する方が親切かもしれない
         portfolio_manager.delete_stocks([stock.code])
+        error_message = new_stock_data.get("error", "不明なエラー")
         return {"status": "error", "message": f"銘柄 {stock.code} は存在しないか、データの取得に失敗しました: {error_message}", "code": stock.code}
 
 @app.delete("/api/stocks/bulk-delete")
 async def bulk_delete_stocks(stock_codes: StockCodesToDelete):
     if not stock_codes.codes:
         raise HTTPException(status_code=400, detail="No stock codes provided for deletion.")
-    
     logger.info(f"Received bulk delete request for codes: {stock_codes.codes}")
     portfolio_manager.delete_stocks(stock_codes.codes)
     return {"status": "success", "message": f"{len(stock_codes.codes)} stocks deleted."}
@@ -183,38 +210,22 @@ async def delete_stock(stock_code: str):
     portfolio_manager.delete_stocks([stock_code])
     return {"status": "success"}
 
-
-class StockManagementData(BaseModel):
-    is_managed: bool
-    purchase_price: float | None = None
-    quantity: int | None = None
-
 @app.put("/api/stocks/{code}/management")
 async def update_stock_management(code: str, data: StockManagementData):
     logger.info(f"Received management update for code: {code} with data: {data.dict()}")
-    
-    # バリデーション: is_managedがtrueの場合、価格と数量が必要
-    if data.is_managed and (data.purchase_price is None or data.quantity is None):
-        raise HTTPException(
-            status_code=400,
-            detail="管理対象にする場合は、取得単価と数量の両方を指定する必要があります。"
-        )
-
+    if data.is_managed and (data.purchase_price is None or data.quantity is None or data.purchase_price <= 0 or data.quantity <= 0):
+        raise HTTPException(status_code=400, detail="管理対象にする場合は、0より大きい取得単価と数量を指定する必要があります。")
     success = portfolio_manager.update_stock(code, data.dict())
-
     if success:
         return {"status": "success", "message": f"銘柄 {code} の保有情報を更新しました。"}
     else:
         raise HTTPException(status_code=404, detail=f"銘柄コード {code} がポートフォリオに見つかりません。")
 
-
 @app.get("/api/stocks/csv")
 async def download_csv():
-    """現在のポートフォリオをCSV形式でダウンロードする。"""
     data = await _get_processed_stock_data()
     if not data:
         return StreamingResponse(io.StringIO(""), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=portfolio.csv"})
-
     csv_data = portfolio_manager.create_csv_data(data)
     filename = f"portfolio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     response = StreamingResponse(io.StringIO(csv_data), media_type="text/csv")

@@ -12,9 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const recentStocksList = document.getElementById('recent-stocks-list');
     const filterInput = document.getElementById('filter-input');
     
-    // モーダル関連のDOM要素
     const modalOverlay = document.getElementById('modal-overlay');
-    const managementModal = document.getElementById('management-modal');
     const managementForm = document.getElementById('management-form');
     const modalStockCode = document.getElementById('modal-stock-code');
     const isManagedCheckbox = document.getElementById('is-managed-checkbox');
@@ -105,18 +103,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 return cell;
             };
 
-            // エラー行の処理
             if (stock.error) {
                 row.className = 'error-row';
                 row.title = stock.error;
                 row.innerHTML = `<td colspan="1"><input type="checkbox" disabled></td>` +
                                 `<td>${stock.code}</td>` +
                                 `<td colspan="${colspan - 3}">銘柄が見つからないか、データの取得に失敗しました。</td>` +
+                                `<td><button class="manage-btn" data-code="${stock.code}">管理</button></td>` +
                                 `<td><button class="delete-btn" data-code="${stock.code}">削除</button></td>`;
                 return;
             }
             
-            // 通常行の描画
             createCell(`<input type="checkbox" class="stock-checkbox" data-code="${stock.code}">`);
             createTextCell(stock.code);
             createCell(`<a href="https://finance.yahoo.co.jp/quote/${stock.code}.T" target="_blank">${stock.name}</a>`);
@@ -124,6 +121,14 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(renderScoreAsStars(stock.score, stock.score_details));
             createTextCell(stock.price);
             createTextCell(`${stock.change} (${stock.change_percent === 'N/A' ? 'N/A' : stock.change_percent + '%'})`);
+            
+            // --- 保有銘柄の計算値を描画 ---
+            createTextCell(formatNumber(stock.market_value), getProfitClass(stock.profit_loss));
+            createTextCell(formatProfit(stock.profit_loss), getProfitClass(stock.profit_loss));
+            createTextCell(stock.profit_loss_rate !== null && stock.profit_loss_rate !== undefined ? `${stock.profit_loss_rate.toFixed(2)}%` : 'N/A', getProfitClass(stock.profit_loss_rate));
+            createTextCell(formatNumber(stock.estimated_annual_dividend));
+            // --------------------------------
+
             createTextCell(formatMarketCap(stock.market_cap));
             createTextCell(stock.per, getHighlightClass('per', stock.per));
             createTextCell(stock.pbr, getHighlightClass('pbr', stock.pbr));
@@ -137,14 +142,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${stock.consecutive_increase_years > 0 ? `<span class="increase-badge">${stock.consecutive_increase_years}年連続</span>` : '-'}
             </a>`;
 
-            // 保有管理ボタン
             createCell(`<button class="manage-btn" data-code="${stock.code}">管理</button>`);
-            // 削除ボタン
             createCell(`<button class="delete-btn" data-code="${stock.code}">削除</button>`);
         });
     }
 
     // --- ヘルパー関数 ---
+
+    const formatNumber = (num, fractionDigits = 0) => {
+        if (num === null || num === undefined) return 'N/A';
+        return num.toLocaleString(undefined, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
+    };
+
+    const formatProfit = (num) => {
+        if (num === null || num === undefined) return 'N/A';
+        const sign = num > 0 ? '+' : '';
+        return sign + formatNumber(num);
+    };
+
+    const getProfitClass = (num) => {
+        if (num === null || num === undefined) return '';
+        if (num > 0) return 'text-plus';
+        if (num < 0) return 'text-minus';
+        return '';
+    };
 
     function showAlert(message, type = 'danger') {
         const alert = document.createElement('div');
@@ -251,8 +272,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const purchase_price = purchasePriceInput.value ? parseFloat(purchasePriceInput.value) : null;
         const quantity = quantityInput.value ? parseInt(quantityInput.value, 10) : null;
 
-        if (is_managed && (purchase_price === null || quantity === null)) {
-            showAlert('管理対象にする場合は、取得単価と数量を入力してください。', 'warning');
+        if (is_managed && (purchase_price === null || quantity === null || purchase_price <= 0 || quantity <= 0)) {
+            showAlert('管理対象にする場合は、0より大きい取得単価と数量を入力してください。', 'warning');
             return;
         }
 
@@ -270,7 +291,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             showAlert(`銘柄 ${code} の保有情報を更新しました。`, 'success');
             closeManagementModal();
-            await initialize(); // テーブルを再読み込みして更新を反映
+            await initialize();
         } catch (error) {
             console.error('Error updating stock management:', error);
             showAlert(error.message, 'danger');
@@ -335,7 +356,6 @@ document.addEventListener('DOMContentLoaded', () => {
     downloadCsvButton.addEventListener('click', () => { window.location.href = '/api/stocks/csv'; });
     filterInput.addEventListener('input', filterAndRender);
     
-    // チェックボックス関連
     selectAllStocksCheckbox.addEventListener('change', () => {
         document.querySelectorAll('.stock-checkbox:not(:disabled)').forEach(cb => { cb.checked = selectAllStocksCheckbox.checked; });
         updateDeleteSelectedButtonState();
@@ -364,7 +384,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // モーダル関連のイベントリスナー
     managementForm.addEventListener('submit', handleManagementFormSubmit);
     modalCancelButton.addEventListener('click', closeManagementModal);
     modalOverlay.addEventListener('click', (event) => {

@@ -450,3 +450,12 @@ button {
 .manage-btn:hover {
     background-color: #138496;
 }
+
+/* --- Text Colors --- */
+.text-plus {
+    color: #28a745; /* Green */
+}
+
+.text-minus {
+    color: #dc3545; /* Red */
+}

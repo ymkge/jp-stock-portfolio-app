@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>国内株式ポートフォリオ</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=1.3">
+    <link rel="stylesheet" href="/static/css/style.css?v=1.4">
 </head>
 <body>
     <div class="container">
@@ -20,9 +20,7 @@
                 </form>
                 <div class="recent-stocks-section">
                     <h3>最近追加した銘柄</h3>
-                    <ul id="recent-stocks-list">
-                        <!-- JavaScriptで動的に追加されます -->
-                    </ul>
+                    <ul id="recent-stocks-list"></ul>
                 </div>
                 <div class="filter-section">
                     <h3>フィルタ</h3>
@@ -46,9 +44,7 @@
                 <h2>ポートフォリオ一覧</h2>
             </header>
             <section class="portfolio-list">
-                <div id="loading-indicator" style="display: none;">
-                    <p>データを読み込み中...</p>
-                </div>
+                <div id="loading-indicator" style="display: none;"><p>データを読み込み中...</p></div>
                 <div class="table-container">
                     <table id="stock-table">
                         <thead>
@@ -70,9 +66,7 @@
                                 <th>保有管理</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <!-- データはJavaScriptで挿入されます -->
-                        </tbody>
+                        <tbody></tbody>
                     </table>
                 </div>
             </section>
@@ -83,32 +77,46 @@
     <div id="modal-overlay" class="hidden">
         <div id="management-modal">
             <h2 id="modal-title">保有情報管理</h2>
-            <form id="management-form">
-                <input type="hidden" id="modal-stock-code">
-                <div class="form-group">
-                    <label for="is-managed-checkbox">
-                        <input type="checkbox" id="is-managed-checkbox">
-                        この銘柄を保有銘柄として管理する
-                    </label>
-                </div>
-                <div id="managed-fields" class="hidden">
+            
+            <div id="holdings-list-container">
+                <!-- JSで保有口座リストが描画される -->
+            </div>
+
+            <div class="modal-actions">
+                <button id="add-new-holding-btn" class="btn-secondary">新規口座を追加</button>
+            </div>
+
+            <div id="holding-form-container" class="hidden">
+                <h3 id="holding-form-title">保有情報の編集</h3>
+                <form id="holding-form">
+                    <input type="hidden" id="holding-id-input">
+                    <div class="form-group">
+                        <label for="account-type-select">口座種別</label>
+                        <select id="account-type-select" required>
+                            <!-- JSで口座種別オプションが描画される -->
+                        </select>
+                    </div>
                     <div class="form-group">
                         <label for="purchase-price-input">取得単価</label>
-                        <input type="number" id="purchase-price-input" step="any" placeholder="例: 1500.5">
+                        <input type="number" id="purchase-price-input" step="any" placeholder="例: 1500.5" required>
                     </div>
                     <div class="form-group">
                         <label for="quantity-input">数量</label>
-                        <input type="number" id="quantity-input" step="1" placeholder="例: 100">
+                        <input type="number" id="quantity-input" step="1" placeholder="例: 100" required>
                     </div>
-                </div>
-                <div class="form-actions">
-                    <button type="submit" class="btn-primary">保存</button>
-                    <button type="button" id="modal-cancel-button">キャンセル</button>
-                </div>
-            </form>
+                    <div class="form-actions">
+                        <button type="submit" class="btn-primary">保存</button>
+                        <button type="button" id="holding-form-cancel-btn">キャンセル</button>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" id="modal-close-btn">閉じる</button>
+            </div>
         </div>
     </div>
 
-    <script src="/static/js/main.js?v=1.3"></script>
+    <script src="/static/js/main.js?v=1.5"></script>
 </body>
 </html>

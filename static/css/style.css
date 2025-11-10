@@ -478,6 +478,107 @@ button {
     background-color: #5a6268;
 }
 
+/* --- New Management Modal --- */
+#management-modal {
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+
+#holdings-list-container {
+    margin-bottom: 1rem;
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0.5rem 0;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.holding-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.8rem 0.5rem;
+    border-bottom: 1px solid #f0f0f0;
+}
+.holding-item:last-child {
+    border-bottom: none;
+}
+
+.holding-info span {
+    margin-right: 1rem;
+}
+.holding-info .account-type {
+    font-weight: bold;
+    display: inline-block;
+    min-width: 80px;
+}
+
+.holding-actions .btn-sm {
+    padding: 4px 8px;
+    font-size: 0.85rem;
+    margin-left: 5px;
+}
+.btn-edit {
+    background-color: var(--primary-color);
+}
+.btn-edit:hover {
+    background-color: var(--primary-hover-color);
+}
+.btn-delete-holding {
+    background-color: var(--danger-color);
+}
+.btn-delete-holding:hover {
+    background-color: var(--danger-hover-color);
+}
+
+.modal-actions {
+    margin-bottom: 1.5rem;
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+.btn-secondary:hover {
+    background-color: #5a6268;
+}
+
+#holding-form-container {
+    padding: 1.5rem;
+    background-color: #f9f9f9;
+    border-radius: 6px;
+    margin-bottom: 1.5rem;
+}
+
+#holding-form-container h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+}
+
+#account-type-select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+.modal-footer {
+    margin-top: auto; /* フッターをモーダルの下部に固定 */
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+    text-align: right;
+}
+
+#modal-close-btn {
+    background-color: #6c757d;
+}
+#modal-close-btn:hover {
+    background-color: #5a6268;
+}
+
+
 /* --- Analysis Page --- */
 .analysis-grid {
     display: grid;

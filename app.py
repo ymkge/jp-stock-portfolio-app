@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
+# --- 定数 ---
+ACCOUNT_TYPES = ["特定口座", "一般口座", "新NISA", "旧NISA"]
+
 # --- ハイライトルールの読み込み ---
 HIGHLIGHT_RULES = {}
 try:
@@ -43,12 +46,14 @@ class StockCode(BaseModel):
 class StockCodesToDelete(BaseModel):
     codes: List[str]
 
-# --- 計算ヘルパー関数 ---
+class HoldingData(BaseModel):
+    account_type: str
+    purchase_price: float
+    quantity: int
 
+# --- 計算ヘルパー関数 ---
 def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
-    """配当履歴から連続増配年数を計算する（増配のみカウント）。"""
-    if not dividend_history or len(dividend_history) < 2:
-        return 0
+    if not dividend_history or len(dividend_history) < 2: return 0
     sorted_years = sorted(dividend_history.keys(), reverse=True)
     consecutive_years = 0
     for i in range(len(sorted_years) - 1):
@@ -62,7 +67,6 @@ def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
     return consecutive_years
 
 def calculate_score(stock_data: dict) -> tuple[int, dict]:
-    """銘柄データに基づいてスコアと詳細を計算する (最大10点)"""
     details = {"per": 0, "pbr": 0, "roe": 0, "yield": 0, "consecutive_increase": 0}
     is_calculable = False
     rules = HIGHLIGHT_RULES
@@ -100,28 +104,22 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
     return total_score if is_calculable else -1, details
 
 async def _get_processed_stock_data() -> List[Dict[str, Any]]:
-    """データ取得とスコア計算などの処理を共通化したヘルパー関数"""
     portfolio = portfolio_manager.load_portfolio()
-    if not portfolio:
-        return []
-
+    if not portfolio: return []
     codes = [stock['code'] for stock in portfolio]
     tasks = [asyncio.to_thread(scraper.fetch_stock_data, code) for code in codes]
     scraped_results = await asyncio.gather(*tasks)
     scraped_data_map = {item['code']: item for item in scraped_results if item}
-
     processed_data = []
     for stock_info in portfolio:
         code = stock_info['code']
         scraped_data = scraped_data_map.get(code)
         merged_data = {**stock_info, **(scraped_data or {"error": "データ取得失敗"})}
-
         if "error" not in merged_data:
             merged_data["consecutive_increase_years"] = calculate_consecutive_dividend_increase(merged_data.get("dividend_history", {}))
             score, details = calculate_score(merged_data)
             merged_data["score"] = score
             merged_data["score_details"] = details
-        
         processed_data.append(merged_data)
     return processed_data
 
@@ -130,6 +128,14 @@ async def _get_processed_stock_data() -> List[Dict[str, Any]]:
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/analysis", response_class=HTMLResponse)
+async def read_analysis(request: Request):
+    return templates.TemplateResponse("analysis.html", {"request": request})
+
+@app.get("/api/account-types")
+async def get_account_types():
+    return ACCOUNT_TYPES
 
 @app.get("/api/highlight-rules")
 async def get_highlight_rules():
@@ -149,7 +155,6 @@ async def add_stock_endpoint(stock: StockCode):
     is_added = portfolio_manager.add_stock(stock.code)
     if not is_added:
         return {"status": "exists", "message": f"銘柄コード {stock.code} は既に追加されています。"}
-
     new_stock_data = await asyncio.to_thread(scraper.fetch_stock_data, stock.code)
     if new_stock_data and "error" not in new_stock_data:
         recent_stocks_manager.add_recent_code(stock.code)
@@ -167,6 +172,36 @@ async def bulk_delete_stocks(stock_codes: StockCodesToDelete):
     portfolio_manager.delete_stocks(stock_codes.codes)
     return {"status": "success", "message": f"{len(stock_codes.codes)} stocks deleted."}
 
+@app.post("/api/stocks/{code}/holdings", status_code=201)
+async def add_holding_endpoint(code: str, holding: HoldingData):
+    if holding.account_type not in ACCOUNT_TYPES:
+        raise HTTPException(status_code=400, detail="無効な口座種別です。")
+    if holding.purchase_price <= 0 or holding.quantity <= 0:
+        raise HTTPException(status_code=400, detail="取得単価と数量は0より大きい値を指定する必要があります。")
+    try:
+        new_holding_id = portfolio_manager.add_holding(code, holding.dict())
+        return {"status": "success", "holding_id": new_holding_id}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.put("/api/holdings/{holding_id}")
+async def update_holding_endpoint(holding_id: str, holding: HoldingData):
+    if holding.account_type not in ACCOUNT_TYPES:
+        raise HTTPException(status_code=400, detail="無効な口座種別です。")
+    if holding.purchase_price <= 0 or holding.quantity <= 0:
+        raise HTTPException(status_code=400, detail="取得単価と数量は0より大きい値を指定する必要があります。")
+    success = portfolio_manager.update_holding(holding_id, holding.dict())
+    if not success:
+        raise HTTPException(status_code=404, detail="指定された保有情報が見つかりません。")
+    return {"status": "success"}
+
+@app.delete("/api/holdings/{holding_id}")
+async def delete_holding_endpoint(holding_id: str):
+    success = portfolio_manager.delete_holding(holding_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="指定された保有情報が見つかりません。")
+    return {"status": "success"}
+
 @app.get("/api/stocks/csv")
 async def download_csv():
     data = await _get_processed_stock_data()
@@ -180,43 +215,20 @@ async def download_csv():
 
 @app.get("/api/portfolio/analysis")
 async def get_portfolio_analysis():
-    """保有銘柄の分析データを返す"""
     all_stocks = await _get_processed_stock_data()
-    # holdingsリストが空でない銘柄を「管理対象」とみなす
     managed_stocks = [s for s in all_stocks if s.get("holdings")]
-
-    # TODO: 複数口座に対応した計算ロジックをここに追加する
-    # 現状では分析ページは正しく計算されない
-
+    # TODO: 複数口座に対応した計算ロジック
     industry_breakdown = {}
-    # for stock in managed_stocks:
-    #     industry = stock.get("industry", "その他")
-    #     # TODO: market_valueの計算方法を再定義
-    #     market_value = 0 # 仮
-    #     if market_value is not None:
-    #         industry_breakdown[industry] = industry_breakdown.get(industry, 0) + market_value
-    
-    return {
-        "managed_stocks": managed_stocks,
-        "industry_breakdown": industry_breakdown,
-    }
+    return {"managed_stocks": managed_stocks, "industry_breakdown": industry_breakdown}
 
 @app.get("/api/portfolio/analysis/csv")
 async def download_analysis_csv():
-    """分析ページの保有銘柄一覧をCSV形式でダウンロードする。"""
     analysis_data = await get_portfolio_analysis()
     managed_stocks = analysis_data.get("managed_stocks", [])
-    
     if not managed_stocks:
         return StreamingResponse(io.StringIO(""), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=portfolio_analysis.csv"})
-
     csv_data = portfolio_manager.create_analysis_csv_data(managed_stocks)
-    
     filename = f"portfolio_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     response = StreamingResponse(io.StringIO(csv_data), media_type="text/csv")
     response.headers["Content-Disposition"] = f"attachment; filename={filename}"
     return response
-
-@app.get("/analysis", response_class=HTMLResponse)
-async def read_analysis(request: Request):
-    return templates.TemplateResponse("analysis.html", {"request": request})

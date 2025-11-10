@@ -103,6 +103,69 @@ def delete_stocks(codes_to_delete: List[str]):
     updated_portfolio = [stock for stock in portfolio if stock.get("code") not in codes_to_delete]
     save_portfolio(updated_portfolio)
 
+def add_holding(code: str, holding_data: Dict[str, Any]) -> str:
+    """
+    特定の銘柄に新しい保有情報を追加する。
+    新しい保有情報のIDを返す。
+    """
+    portfolio = load_portfolio()
+    new_holding_id = str(uuid.uuid4())
+    holding_data['id'] = new_holding_id
+    
+    stock_found = False
+    for stock in portfolio:
+        if stock.get("code") == code:
+            stock.setdefault("holdings", []).append(holding_data)
+            stock_found = True
+            break
+    
+    if not stock_found:
+        # 銘柄自体が存在しない場合はエラー（通常は起こらないはず）
+        raise ValueError(f"Stock with code {code} not found in portfolio.")
+
+    save_portfolio(portfolio)
+    return new_holding_id
+
+def update_holding(holding_id: str, update_data: Dict[str, Any]) -> bool:
+    """
+    指定されたIDの保有情報を更新する。
+    """
+    portfolio = load_portfolio()
+    holding_found = False
+    for stock in portfolio:
+        for holding in stock.get("holdings", []):
+            if holding.get("id") == holding_id:
+                holding.update(update_data)
+                holding_found = True
+                break
+        if holding_found:
+            break
+    
+    if holding_found:
+        save_portfolio(portfolio)
+        return True
+    return False
+
+def delete_holding(holding_id: str) -> bool:
+    """
+    指定されたIDの保有情報を削除する。
+    """
+    portfolio = load_portfolio()
+    holding_found = False
+    for stock in portfolio:
+        original_holdings = stock.get("holdings", [])
+        updated_holdings = [h for h in original_holdings if h.get("id") != holding_id]
+        if len(original_holdings) != len(updated_holdings):
+            stock["holdings"] = updated_holdings
+            holding_found = True
+            break
+            
+    if holding_found:
+        save_portfolio(portfolio)
+        return True
+    return False
+
+
 # --- CSV生成関数 (既存のものは維持しつつ、将来的に改修) ---
 
 def create_csv_data(data: list[dict]) -> str:

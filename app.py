@@ -217,11 +217,6 @@ async def bulk_delete_stocks(stock_codes: StockCodesToDelete):
     portfolio_manager.delete_stocks(stock_codes.codes)
     return {"status": "success", "message": f"{len(stock_codes.codes)} stocks deleted."}
 
-@app.delete("/api/stocks/{stock_code}")
-async def delete_stock(stock_code: str):
-    logger.info(f"Received delete request for code: {stock_code}")
-    portfolio_manager.delete_stocks([stock_code])
-    return {"status": "success"}
 
 @app.put("/api/stocks/{code}/management")
 async def update_stock_management(code: str, data: StockManagementData):

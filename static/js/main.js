@@ -143,8 +143,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${stock.consecutive_increase_years > 0 ? `<span class="increase-badge">${stock.consecutive_increase_years}年連続</span>` : '-'}
             </a>`;
 
+            // 保有管理ボタン
             createCell(`<button class="manage-btn" data-code="${stock.code}">管理</button>`);
-            createCell(`<button class="delete-btn" data-code="${stock.code}">削除</button>`);
         });
     }
 
@@ -343,17 +343,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     stockTableBody.addEventListener('click', async (event) => {
         const target = event.target;
-        if (target.classList.contains('delete-btn')) {
-            const code = target.dataset.code;
-            if (!confirm(`銘柄コード ${code} を削除しますか？`)) return;
-            try {
-                await fetch(`/api/stocks/${code}`, { method: 'DELETE' });
-                showAlert(`銘柄 ${code} を削除しました。`, 'success');
-                await initialize();
-            } catch (error) {
-                showAlert('銘柄の削除に失敗しました。', 'danger');
-            }
-        } else if (target.classList.contains('manage-btn')) {
+        if (target.classList.contains('manage-btn')) {
             openManagementModal(target.dataset.code);
         }
     });

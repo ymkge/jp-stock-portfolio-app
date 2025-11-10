@@ -217,9 +217,9 @@
     },
     {
         "code": "7246",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "is_managed": true,
+        "purchase_price": 663.0,
+        "quantity": 40
     },
     {
         "code": "7261",
@@ -247,9 +247,9 @@
     },
     {
         "code": "7593",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "is_managed": true,
+        "purchase_price": 533.0,
+        "quantity": 20
     },
     {
         "code": "7739",

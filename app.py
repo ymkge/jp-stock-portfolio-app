@@ -106,31 +106,44 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
 
 def _calculate_management_data(stock_data: Dict[str, Any]) -> Dict[str, Any]:
     """保有管理銘柄の追加データを計算する"""
-    defaults = {
+    calcs = {
         "investment_amount": None, "market_value": None, "profit_loss": None,
         "profit_loss_rate": None, "estimated_annual_dividend": None,
     }
+    
     if not stock_data.get("is_managed"):
-        return defaults
-    try:
-        purchase_price = float(stock_data["purchase_price"])
-        quantity = int(stock_data["quantity"])
-        price = float(str(stock_data.get("price", "0")).replace(',', ''))
-        annual_dividend = float(str(stock_data.get("annual_dividend", "0")).replace(',', ''))
+        return calcs
 
+    # 評価額・損益の計算
+    try:
+        purchase_price = float(stock_data.get("purchase_price"))
+        quantity = int(stock_data.get("quantity"))
+        price = float(str(stock_data.get("price", "")).replace(',', ''))
+        
         investment_amount = purchase_price * quantity
         market_value = price * quantity
         profit_loss = market_value - investment_amount
-        profit_loss_rate = (profit_loss / investment_amount) * 100 if investment_amount != 0 else 0
-        estimated_annual_dividend = annual_dividend * quantity
-
-        return {
-            "investment_amount": investment_amount, "market_value": market_value,
-            "profit_loss": profit_loss, "profit_loss_rate": profit_loss_rate,
-            "estimated_annual_dividend": estimated_annual_dividend,
-        }
+        
+        calcs["investment_amount"] = investment_amount
+        calcs["market_value"] = market_value
+        calcs["profit_loss"] = profit_loss
+        
+        if investment_amount != 0:
+            calcs["profit_loss_rate"] = (profit_loss / investment_amount) * 100
     except (ValueError, TypeError, KeyError, ZeroDivisionError):
-        return defaults
+        # 評価額や損益の計算に必要な値がなければ、以降の配当計算も行わない
+        return calcs
+
+    # 年間配当の計算 (評価額の計算とは独立して実行)
+    try:
+        annual_dividend = float(str(stock_data.get("annual_dividend", "")).replace(',', ''))
+        quantity = int(stock_data.get("quantity"))
+        calcs["estimated_annual_dividend"] = annual_dividend * quantity
+    except (ValueError, TypeError, KeyError):
+        # 配当の計算に失敗しても、他の計算結果は維持される
+        pass
+
+    return calcs
 
 async def _get_processed_stock_data() -> List[Dict[str, Any]]:
     """データ取得とスコア計算などの処理を共通化したヘルパー関数"""

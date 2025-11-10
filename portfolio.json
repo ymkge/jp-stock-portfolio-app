@@ -1,398 +1,280 @@
 [
     {
         "code": "1605",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "1662",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "1802",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "1926",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "1928",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "2267",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "2317",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "2503",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "2802",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "285A",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "2914",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "3632",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "3668",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "4005",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "4063",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "4182",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "4307",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "4452",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "4480",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "4502",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "4503",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "4617",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "4631",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "4751",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "4755",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "4996",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "5401",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "5406",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "5411",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "5938",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "6098",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "6136",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "6417",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "6963",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "6981",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "7201",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "7246",
-        "is_managed": true,
-        "purchase_price": 663.0,
-        "quantity": 40
+        "holdings": [
+            {
+                "id": "11d3d262-7873-464a-b95b-dd3c7769a152",
+                "account_type": "デフォルト",
+                "purchase_price": 663.0,
+                "quantity": 40
+            }
+        ]
     },
     {
         "code": "7261",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "7267",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "7272",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "7453",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "7593",
-        "is_managed": true,
-        "purchase_price": 533.0,
-        "quantity": 20
+        "holdings": [
+            {
+                "id": "9ffe3ad3-1add-487b-a2aa-e9e715bcfb14",
+                "account_type": "デフォルト",
+                "purchase_price": 533.0,
+                "quantity": 20
+            }
+        ]
     },
     {
         "code": "7739",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "8035",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "8053",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "8058",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "8070",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "8130",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "8304",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "8306",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "8309",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "8316",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "8593",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "8601",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "8604",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "9064",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "9101",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "9107",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "9432",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "9433",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "9434",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "9468",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "9502",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "9513",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "9551",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     },
     {
         "code": "9684",
-        "is_managed": false,
-        "purchase_price": null,
-        "quantity": null
+        "holdings": []
     }
 ]

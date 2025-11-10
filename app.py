@@ -43,11 +43,6 @@ class StockCode(BaseModel):
 class StockCodesToDelete(BaseModel):
     codes: List[str]
 
-class StockManagementData(BaseModel):
-    is_managed: bool
-    purchase_price: Optional[float] = None
-    quantity: Optional[int] = None
-
 # --- 計算ヘルパー関数 ---
 
 def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
@@ -104,47 +99,6 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
     total_score = sum(details.values())
     return total_score if is_calculable else -1, details
 
-def _calculate_management_data(stock_data: Dict[str, Any]) -> Dict[str, Any]:
-    """保有管理銘柄の追加データを計算する"""
-    calcs = {
-        "investment_amount": None, "market_value": None, "profit_loss": None,
-        "profit_loss_rate": None, "estimated_annual_dividend": None,
-    }
-    
-    if not stock_data.get("is_managed"):
-        return calcs
-
-    # 評価額・損益の計算
-    try:
-        purchase_price = float(stock_data.get("purchase_price"))
-        quantity = int(stock_data.get("quantity"))
-        price = float(str(stock_data.get("price", "")).replace(',', ''))
-        
-        investment_amount = purchase_price * quantity
-        market_value = price * quantity
-        profit_loss = market_value - investment_amount
-        
-        calcs["investment_amount"] = investment_amount
-        calcs["market_value"] = market_value
-        calcs["profit_loss"] = profit_loss
-        
-        if investment_amount != 0:
-            calcs["profit_loss_rate"] = (profit_loss / investment_amount) * 100
-    except (ValueError, TypeError, KeyError, ZeroDivisionError):
-        # 評価額や損益の計算に必要な値がなければ、以降の配当計算も行わない
-        return calcs
-
-    # 年間配当の計算 (評価額の計算とは独立して実行)
-    try:
-        annual_dividend = float(str(stock_data.get("annual_dividend", "")).replace(',', ''))
-        quantity = int(stock_data.get("quantity"))
-        calcs["estimated_annual_dividend"] = annual_dividend * quantity
-    except (ValueError, TypeError, KeyError):
-        # 配当の計算に失敗しても、他の計算結果は維持される
-        pass
-
-    return calcs
-
 async def _get_processed_stock_data() -> List[Dict[str, Any]]:
     """データ取得とスコア計算などの処理を共通化したヘルパー関数"""
     portfolio = portfolio_manager.load_portfolio()
@@ -167,10 +121,6 @@ async def _get_processed_stock_data() -> List[Dict[str, Any]]:
             score, details = calculate_score(merged_data)
             merged_data["score"] = score
             merged_data["score_details"] = details
-            
-            # 保有銘柄の追加データを計算
-            management_calcs = _calculate_management_data(merged_data)
-            merged_data.update(management_calcs)
         
         processed_data.append(merged_data)
     return processed_data
@@ -217,18 +167,6 @@ async def bulk_delete_stocks(stock_codes: StockCodesToDelete):
     portfolio_manager.delete_stocks(stock_codes.codes)
     return {"status": "success", "message": f"{len(stock_codes.codes)} stocks deleted."}
 
-
-@app.put("/api/stocks/{code}/management")
-async def update_stock_management(code: str, data: StockManagementData):
-    logger.info(f"Received management update for code: {code} with data: {data.dict()}")
-    if data.is_managed and (data.purchase_price is None or data.quantity is None or data.purchase_price <= 0 or data.quantity <= 0):
-        raise HTTPException(status_code=400, detail="管理対象にする場合は、0より大きい取得単価と数量を指定する必要があります。")
-    success = portfolio_manager.update_stock(code, data.dict())
-    if success:
-        return {"status": "success", "message": f"銘柄 {code} の保有情報を更新しました。"}
-    else:
-        raise HTTPException(status_code=404, detail=f"銘柄コード {code} がポートフォリオに見つかりません。")
-
 @app.get("/api/stocks/csv")
 async def download_csv():
     data = await _get_processed_stock_data()
@@ -240,19 +178,23 @@ async def download_csv():
     response.headers["Content-Disposition"] = f"attachment; filename={filename}"
     return response
 
-
 @app.get("/api/portfolio/analysis")
 async def get_portfolio_analysis():
     """保有銘柄の分析データを返す"""
     all_stocks = await _get_processed_stock_data()
-    managed_stocks = [s for s in all_stocks if s.get("is_managed")]
+    # holdingsリストが空でない銘柄を「管理対象」とみなす
+    managed_stocks = [s for s in all_stocks if s.get("holdings")]
+
+    # TODO: 複数口座に対応した計算ロジックをここに追加する
+    # 現状では分析ページは正しく計算されない
 
     industry_breakdown = {}
-    for stock in managed_stocks:
-        industry = stock.get("industry", "その他")
-        market_value = stock.get("market_value", 0)
-        if market_value is not None:
-            industry_breakdown[industry] = industry_breakdown.get(industry, 0) + market_value
+    # for stock in managed_stocks:
+    #     industry = stock.get("industry", "その他")
+    #     # TODO: market_valueの計算方法を再定義
+    #     market_value = 0 # 仮
+    #     if market_value is not None:
+    #         industry_breakdown[industry] = industry_breakdown.get(industry, 0) + market_value
     
     return {
         "managed_stocks": managed_stocks,
@@ -274,7 +216,6 @@ async def download_analysis_csv():
     response = StreamingResponse(io.StringIO(csv_data), media_type="text/csv")
     response.headers["Content-Disposition"] = f"attachment; filename={filename}"
     return response
-
 
 @app.get("/analysis", response_class=HTMLResponse)
 async def read_analysis(request: Request):

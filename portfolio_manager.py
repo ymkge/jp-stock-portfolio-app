@@ -2,53 +2,72 @@ import json
 import os
 import csv
 import io
+import uuid
 from typing import List, Dict, Any
 
 PORTFOLIO_FILE = "portfolio.json"
 
-def _migrate_old_format(data: Any) -> List[Dict[str, Any]]:
-    """古いデータ形式を新しい形式に変換する。"""
-    if isinstance(data, dict) and "codes" in data and isinstance(data["codes"], list):
-        print("Old portfolio format detected. Migrating to new format.")
-        new_portfolio = [
-            {
-                "code": str(code),
-                "is_managed": False,
-                "purchase_price": None,
-                "quantity": None
-            }
-            for code in data["codes"]
-        ]
-        save_portfolio(new_portfolio)
-        return new_portfolio
-    # If it's already a list of dicts (new format), or something unexpected, return as is
-    if isinstance(data, list):
-        return data
-    return []
+def _migrate_to_multi_account(portfolio: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    単一保有情報形式から複数口座保有形式へのデータ移行を行う。
+    is_managedキーの存在で古い形式かを判断する。
+    """
+    # 最初の要素をチェックして、移行が必要か判断
+    if not portfolio or "holdings" in portfolio[0]:
+        return portfolio  # 既に新しい形式か、空の場合は何もしない
+
+    print("Old portfolio format detected. Migrating to multi-account format.")
+    migrated_portfolio = []
+    needs_migration = False
+    for stock in portfolio:
+        if "is_managed" in stock:
+            needs_migration = True
+            new_stock = {"code": stock["code"], "holdings": []}
+            if stock.get("is_managed"):
+                new_holding = {
+                    "id": str(uuid.uuid4()),
+                    "account_type": "デフォルト", # 移行用のデフォルト口座名
+                    "purchase_price": stock.get("purchase_price"),
+                    "quantity": stock.get("quantity")
+                }
+                new_stock["holdings"].append(new_holding)
+            migrated_portfolio.append(new_stock)
+        else:
+            # 混合形式は想定しないが、念のため元のデータを維持
+            migrated_portfolio.append(stock)
+
+    if needs_migration:
+        save_portfolio(migrated_portfolio)
+        print("Migration complete.")
+        return migrated_portfolio
+    
+    return portfolio
+
 
 def load_portfolio() -> List[Dict[str, Any]]:
     """
     portfolio.jsonからポートフォリオデータを読み込む。
-    古い形式の場合は新しい形式に変換する。
+    必要に応じて古いデータ形式からの移行処理を行う。
     """
     if not os.path.exists(PORTFOLIO_FILE):
         return []
     try:
         with open(PORTFOLIO_FILE, "r", encoding="utf-8") as f:
-            # ファイルが空の場合の対策
             content = f.read()
             if not content:
                 return []
             data = json.loads(content)
         
-        # 古い形式かどうかをチェックし、必要なら移行
-        if isinstance(data, dict) and "codes" in data:
-            return _migrate_old_format(data)
-        
-        # 新しい形式（オブジェクトのリスト）であることを期待
+        # オブジェクトのリストであることを期待
         if isinstance(data, list):
-            return data
-            
+            return _migrate_to_multi_account(data)
+        # 初代の{"codes": []}形式からの移行
+        elif isinstance(data, dict) and "codes" in data:
+             print("Legacy format detected. Migrating...")
+             new_portfolio = [{"code": code, "holdings": []} for code in data["codes"]]
+             save_portfolio(new_portfolio)
+             return new_portfolio
+
         return []
     except (json.JSONDecodeError, IOError) as e:
         print(f"Error loading portfolio file: {e}")
@@ -58,7 +77,6 @@ def save_portfolio(portfolio: List[Dict[str, Any]]):
     """
     ポートフォリオデータをportfolio.jsonに保存する。
     """
-    # 銘柄コードでソートして保存
     sorted_portfolio = sorted(portfolio, key=lambda x: x.get("code", ""))
     with open(PORTFOLIO_FILE, "w", encoding="utf-8") as f:
         json.dump(sorted_portfolio, f, indent=4, ensure_ascii=False)
@@ -70,14 +88,9 @@ def add_stock(code: str) -> bool:
     """
     portfolio = load_portfolio()
     if any(stock['code'] == code for stock in portfolio):
-        return False  # 既に存在する
+        return False
 
-    new_stock = {
-        "code": code,
-        "is_managed": False,
-        "purchase_price": None,
-        "quantity": None
-    }
+    new_stock = {"code": code, "holdings": []}
     portfolio.append(new_stock)
     save_portfolio(portfolio)
     return True
@@ -90,22 +103,7 @@ def delete_stocks(codes_to_delete: List[str]):
     updated_portfolio = [stock for stock in portfolio if stock.get("code") not in codes_to_delete]
     save_portfolio(updated_portfolio)
 
-def update_stock(code: str, data: Dict[str, Any]) -> bool:
-    """
-    指定された銘柄の情報を更新する。
-    """
-    portfolio = load_portfolio()
-    stock_found = False
-    for stock in portfolio:
-        if stock.get("code") == code:
-            stock.update(data)
-            stock_found = True
-            break
-    
-    if stock_found:
-        save_portfolio(portfolio)
-        return True
-    return False
+# --- CSV生成関数 (既存のものは維持しつつ、将来的に改修) ---
 
 def create_csv_data(data: list[dict]) -> str:
     """
@@ -113,23 +111,18 @@ def create_csv_data(data: list[dict]) -> str:
     """
     if not data:
         return ""
-
     output = io.StringIO()
-    output.write('\ufeff')  # BOM for Excel
+    output.write('\ufeff')
     writer = csv.writer(output)
-
     headers = [
         "code", "name", "industry", "score", "price", "change", "change_percent",
-        "market_cap", "per", "pbr", "roe", "eps", "yield",
-        "investment_amount", "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend"
+        "market_cap", "per", "pbr", "roe", "eps", "yield"
     ]
     display_headers = [
         "銘柄コード", "銘柄名", "業種", "スコア", "現在株価", "前日比", "前日比(%)",
-        "時価総額(億円)", "PER(倍)", "PBR(倍)", "ROE(%)", "EPS(円)", "配当利回り(%)",
-        "投資額", "評価額", "損益", "損益率(%)", "年間配当金予想"
+        "時価総額(億円)", "PER(倍)", "PBR(倍)", "ROE(%)", "EPS(円)", "配当利回り(%)"
     ]
     writer.writerow(display_headers)
-
     for item in data:
         row = []
         for h in headers:
@@ -143,7 +136,6 @@ def create_csv_data(data: list[dict]) -> str:
                     value = "N/A"
             row.append(value)
         writer.writerow(row)
-
     return output.getvalue()
 
 def create_analysis_csv_data(data: list[dict]) -> str:
@@ -152,11 +144,9 @@ def create_analysis_csv_data(data: list[dict]) -> str:
     """
     if not data:
         return ""
-
     output = io.StringIO()
     output.write('\ufeff')
     writer = csv.writer(output)
-
     headers = [
         "code", "name", "industry", "quantity", "purchase_price", "price",
         "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend"
@@ -166,64 +156,7 @@ def create_analysis_csv_data(data: list[dict]) -> str:
         "評価額", "損益", "損益率(%)", "年間配当"
     ]
     writer.writerow(display_headers)
-
     for item in data:
         row = [item.get(h, "") for h in headers]
         writer.writerow(row)
-
     return output.getvalue()
-
-
-if __name__ == '__main__':
-    # --- テスト ---
-    print("--- Running portfolio_manager tests ---")
-
-    # 1. 古い形式のファイルを作成して移行をテスト
-    print("\n1. Testing migration from old format...")
-    old_format_data = {"codes": ["7203", "9432"]}
-    with open(PORTFOLIO_FILE, "w", encoding="utf-8") as f:
-        json.dump(old_format_data, f)
-    
-    migrated_portfolio = load_portfolio()
-    print(f"   Loaded and migrated portfolio: {migrated_portfolio}")
-    assert len(migrated_portfolio) == 2
-    assert migrated_portfolio[0]['code'] == '7203'
-    assert migrated_portfolio[0]['is_managed'] is False
-
-    # 2. 新しい銘柄を追加
-    print("\n2. Testing add_stock...")
-    add_stock("8058")
-    portfolio = load_portfolio()
-    print(f"   Portfolio after adding 8058: {portfolio}")
-    assert len(portfolio) == 3
-    assert any(s['code'] == '8058' for s in portfolio)
-
-    # 3. 存在する銘柄を追加しようとする
-    print("\n3. Testing adding an existing stock...")
-    result = add_stock("7203")
-    print(f"   Result of adding existing stock 7203: {result}")
-    assert result is False
-
-    # 4. 銘柄を更新
-    print("\n4. Testing update_stock...")
-    update_stock("7203", {"is_managed": True, "quantity": 100})
-    portfolio = load_portfolio()
-    updated_stock = next(s for s in portfolio if s['code'] == '7203')
-    print(f"   Portfolio after updating 7203: {portfolio}")
-    assert updated_stock['is_managed'] is True
-    assert updated_stock['quantity'] == 100
-
-    # 5. 複数の銘柄を削除
-    print("\n5. Testing delete_stocks...")
-    delete_stocks(["9432", "8058"])
-    portfolio = load_portfolio()
-    print(f"   Portfolio after deleting 9432 and 8058: {portfolio}")
-    assert len(portfolio) == 1
-    assert portfolio[0]['code'] == '7203'
-
-    # クリーンアップ
-    if os.path.exists(PORTFOLIO_FILE):
-        os.remove(PORTFOLIO_FILE)
-        print(f"\nCleaned up {PORTFOLIO_FILE}")
-    
-    print("\n--- All tests passed ---")

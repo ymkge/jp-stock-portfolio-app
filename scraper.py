@@ -113,7 +113,19 @@ def fetch_stock_data(stock_code: str, num_years_dividend: int = 10) -> Optional[
         if dividend_yield is None:
             dividend_yield = reference_index.get("shareDividendYield", "N/A")
 
-        annual_dividend = reference_index.get("shareAnnualDividend", "N/A")
+        annual_dividend = reference_index.get("shareAnnualDividend")
+
+        # メインページから取得できない場合のフォールバック
+        if annual_dividend is None or str(annual_dividend).strip() in ["N/A", "---", ""]:
+            if dividend_history:
+                # 履歴の中から最新の年を取得して採用
+                latest_year = max(dividend_history.keys(), key=int, default=None)
+                if latest_year:
+                    annual_dividend = dividend_history[latest_year]
+                else:
+                    annual_dividend = "N/A"
+            else:
+                annual_dividend = "N/A"
 
         return {
             "code": stock_code,

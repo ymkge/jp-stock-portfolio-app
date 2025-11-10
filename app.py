@@ -31,7 +31,6 @@ try:
         HIGHLIGHT_RULES = json.load(f)
 except (FileNotFoundError, json.JSONDecodeError) as e:
     logger.warning(f"highlight_rules.json の読み込みに失敗しました。デフォルト値で動作します。: {e}")
-# --------------------------------
 
 # 静的ファイルのマウント
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -151,7 +150,6 @@ async def get_stocks():
 
 @app.post("/api/stocks")
 async def add_stock_endpoint(stock: StockCode):
-    logger.info(f"Received add stock request for code: {stock.code}")
     is_added = portfolio_manager.add_stock(stock.code)
     if not is_added:
         return {"status": "exists", "message": f"銘柄コード {stock.code} は既に追加されています。"}
@@ -168,7 +166,6 @@ async def add_stock_endpoint(stock: StockCode):
 async def bulk_delete_stocks(stock_codes: StockCodesToDelete):
     if not stock_codes.codes:
         raise HTTPException(status_code=400, detail="No stock codes provided for deletion.")
-    logger.info(f"Received bulk delete request for codes: {stock_codes.codes}")
     portfolio_manager.delete_stocks(stock_codes.codes)
     return {"status": "success", "message": f"{len(stock_codes.codes)} stocks deleted."}
 
@@ -190,15 +187,13 @@ async def update_holding_endpoint(holding_id: str, holding: HoldingData):
         raise HTTPException(status_code=400, detail="無効な口座種別です。")
     if holding.purchase_price <= 0 or holding.quantity <= 0:
         raise HTTPException(status_code=400, detail="取得単価と数量は0より大きい値を指定する必要があります。")
-    success = portfolio_manager.update_holding(holding_id, holding.dict())
-    if not success:
+    if not portfolio_manager.update_holding(holding_id, holding.dict()):
         raise HTTPException(status_code=404, detail="指定された保有情報が見つかりません。")
     return {"status": "success"}
 
 @app.delete("/api/holdings/{holding_id}")
 async def delete_holding_endpoint(holding_id: str):
-    success = portfolio_manager.delete_holding(holding_id)
-    if not success:
+    if not portfolio_manager.delete_holding(holding_id):
         raise HTTPException(status_code=404, detail="指定された保有情報が見つかりません。")
     return {"status": "success"}
 
@@ -215,19 +210,72 @@ async def download_csv():
 
 @app.get("/api/portfolio/analysis")
 async def get_portfolio_analysis():
+    """保有銘柄の分析データを返す"""
     all_stocks = await _get_processed_stock_data()
-    managed_stocks = [s for s in all_stocks if s.get("holdings")]
-    # TODO: 複数口座に対応した計算ロジック
+    
+    holdings_list = []
     industry_breakdown = {}
-    return {"managed_stocks": managed_stocks, "industry_breakdown": industry_breakdown}
+    account_type_breakdown = {}
+
+    for stock in all_stocks:
+        if "error" in stock or not stock.get("holdings"):
+            continue
+
+        for holding in stock["holdings"]:
+            try:
+                # 各保有情報に対して評価額などを計算
+                purchase_price = float(holding["purchase_price"])
+                quantity = int(holding["quantity"])
+                price = float(str(stock.get("price", "0")).replace(',', ''))
+                
+                investment_amount = purchase_price * quantity
+                market_value = price * quantity
+                profit_loss = market_value - investment_amount
+                profit_loss_rate = (profit_loss / investment_amount) * 100 if investment_amount != 0 else 0
+                
+                estimated_annual_dividend = None
+                try:
+                    annual_dividend = float(str(stock.get("annual_dividend", "")).replace(',', ''))
+                    estimated_annual_dividend = annual_dividend * quantity
+                except (ValueError, TypeError):
+                    pass
+
+                # 分析用リストに追加
+                holding_detail = {
+                    **stock, # 銘柄の基本情報
+                    **holding, # 口座の保有情報
+                    "investment_amount": investment_amount,
+                    "market_value": market_value,
+                    "profit_loss": profit_loss,
+                    "profit_loss_rate": profit_loss_rate,
+                    "estimated_annual_dividend": estimated_annual_dividend,
+                }
+                del holding_detail["holdings"] # 不要なネストを削除
+                holdings_list.append(holding_detail)
+
+                # 集計
+                industry = stock.get("industry", "その他")
+                industry_breakdown[industry] = industry_breakdown.get(industry, 0) + market_value
+                
+                account_type = holding.get("account_type", "不明")
+                account_type_breakdown[account_type] = account_type_breakdown.get(account_type, 0) + market_value
+
+            except (ValueError, TypeError, KeyError, ZeroDivisionError):
+                continue
+
+    return {
+        "holdings_list": holdings_list,
+        "industry_breakdown": industry_breakdown,
+        "account_type_breakdown": account_type_breakdown,
+    }
 
 @app.get("/api/portfolio/analysis/csv")
 async def download_analysis_csv():
     analysis_data = await get_portfolio_analysis()
-    managed_stocks = analysis_data.get("managed_stocks", [])
-    if not managed_stocks:
+    holdings_list = analysis_data.get("holdings_list", [])
+    if not holdings_list:
         return StreamingResponse(io.StringIO(""), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=portfolio_analysis.csv"})
-    csv_data = portfolio_manager.create_analysis_csv_data(managed_stocks)
+    csv_data = portfolio_manager.create_analysis_csv_data(holdings_list)
     filename = f"portfolio_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     response = StreamingResponse(io.StringIO(csv_data), media_type="text/csv")
     response.headers["Content-Disposition"] = f"attachment; filename={filename}"

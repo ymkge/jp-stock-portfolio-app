@@ -26,9 +26,14 @@
                 </section>
 
                 <section class="portfolio-chart card">
-                    <h3>業種別ポートフォリオ</h3>
+                    <h3>ポートフォリオ構成</h3>
+                    <div class="chart-controls">
+                        <button class="chart-toggle-btn active" data-chart-type="industry">業種別</button>
+                        <button class="chart-toggle-btn" data-chart-type="account-type">口座種別</button>
+                    </div>
                     <div class="chart-container">
                         <canvas id="industry-chart"></canvas>
+                        <canvas id="account-type-chart" class="hidden"></canvas>
                     </div>
                 </section>
             </div>

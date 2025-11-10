@@ -203,23 +203,29 @@ def create_csv_data(data: list[dict]) -> str:
 
 def create_analysis_csv_data(data: list[dict]) -> str:
     """
-    分析ページ用の銘柄データリストからCSV文字列を生成する。
+    分析ページ用の保有口座データリストからCSV文字列を生成する。
     """
     if not data:
         return ""
     output = io.StringIO()
     output.write('\ufeff')
     writer = csv.writer(output)
+
     headers = [
-        "code", "name", "industry", "quantity", "purchase_price", "price",
+        "code", "name", "account_type", "industry", "quantity", "purchase_price", "price",
         "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend"
     ]
     display_headers = [
-        "銘柄コード", "銘柄名", "業種", "数量", "取得単価", "現在株価",
+        "銘柄コード", "銘柄名", "口座種別", "業種", "数量", "取得単価", "現在株価",
         "評価額", "損益", "損益率(%)", "年間配当"
     ]
     writer.writerow(display_headers)
+
     for item in data:
-        row = [item.get(h, "") for h in headers]
+        row = []
+        for h in headers:
+            value = item.get(h, "")
+            row.append(value)
         writer.writerow(row)
+
     return output.getvalue()

@@ -440,7 +440,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     currentSort.key = key;
                     currentSort.order = 'asc';
                 }
-                sortAndRender();
+                filterAndRender();
             });
         });
     }

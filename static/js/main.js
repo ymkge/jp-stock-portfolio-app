@@ -103,14 +103,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 return cell;
             };
 
+            // エラー行の処理
             if (stock.error) {
                 row.className = 'error-row';
                 row.title = stock.error;
-                row.innerHTML = `<td colspan="1"><input type="checkbox" disabled></td>` +
-                                `<td>${stock.code}</td>` +
-                                `<td colspan="${colspan - 3}">銘柄が見つからないか、データの取得に失敗しました。</td>` +
-                                `<td><button class="manage-btn" data-code="${stock.code}">管理</button></td>` +
-                                `<td><button class="delete-btn" data-code="${stock.code}">削除</button></td>`;
+                row.innerHTML = `<td><input type="checkbox" disabled></td>` +
+                                `<td>${stock.code || 'N/A'}</td>` +
+                                `<td colspan="${colspan - 4}">銘柄が見つからないか、データの取得に失敗しました。</td>` +
+                                `<td><button class="manage-btn" data-code="${stock.code || ''}" disabled>管理</button></td>` +
+                                `<td><button class="delete-btn" data-code="${stock.code || ''}">削除</button></td>`;
                 return;
             }
             

@@ -6,7 +6,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 import asyncio
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 import scraper
 import portfolio_manager
@@ -45,8 +45,8 @@ class StockCodesToDelete(BaseModel):
 
 class StockManagementData(BaseModel):
     is_managed: bool
-    purchase_price: float | None = None
-    quantity: int | None = None
+    purchase_price: Optional[float] = None
+    quantity: Optional[int] = None
 
 # --- 計算ヘルパー関数 ---
 

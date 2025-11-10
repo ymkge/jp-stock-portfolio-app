@@ -1,70 +1,398 @@
-{
-    "codes": [
-        "1605",
-        "1662",
-        "1802",
-        "1926",
-        "1928",
-        "2267",
-        "2317",
-        "2503",
-        "2802",
-        "285A",
-        "2914",
-        "3632",
-        "3668",
-        "4005",
-        "4063",
-        "4182",
-        "4307",
-        "4452",
-        "4480",
-        "4502",
-        "4503",
-        "4617",
-        "4631",
-        "4751",
-        "4755",
-        "4996",
-        "5401",
-        "5406",
-        "5411",
-        "5938",
-        "6098",
-        "6136",
-        "6417",
-        "6963",
-        "6981",
-        "7201",
-        "7246",
-        "7261",
-        "7267",
-        "7272",
-        "7453",
-        "7593",
-        "7739",
-        "8035",
-        "8053",
-        "8058",
-        "8070",
-        "8130",
-        "8304",
-        "8306",
-        "8309",
-        "8316",
-        "8593",
-        "8601",
-        "8604",
-        "9064",
-        "9101",
-        "9107",
-        "9432",
-        "9433",
-        "9434",
-        "9468",
-        "9502",
-        "9513",
-        "9551",
-        "9684"
-    ]
-}
+[
+    {
+        "code": "1605",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "1662",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "1802",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "1926",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "1928",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "2267",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "2317",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "2503",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "2802",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "285A",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "2914",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "3632",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "3668",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "4005",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "4063",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "4182",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "4307",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "4452",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "4480",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "4502",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "4503",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "4617",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "4631",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "4751",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "4755",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "4996",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "5401",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "5406",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "5411",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "5938",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "6098",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "6136",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "6417",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "6963",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "6981",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "7201",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "7246",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "7261",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "7267",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "7272",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "7453",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "7593",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "7739",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "8035",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "8053",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "8058",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "8070",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "8130",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "8304",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "8306",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "8309",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "8316",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "8593",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "8601",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "8604",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "9064",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "9101",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "9107",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "9432",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "9433",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "9434",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "9468",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "9502",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "9513",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "9551",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    },
+    {
+        "code": "9684",
+        "is_managed": false,
+        "purchase_price": null,
+        "quantity": null
+    }
+]

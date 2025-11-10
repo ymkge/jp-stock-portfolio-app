@@ -150,6 +150,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- ヘルパー関数 ---
 
+    function getHighlightClass(key, value) {
+        const rules = highlightRules[key];
+        if (!rules || value === 'N/A' || value === null || value === undefined || value === '--') {
+            return '';
+        }
+        const numericValue = parseFloat(String(value).replace(/[^0-9.-]/g, ''));
+        if (isNaN(numericValue)) return '';
+
+        if (key === 'yield' || key === 'roe') {
+            if (rules.undervalued !== undefined && numericValue >= rules.undervalued) return 'undervalued';
+        } else {
+            if (rules.undervalued !== undefined && numericValue <= rules.undervalued) return 'undervalued';
+            if (rules.overvalued !== undefined && numericValue >= rules.overvalued) return 'overvalued';
+        }
+        return '';
+    }
+
     const formatNumber = (num, fractionDigits = 0) => {
         if (num === null || num === undefined) return 'N/A';
         return num.toLocaleString(undefined, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });

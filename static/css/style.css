@@ -423,17 +423,17 @@ button {
     gap: 1rem;
 }
 
-#management-form .btn-primary {
-    background-color: var(--primary-color);
+#holding-form .btn-primary {
+    background-color: #28a745; /* 明るい緑色 */
 }
-#management-form .btn-primary:hover {
-    background-color: var(--primary-hover-color);
+#holding-form .btn-primary:hover {
+    background-color: #218838;
 }
 
-#modal-cancel-button {
-    background-color: #6c757d;
+#holding-form-cancel-btn {
+    background-color: #6c757d; /* グレー */
 }
-#modal-cancel-button:hover {
+#holding-form-cancel-btn:hover {
     background-color: #5a6268;
 }
 

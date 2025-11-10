@@ -123,13 +123,6 @@ document.addEventListener('DOMContentLoaded', () => {
             createTextCell(stock.price);
             createTextCell(`${stock.change} (${stock.change_percent === 'N/A' ? 'N/A' : stock.change_percent + '%'})`);
             
-            // --- 保有銘柄の計算値を描画 ---
-            createTextCell(formatNumber(stock.market_value), getProfitClass(stock.profit_loss));
-            createTextCell(formatProfit(stock.profit_loss), getProfitClass(stock.profit_loss));
-            createTextCell(stock.profit_loss_rate !== null && stock.profit_loss_rate !== undefined ? `${stock.profit_loss_rate.toFixed(2)}%` : 'N/A', getProfitClass(stock.profit_loss_rate));
-            createTextCell(formatNumber(stock.estimated_annual_dividend));
-            // --------------------------------
-
             createTextCell(formatMarketCap(stock.market_cap));
             createTextCell(stock.per, getHighlightClass('per', stock.per));
             createTextCell(stock.pbr, getHighlightClass('pbr', stock.pbr));

@@ -118,15 +118,15 @@ def create_csv_data(data: list[dict]) -> str:
     output.write('\ufeff')  # BOM for Excel
     writer = csv.writer(output)
 
-    # ヘッダーを動的に決めるか、固定にするか。ここでは固定とする。
-    # 将来的に追加される項目もここに追加していく。
     headers = [
         "code", "name", "industry", "score", "price", "change", "change_percent",
-        "market_cap", "per", "pbr", "roe", "eps", "yield"
+        "market_cap", "per", "pbr", "roe", "eps", "yield",
+        "investment_amount", "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend"
     ]
     display_headers = [
         "銘柄コード", "銘柄名", "業種", "スコア", "現在株価", "前日比", "前日比(%)",
-        "時価総額(億円)", "PER(倍)", "PBR(倍)", "ROE(%)", "EPS(円)", "配当利回り(%)"
+        "時価総額(億円)", "PER(倍)", "PBR(倍)", "ROE(%)", "EPS(円)", "配当利回り(%)",
+        "投資額", "評価額", "損益", "損益率(%)", "年間配当金予想"
     ]
     writer.writerow(display_headers)
 
@@ -145,6 +145,34 @@ def create_csv_data(data: list[dict]) -> str:
         writer.writerow(row)
 
     return output.getvalue()
+
+def create_analysis_csv_data(data: list[dict]) -> str:
+    """
+    分析ページ用の銘柄データリストからCSV文字列を生成する。
+    """
+    if not data:
+        return ""
+
+    output = io.StringIO()
+    output.write('\ufeff')
+    writer = csv.writer(output)
+
+    headers = [
+        "code", "name", "industry", "quantity", "purchase_price", "price",
+        "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend"
+    ]
+    display_headers = [
+        "銘柄コード", "銘柄名", "業種", "数量", "取得単価", "現在株価",
+        "評価額", "損益", "損益率(%)", "年間配当"
+    ]
+    writer.writerow(display_headers)
+
+    for item in data:
+        row = [item.get(h, "") for h in headers]
+        writer.writerow(row)
+
+    return output.getvalue()
+
 
 if __name__ == '__main__':
     # --- テスト ---

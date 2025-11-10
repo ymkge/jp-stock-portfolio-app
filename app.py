@@ -231,3 +231,43 @@ async def download_csv():
     response = StreamingResponse(io.StringIO(csv_data), media_type="text/csv")
     response.headers["Content-Disposition"] = f"attachment; filename={filename}"
     return response
+
+
+@app.get("/api/portfolio/analysis")
+async def get_portfolio_analysis():
+    """保有銘柄の分析データを返す"""
+    all_stocks = await _get_processed_stock_data()
+    managed_stocks = [s for s in all_stocks if s.get("is_managed")]
+
+    industry_breakdown = {}
+    for stock in managed_stocks:
+        industry = stock.get("industry", "その他")
+        market_value = stock.get("market_value", 0)
+        if market_value is not None:
+            industry_breakdown[industry] = industry_breakdown.get(industry, 0) + market_value
+    
+    return {
+        "managed_stocks": managed_stocks,
+        "industry_breakdown": industry_breakdown,
+    }
+
+@app.get("/api/portfolio/analysis/csv")
+async def download_analysis_csv():
+    """分析ページの保有銘柄一覧をCSV形式でダウンロードする。"""
+    analysis_data = await get_portfolio_analysis()
+    managed_stocks = analysis_data.get("managed_stocks", [])
+    
+    if not managed_stocks:
+        return StreamingResponse(io.StringIO(""), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=portfolio_analysis.csv"})
+
+    csv_data = portfolio_manager.create_analysis_csv_data(managed_stocks)
+    
+    filename = f"portfolio_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    response = StreamingResponse(io.StringIO(csv_data), media_type="text/csv")
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    return response
+
+
+@app.get("/analysis", response_class=HTMLResponse)
+async def read_analysis(request: Request):
+    return templates.TemplateResponse("analysis.html", {"request": request})

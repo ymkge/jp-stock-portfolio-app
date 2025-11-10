@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ポートフォリオ分析</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=1.4">
+</head>
+<body>
+    <div class="container">
+        <!-- 将来的にはナビゲーションバーなどをここに配置 -->
+        <main class="main-content" style="width: 100%; padding: 1.5rem 2rem;">
+            <div id="alert-container"></div>
+            <header class="main-header">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>ポートフォリオ分析</h2>
+                    <a href="/" style="font-size: 1rem;">メインページに戻る</a>
+                </div>
+            </header>
+            
+            <section class="portfolio-summary">
+                <h3>サマリー</h3>
+                <!-- サマリー情報はここに表示 -->
+            </section>
+
+            <section class="portfolio-list">
+                <div class="table-container">
+                    <table id="analysis-table">
+                        <thead>
+                            <tr id="analysis-table-header-row">
+                                <!-- ヘッダーはJSで動的に生成 -->
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- データはJSで挿入されます -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="portfolio-actions">
+                <button id="download-analysis-csv-button">この一覧をCSVでダウンロード</button>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/js/analysis.js?v=1.4"></script>
+</body>
+</html>

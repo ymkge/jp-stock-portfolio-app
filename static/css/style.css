@@ -459,3 +459,21 @@ button {
 .text-minus {
     color: #dc3545; /* Red */
 }
+
+/* --- Navigation Link --- */
+.nav-link {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    background-color: #6c757d; /* secondary color */
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+    text-align: center;
+    box-sizing: border-box;
+    transition: background-color 0.3s;
+    font-size: 1rem;
+}
+.nav-link:hover {
+    background-color: #5a6268;
+}

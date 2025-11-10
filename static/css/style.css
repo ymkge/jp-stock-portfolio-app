@@ -348,3 +348,105 @@ button {
 .error-row a {
     color: var(--error-text) !important;
 }
+
+/* --- 保有情報管理モーダル --- */
+.hidden {
+    display: none !important;
+}
+
+#modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    transition: opacity 0.3s;
+}
+
+#management-modal {
+    background-color: var(--content-background-color);
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    width: 90%;
+    max-width: 500px;
+    z-index: 1001;
+    transform: translateY(-20px);
+    transition: transform 0.3s;
+}
+
+#modal-overlay:not(.hidden) #management-modal {
+    transform: translateY(0);
+}
+
+
+#modal-title {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+#management-form .form-group {
+    margin-bottom: 1rem;
+}
+
+#management-form label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: bold;
+}
+
+#management-form input[type="checkbox"] {
+    margin-right: 0.5rem;
+    vertical-align: middle;
+}
+
+#management-form input[type="number"] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 1rem;
+    box-sizing: border-box; /* paddingを含めてwidth 100%にする */
+}
+
+#management-form .form-actions {
+    margin-top: 2rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+}
+
+#management-form .btn-primary {
+    background-color: var(--primary-color);
+}
+#management-form .btn-primary:hover {
+    background-color: var(--primary-hover-color);
+}
+
+#modal-cancel-button {
+    background-color: #6c757d;
+}
+#modal-cancel-button:hover {
+    background-color: #5a6268;
+}
+
+/* 保有管理ボタン */
+.manage-btn {
+    padding: 5px 10px;
+    background-color: #17a2b8;
+    border: none;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+.manage-btn:hover {
+    background-color: #138496;
+}

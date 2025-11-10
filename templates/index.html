@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>国内株式ポートフォリオ</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=1.2">
+    <link rel="stylesheet" href="/static/css/style.css?v=1.3">
 </head>
 <body>
     <div class="container">
@@ -66,6 +66,7 @@
                                 <th class="sortable" data-key="eps">EPS</th>
                                 <th class="sortable" data-key="yield">配当利回り</th>
                                 <th class="sortable" data-key="consecutive_increase_years">連続増配(直近10年)</th>
+                                <th>保有管理</th>
                                 <th>操作</th>
                             </tr>
                         </thead>
@@ -78,6 +79,36 @@
         </main>
     </div>
 
-    <script src="/static/js/main.js?v=1.2"></script>
+    <!-- 保有情報管理モーダル -->
+    <div id="modal-overlay" class="hidden">
+        <div id="management-modal">
+            <h2 id="modal-title">保有情報管理</h2>
+            <form id="management-form">
+                <input type="hidden" id="modal-stock-code">
+                <div class="form-group">
+                    <label for="is-managed-checkbox">
+                        <input type="checkbox" id="is-managed-checkbox">
+                        この銘柄を保有銘柄として管理する
+                    </label>
+                </div>
+                <div id="managed-fields" class="hidden">
+                    <div class="form-group">
+                        <label for="purchase-price-input">取得単価</label>
+                        <input type="number" id="purchase-price-input" step="any" placeholder="例: 1500.5">
+                    </div>
+                    <div class="form-group">
+                        <label for="quantity-input">数量</label>
+                        <input type="number" id="quantity-input" step="1" placeholder="例: 100">
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">保存</button>
+                    <button type="button" id="modal-cancel-button">キャンセル</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js?v=1.3"></script>
 </body>
 </html>

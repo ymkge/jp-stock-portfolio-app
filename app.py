@@ -183,6 +183,31 @@ async def delete_stock(stock_code: str):
     portfolio_manager.delete_stocks([stock_code])
     return {"status": "success"}
 
+
+class StockManagementData(BaseModel):
+    is_managed: bool
+    purchase_price: float | None = None
+    quantity: int | None = None
+
+@app.put("/api/stocks/{code}/management")
+async def update_stock_management(code: str, data: StockManagementData):
+    logger.info(f"Received management update for code: {code} with data: {data.dict()}")
+    
+    # バリデーション: is_managedがtrueの場合、価格と数量が必要
+    if data.is_managed and (data.purchase_price is None or data.quantity is None):
+        raise HTTPException(
+            status_code=400,
+            detail="管理対象にする場合は、取得単価と数量の両方を指定する必要があります。"
+        )
+
+    success = portfolio_manager.update_stock(code, data.dict())
+
+    if success:
+        return {"status": "success", "message": f"銘柄 {code} の保有情報を更新しました。"}
+    else:
+        raise HTTPException(status_code=404, detail=f"銘柄コード {code} がポートフォリオに見つかりません。")
+
+
 @app.get("/api/stocks/csv")
 async def download_csv():
     """現在のポートフォリオをCSV形式でダウンロードする。"""

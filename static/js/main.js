@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const stockCodeInput = document.getElementById('stock-code-input');
     const tableHeaderRow = document.getElementById('table-header-row');
     const downloadCsvButton = document.getElementById('download-csv-button');
+    const refreshAllButton = document.getElementById('refresh-all-button'); // 追加
     const alertContainer = document.getElementById('alert-container');
     const selectAllStocksCheckbox = document.getElementById('select-all-stocks');
     const deleteSelectedStocksButton = document.getElementById('delete-selected-stocks-button');
@@ -419,11 +420,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const codesToDelete = Array.from(document.querySelectorAll('.stock-checkbox:checked')).map(cb => cb.dataset.code);
         if (codesToDelete.length === 0 || !confirm(`選択された ${codesToDelete.length} 件の銘柄を削除しますか？`)) return;
         try {
-            await fetch('/api/stocks/bulk-delete', {
+            const response = await fetch('/api/stocks/bulk-delete', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ codes: codesToDelete }),
             });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || '一括削除に失敗しました。');
+            }
             showAlert(`${codesToDelete.length} 件の銘柄を削除しました。`, 'success');
             // initialize() の代わりに部分更新
             stocksData = stocksData.filter(stock => !codesToDelete.includes(stock.code)); // stocksData から削除
@@ -433,6 +438,12 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             showAlert(error.message, 'danger');
         }
+    });
+
+    refreshAllButton.addEventListener('click', async () => { // 追加
+        showAlert('全銘柄のデータを更新しています...', 'info');
+        await initialize();
+        showAlert('全銘柄のデータを更新しました。', 'success');
     });
 
     // 新しいモーダルのイベントリスナー

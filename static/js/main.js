@@ -296,9 +296,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(errorData.detail || '保存に失敗しました。');
             }
             showAlert('保有情報を保存しました。', 'success');
-            await initialize(); // 全データを再読み込み
-            const updatedStock = stocksData.find(s => s.code === currentManagingCode);
-            if (updatedStock) renderHoldingsList(updatedStock.holdings);
+            // initialize() の代わりに部分更新
+            const updatedStockData = await fetch(`/api/stocks/${currentManagingCode}`).then(res => res.json());
+            if (updatedStockData && !updatedStockData.error) {
+                const index = stocksData.findIndex(s => s.code === currentManagingCode);
+                if (index !== -1) {
+                    stocksData[index] = updatedStockData; // stocksData を更新
+                }
+                renderHoldingsList(updatedStockData.holdings); // モーダル内の保有リストを更新
+                filterAndRender(); // メインテーブルを再描画
+            } else {
+                showAlert('更新された銘柄のデータ取得に失敗しました。', 'danger');
+                await initialize(); // フォールバックとして全更新
+            }
             hideHoldingForm();
         } catch (error) {
             showAlert(error.message, 'danger');
@@ -311,9 +321,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`/api/holdings/${holdingId}`, { method: 'DELETE' });
             if (!response.ok) throw new Error('削除に失敗しました。');
             showAlert('保有情報を削除しました。', 'success');
-            await initialize();
-            const updatedStock = stocksData.find(s => s.code === currentManagingCode);
-            if (updatedStock) renderHoldingsList(updatedStock.holdings);
+            // initialize() の代わりに部分更新
+            const updatedStockData = await fetch(`/api/stocks/${currentManagingCode}`).then(res => res.json());
+            if (updatedStockData && !updatedStockData.error) {
+                const index = stocksData.findIndex(s => s.code === currentManagingCode);
+                if (index !== -1) {
+                    stocksData[index] = updatedStockData; // stocksData を更新
+                }
+                renderHoldingsList(updatedStockData.holdings); // モーダル内の保有リストを更新
+                filterAndRender(); // メインテーブルを再描画
+            } else {
+                showAlert('更新された銘柄のデータ取得に失敗しました。', 'danger');
+                await initialize(); // フォールバックとして全更新
+            }
         } catch (error) {
             showAlert(error.message, 'danger');
         }
@@ -337,7 +357,24 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await response.json();
             showAlert(data.message, data.status === 'success' ? 'success' : (data.status === 'exists' ? 'warning' : 'danger'));
-            if (data.status === 'success') await initialize();
+            if (data.status === 'success') {
+                // initialize() の代わりに部分更新
+                // 新しく追加された銘柄のデータを取得
+                const newStockResponse = await fetch(`/api/stocks/${code}`);
+                const newStockData = await newStockResponse.json();
+
+                if (newStockResponse.ok && !newStockData.error) {
+                    stocksData.push(newStockData); // stocksData に追加
+                    // recentStocks も更新
+                    const recent = await fetch('/api/recent-stocks').then(res => res.json());
+                    renderRecentStocksList(recent);
+                    filterAndRender(); // テーブルを再描画
+                } else {
+                    // エラーの場合は、念のためinitialize()を呼び出すか、エラー表示を強化
+                    showAlert('追加された銘柄のデータ取得に失敗しました。', 'danger');
+                    await initialize(); // フォールバックとして全更新
+                }
+            }
             stockCodeInput.value = '';
         } catch (error) {
             showAlert('銘柄の追加中にエラーが発生しました。', 'danger');
@@ -388,9 +425,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ codes: codesToDelete }),
             });
             showAlert(`${codesToDelete.length} 件の銘柄を削除しました。`, 'success');
-            await initialize();
+            // initialize() の代わりに部分更新
+            stocksData = stocksData.filter(stock => !codesToDelete.includes(stock.code)); // stocksData から削除
+            filterAndRender(); // テーブルを再描画
+            selectAllStocksCheckbox.checked = false; // 全選択チェックボックスを解除
+            updateDeleteSelectedButtonState(); // 削除ボタンの状態を更新
         } catch (error) {
-            showAlert('一括削除に失敗しました。', 'danger');
+            showAlert(error.message, 'danger');
         }
     });
 

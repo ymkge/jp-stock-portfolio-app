@@ -148,6 +148,25 @@ async def get_recent_stocks():
 async def get_stocks():
     return await _get_processed_stock_data()
 
+@app.get("/api/stocks/{code}") # 新しいエンドポイント
+async def get_single_stock(code: str):
+    stock_info = portfolio_manager.get_stock_info(code) # portfolio.jsonから銘柄情報を取得
+    if not stock_info:
+        raise HTTPException(status_code=404, detail=f"銘柄コード {code} が見つかりません。")
+
+    scraped_data = await asyncio.to_thread(scraper.fetch_stock_data, code)
+    
+    if not scraped_data or "error" in scraped_data:
+        raise HTTPException(status_code=404, detail=scraped_data.get("error", f"銘柄 {code} のデータ取得に失敗しました。"))
+
+    merged_data = {**stock_info, **scraped_data}
+    merged_data["consecutive_increase_years"] = calculate_consecutive_dividend_increase(merged_data.get("dividend_history", {}))
+    score, details = calculate_score(merged_data)
+    merged_data["score"] = score
+    merged_data["score_details"] = details
+    
+    return merged_data
+
 @app.post("/api/stocks")
 async def add_stock_endpoint(stock: StockCode):
     is_added = portfolio_manager.add_stock(stock.code)

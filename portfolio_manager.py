@@ -3,7 +3,7 @@ import os
 import csv
 import io
 import uuid
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 PORTFOLIO_FILE = "portfolio.json"
 
@@ -102,6 +102,17 @@ def delete_stocks(codes_to_delete: List[str]):
     portfolio = load_portfolio()
     updated_portfolio = [stock for stock in portfolio if stock.get("code") not in codes_to_delete]
     save_portfolio(updated_portfolio)
+
+def get_stock_info(code: str) -> Optional[Dict[str, Any]]:
+    """
+    指定された銘柄コードのポートフォリオ情報を取得する。
+    見つからない場合はNoneを返す。
+    """
+    portfolio = load_portfolio()
+    for stock in portfolio:
+        if stock.get("code") == code:
+            return stock
+    return None
 
 def add_holding(code: str, holding_data: Dict[str, Any]) -> str:
     """

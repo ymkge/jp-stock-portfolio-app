@@ -6,11 +6,16 @@ from typing import Optional
 from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
 import logging
+from cachetools import cached, TTLCache # 追加
 
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 RETRY_DELAY = 2 # seconds
+
+# キャッシュの有効期限を1時間 (3600秒) に設定
+STOCK_DATA_CACHE = TTLCache(maxsize=128, ttl=3600)
+DIVIDEND_HISTORY_CACHE = TTLCache(maxsize=128, ttl=3600)
 
 def _make_request(url: str, headers: dict) -> Optional[requests.Response]:
     """指定されたURLに対してリトライ機能付きでリクエストを送信する"""
@@ -27,6 +32,7 @@ def _make_request(url: str, headers: dict) -> Optional[requests.Response]:
                 logger.error(f"リクエストに最終的に失敗しました: {url}", exc_info=True)
     return None
 
+@cached(cache=DIVIDEND_HISTORY_CACHE) # 追加
 def fetch_dividend_history(stock_code: str, num_years: int = 10) -> dict:
     """
     Yahoo!ファイナンスの配当ページから過去数年分の1株あたり配当を取得する。
@@ -72,6 +78,7 @@ def fetch_dividend_history(stock_code: str, num_years: int = 10) -> dict:
         logger.error(f"銘柄 {stock_code} の配当データ解析中にエラーが発生しました。", exc_info=True)
         return {}
 
+@cached(cache=STOCK_DATA_CACHE) # 追加
 def fetch_stock_data(stock_code: str, num_years_dividend: int = 10) -> Optional[dict]:
     """
     Yahoo!ファイナンスのページから株価情報と配当履歴を取得する。

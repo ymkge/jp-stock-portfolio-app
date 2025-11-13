@@ -12,3 +12,4 @@ venv/
 # OS-specific
 .DS_Store
 portfolio.json
+recent_stocks.json

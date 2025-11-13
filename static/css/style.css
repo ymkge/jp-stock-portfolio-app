@@ -17,12 +17,13 @@
     --error-bg: #f8d7da;
     --error-text: #721c24;
     --error-hover-bg: #f5c6cb;
+    --analysis-card-header-height: 65px; /* 分析ページ右カラムのヘッダー高さ */
 }
 
 body, html {
     margin: 0;
     padding: 0;
-    height: 100%;
+    /* height: 100%; を削除 */
     font-family: 'Helvetica Neue', Arial, sans-serif;
     background-color: var(--background-color);
     color: var(--text-color);
@@ -58,7 +59,7 @@ button {
 /* --- 全体レイアウト --- */
 .container {
     display: flex;
-    height: 100vh;
+    min-height: 100vh; /* height から min-height に変更 */
 }
 
 .sidebar {
@@ -74,9 +75,7 @@ button {
 
 .main-content {
     flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
+    /* display: flex; と flex-direction: column; を削除 */
 }
 
 /* --- サイドバー --- */
@@ -583,6 +582,7 @@ button {
 .analysis-container {
     display: flex;
     gap: 1.5rem;
+    /* align-items: flex-start; を削除 */
 }
 
 .analysis-left-column {
@@ -590,6 +590,8 @@ button {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    position: sticky;
+    top: 1.5rem; /* main-contentのpadding-topに合わせる */
 }
 
 .analysis-right-column {
@@ -599,10 +601,8 @@ button {
     min-width: 0; /* flexアイテムの縮小問題を回避 */
 }
 
-.analysis-right-column .portfolio-list {
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
+.analysis-right-column .portfolio-list.card {
+    padding: 0;
 }
 
 .card {
@@ -675,7 +675,23 @@ button {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
+    
+    /* 固定表示のためのスタイル */
+    position: sticky;
+    top: 1.5rem; /* main-contentのpadding-topに合わせる */
+    background-color: var(--content-background-color);
+    z-index: 2;
+
+    /* 高さとパディング */
+    height: var(--analysis-card-header-height);
+    padding: 0 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    box-sizing: border-box;
+}
+
+.card-header h3 {
+    border-bottom: none;
+    margin-bottom: 0;
 }
 
 #download-analysis-csv-button {
@@ -693,13 +709,12 @@ button {
     background-color: #2785c4;
 }
 
-/* テーブルコンテナに高さを設定してスクロールを有効化 */
+/* テーブルコンテナのスタイルを調整 */
 .portfolio-list .table-container {
-    flex-grow: 1; /* flexコンテナ内で残りの高さをすべて使用 */
-    overflow-y: auto;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    min-height: 0; /* 高さが無限に伸びるのを防ぐ */
+    overflow-y: visible;
+    border: none;
+    border-radius: 0;
+    padding: 0; /* テーブルがカード幅いっぱいに広がるように */
 }
 
 #analysis-table {
@@ -714,11 +729,23 @@ button {
     white-space: nowrap;
 }
 
+/* テーブルの左右のセルにだけpaddingを追加 */
+#analysis-table th:first-child,
+#analysis-table td:first-child {
+    padding-left: 1.5rem;
+}
+#analysis-table th:last-child,
+#analysis-table td:last-child {
+    padding-right: 1.5rem;
+}
+
+
 /* テーブルヘッダーを固定 */
 #analysis-table thead th {
     position: sticky;
-    top: 0;
-    background-color: var(--header-bg-color, #f1f3f5); /* 変数がなければフォールバック */
+    /* card-header の下に固定 */
+    top: calc(1.5rem + var(--analysis-card-header-height)); 
+    background-color: var(--header-bg-color, #f1f3f5);
     z-index: 1;
 }
 

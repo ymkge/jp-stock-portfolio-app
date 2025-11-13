@@ -651,3 +651,59 @@ button {
     border-color: var(--primary-color);
     font-weight: bold;
 }
+
+/* --- Analysis Page Improvements --- */
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+#download-analysis-csv-button {
+    background-color: #36A2EB; /* Chart.js の青に合わせる */
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 5px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+#download-analysis-csv-button:hover {
+    background-color: #2785c4;
+}
+
+/* テーブルコンテナに高さを設定してスクロールを有効化 */
+.portfolio-list .table-container {
+    max-height: 600px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+#analysis-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+#analysis-table th, #analysis-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    text-align: left;
+    white-space: nowrap;
+}
+
+/* テーブルヘッダーを固定 */
+#analysis-table thead th {
+    position: sticky;
+    top: 0;
+    background-color: var(--header-bg-color, #f1f3f5); /* 変数がなければフォールバック */
+    z-index: 1;
+}
+
+/* テーブル行のホーバー効果 */
+#analysis-table tbody tr:hover {
+    background-color: #f5f5f5;
+}

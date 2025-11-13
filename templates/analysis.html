@@ -39,7 +39,10 @@
             </div>
 
             <section class="portfolio-list card">
-                <h3>保有銘柄一覧</h3>
+                <div class="card-header">
+                    <h3>保有銘柄一覧</h3>
+                    <button id="download-analysis-csv-button">この一覧をCSVでダウンロード</button>
+                </div>
                 <div class="table-container">
                     <table id="analysis-table">
                         <thead>
@@ -51,9 +54,6 @@
                             <!-- データはJSで挿入されます -->
                         </tbody>
                     </table>
-                </div>
-                <div class="portfolio-actions" style="margin-top: 1rem;">
-                    <button id="download-analysis-csv-button">この一覧をCSVでダウンロード</button>
                 </div>
             </section>
         </main>

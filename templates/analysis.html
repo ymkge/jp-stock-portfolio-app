@@ -19,43 +19,46 @@
                 </div>
             </header>
             
-            <div class="analysis-grid">
-                <section class="portfolio-summary card">
-                    <h3>サマリー</h3>
-                    <!-- サマリー情報はここに表示 -->
-                </section>
-
-                <section class="portfolio-chart card">
-                    <h3>ポートフォリオ構成</h3>
-                    <div class="chart-controls">
-                        <button class="chart-toggle-btn active" data-chart-type="industry">業種別</button>
-                        <button class="chart-toggle-btn" data-chart-type="account-type">口座種別</button>
-                    </div>
-                    <div class="chart-container">
-                        <canvas id="industry-chart"></canvas>
-                        <canvas id="account-type-chart" class="hidden"></canvas>
-                    </div>
-                </section>
+            <div class="analysis-container">
+                <div class="analysis-left-column">
+                    <section class="portfolio-summary card">
+                        <h3>サマリー</h3>
+                        <!-- サマリー情報はここに表示 -->
+                    </section>
+    
+                    <section class="portfolio-chart card">
+                        <h3>ポートフォリオ構成</h3>
+                        <div class="chart-controls">
+                            <button class="chart-toggle-btn active" data-chart-type="industry">業種別</button>
+                            <button class="chart-toggle-btn" data-chart-type="account-type">口座種別</button>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="industry-chart"></canvas>
+                            <canvas id="account-type-chart" class="hidden"></canvas>
+                        </div>
+                    </section>
+                </div>
+                <div class="analysis-right-column">
+                    <section class="portfolio-list card">
+                        <div class="card-header">
+                            <h3>保有銘柄一覧</h3>
+                            <button id="download-analysis-csv-button">この一覧をCSVでダウンロード</button>
+                        </div>
+                        <div class="table-container">
+                            <table id="analysis-table">
+                                <thead>
+                                    <tr id="analysis-table-header-row">
+                                        <!-- ヘッダーはJSで動的に生成 -->
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- データはJSで挿入されます -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
             </div>
-
-            <section class="portfolio-list card">
-                <div class="card-header">
-                    <h3>保有銘柄一覧</h3>
-                    <button id="download-analysis-csv-button">この一覧をCSVでダウンロード</button>
-                </div>
-                <div class="table-container">
-                    <table id="analysis-table">
-                        <thead>
-                            <tr id="analysis-table-header-row">
-                                <!-- ヘッダーはJSで動的に生成 -->
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- データはJSで挿入されます -->
-                        </tbody>
-                    </table>
-                </div>
-            </section>
         </main>
     </div>
 

@@ -580,11 +580,29 @@ button {
 
 
 /* --- Analysis Page --- */
-.analysis-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+.analysis-container {
+    display: flex;
     gap: 1.5rem;
-    margin-bottom: 1.5rem;
+}
+
+.analysis-left-column {
+    flex: 0 0 420px; /* grow, shrink, basis */
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.analysis-right-column {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-width: 0; /* flexアイテムの縮小問題を回避 */
+}
+
+.analysis-right-column .portfolio-list {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
 }
 
 .card {
@@ -677,10 +695,11 @@ button {
 
 /* テーブルコンテナに高さを設定してスクロールを有効化 */
 .portfolio-list .table-container {
-    max-height: 600px;
+    flex-grow: 1; /* flexコンテナ内で残りの高さをすべて使用 */
     overflow-y: auto;
     border: 1px solid #ddd;
     border-radius: 5px;
+    min-height: 0; /* 高さが無限に伸びるのを防ぐ */
 }
 
 #analysis-table {

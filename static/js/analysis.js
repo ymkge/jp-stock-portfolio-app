@@ -123,9 +123,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const backgroundColors = [
-            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40',
-            '#E7E9ED', '#8A2BE2', '#5F9EA0', '#D2691E', '#FF7F50', '#6495ED',
-            '#DAA520', '#ADFF2F', '#F08080', '#20B2AA', '#87CEEB', '#7B68EE'
+            '#332288', '#117733', '#44AA99', '#88CCEE', '#DDCC77', '#CC6677', '#AA4499', 
+            '#882255', '#E51E1E', '#6699CC', '#F77F00', '#994F00', '#33FF00', '#00FFCC',
+            '#0099FF', '#6600FF', '#CC00FF', '#FF00CC', '#FF0066', '#FF3300', '#FF9900',
+            '#FFFF00', '#99FF00', '#00FF00', '#00FF99', '#00FFFF', '#0066FF', '#3300FF',
+            '#9900FF', '#FF00FF'
         ];
 
         chartInstance = new Chart(ctx, {

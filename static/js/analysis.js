@@ -7,8 +7,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const industryChartCanvas = document.getElementById('industry-chart');
     const accountTypeChartCanvas = document.getElementById('account-type-chart');
     const chartToggleButtons = document.querySelectorAll('.chart-toggle-btn');
-    const tableHeader = document.querySelector('#analysis-table thead tr');
-    const tableBody = document.querySelector('#analysis-table tbody');
     const downloadCsvButton = document.getElementById('download-analysis-csv-button');
 
     // --- グローバル変数 ---
@@ -180,7 +178,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderTable(holdings) {
-        tableHeader.innerHTML = '';
+        const table = document.getElementById('analysis-table');
+        if (!table) return;
+
+        // a. thead と tbody を完全に作り直す
+        // 既存の thead と tbody を削除
+        if (table.tHead) {
+            table.tHead.remove();
+        }
+        // table.tBodies は HTMLCollection なので逆順ループで安全に削除
+        while (table.tBodies.length > 0) {
+            table.tBodies[0].remove();
+        }
+
+        // b. thead を新規作成
+        const thead = table.createTHead();
+        const headerRow = thead.insertRow();
+        headerRow.id = 'analysis-table-header-row';
+
         const headers = [
             { key: 'code', name: '銘柄コード' }, { key: 'name', name: '銘柄名' },
             { key: 'account_type', name: '口座種別' }, { key: 'industry', name: '業種' },
@@ -192,35 +207,39 @@ document.addEventListener('DOMContentLoaded', () => {
         headers.forEach(h => {
             const th = document.createElement('th');
             th.textContent = h.name;
-            tableHeader.appendChild(th);
+            headerRow.appendChild(th);
         });
 
-        tableBody.innerHTML = '';
+        // c. tbody を新規作成
+        const tbody = table.createTBody();
         if (!holdings || holdings.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="${headers.length}" style="text-align:center;">データがありません。</td></tr>`;
-            return;
+            const row = tbody.insertRow();
+            const cell = row.insertCell();
+            cell.colSpan = headers.length;
+            cell.textContent = 'データがありません。';
+            cell.style.textAlign = 'center';
+        } else {
+            holdings.forEach(holding => {
+                const row = tbody.insertRow();
+                const createTextCell = (text, className = '') => {
+                    const cell = row.insertCell();
+                    cell.textContent = text;
+                    if (className) cell.className = className;
+                    return cell;
+                };
+                createTextCell(holding.code);
+                createTextCell(holding.name);
+                createTextCell(holding.account_type);
+                createTextCell(holding.industry);
+                createTextCell(formatNumber(holding.quantity));
+                createTextCell(formatNumber(holding.purchase_price, 2));
+                createTextCell(formatNumber(holding.price));
+                createTextCell(formatNumber(holding.market_value));
+                createTextCell(formatProfit(holding.profit_loss), getProfitClass(holding.profit_loss));
+                createTextCell(holding.profit_loss_rate !== null ? `${holding.profit_loss_rate.toFixed(2)}%` : 'N/A', getProfitClass(holding.profit_loss_rate));
+                createTextCell(formatNumber(holding.estimated_annual_dividend));
+            });
         }
-
-        holdings.forEach(holding => {
-            const row = tableBody.insertRow();
-            const createTextCell = (text, className = '') => {
-                const cell = row.insertCell();
-                cell.textContent = text;
-                if (className) cell.className = className;
-                return cell;
-            };
-            createTextCell(holding.code);
-            createTextCell(holding.name);
-            createTextCell(holding.account_type);
-            createTextCell(holding.industry);
-            createTextCell(formatNumber(holding.quantity));
-            createTextCell(formatNumber(holding.purchase_price, 2));
-            createTextCell(formatNumber(holding.price));
-            createTextCell(formatNumber(holding.market_value));
-            createTextCell(formatProfit(holding.profit_loss), getProfitClass(holding.profit_loss));
-            createTextCell(holding.profit_loss_rate !== null ? `${holding.profit_loss_rate.toFixed(2)}%` : 'N/A', getProfitClass(holding.profit_loss_rate));
-            createTextCell(formatNumber(holding.estimated_annual_dividend));
-        });
     }
 
     // --- イベントリスナー ---

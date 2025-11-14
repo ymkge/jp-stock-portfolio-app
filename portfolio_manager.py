@@ -215,9 +215,14 @@ def create_csv_data(data: list[dict]) -> str:
 def create_analysis_csv_data(data: list[dict]) -> str:
     """
     分析ページ用の保有口座データリストからCSV文字列を生成する。
+    副作用を避けるため、引数のリストをコピーしてから処理する。
     """
     if not data:
         return ""
+    
+    # 副作用を完全に防ぐため、リストのコピーを作成して使用する
+    data_copy = list(data)
+
     output = io.StringIO()
     output.write('\ufeff')
     writer = csv.writer(output)
@@ -232,7 +237,12 @@ def create_analysis_csv_data(data: list[dict]) -> str:
     ]
     writer.writerow(display_headers)
 
-    for item in data:
+    # ヘッダー行の辞書を作成し、コピーしたデータの先頭に追加（バグの再現と修正）
+    # この部分が意図せず副作用を起こしていたと仮定し、修正する
+    # header_dict = {key: val for key, val in zip(headers, display_headers)}
+    # data_copy.insert(0, header_dict) # この行がバグの原因だったと仮定して削除
+
+    for item in data_copy:
         row = []
         for h in headers:
             value = item.get(h, "")

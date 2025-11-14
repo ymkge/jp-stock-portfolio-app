@@ -178,69 +178,64 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderTable(holdings) {
-        const table = document.getElementById('analysis-table');
-        if (!table) return;
+    const table = document.getElementById('analysis-table');
+    if (!table) return;
 
-        // a. thead と tbody を完全に作り直す
-        // 既存の thead と tbody を削除
-        if (table.tHead) {
-            table.tHead.remove();
-        }
-        // table.tBodies は HTMLCollection なので逆順ループで安全に削除
-        while (table.tBodies.length > 0) {
-            table.tBodies[0].remove();
-        }
+    // ─── ここでテーブルを完全にクリア ───
+    // 既存の thead/tbody/tr がどんな構造でも確実に消えるので、
+    // ヘッダーがデータ行の間に挿入される問題を防げます。
+    table.innerHTML = '';
 
-        // b. thead を新規作成
-        const thead = table.createTHead();
-        const headerRow = thead.insertRow();
-        headerRow.id = 'analysis-table-header-row';
+    // thead を新規作成
+    const thead = table.createTHead();
+    const headerRow = thead.insertRow();
+    headerRow.id = 'analysis-table-header-row';
 
-        const headers = [
-            { key: 'code', name: '銘柄コード' }, { key: 'name', name: '銘柄名' },
-            { key: 'account_type', name: '口座種別' }, { key: 'industry', name: '業種' },
-            { key: 'quantity', name: '数量' }, { key: 'purchase_price', name: '取得単価' },
-            { key: 'price', name: '現在株価' }, { key: 'market_value', name: '評価額' },
-            { key: 'profit_loss', name: '損益' }, { key: 'profit_loss_rate', name: '損益率(%)' },
-            { key: 'estimated_annual_dividend', name: '年間配当' }
-        ];
-        headers.forEach(h => {
-            const th = document.createElement('th');
-            th.textContent = h.name;
-            headerRow.appendChild(th);
-        });
+    const headers = [
+        { key: 'code', name: '銘柄コード' }, { key: 'name', name: '銘柄名' },
+        { key: 'account_type', name: '口座種別' }, { key: 'industry', name: '業種' },
+        { key: 'quantity', name: '数量' }, { key: 'purchase_price', name: '取得単価' },
+        { key: 'price', name: '現在株価' }, { key: 'market_value', name: '評価額' },
+        { key: 'profit_loss', name: '損益' }, { key: 'profit_loss_rate', name: '損益率(%)' },
+        { key: 'estimated_annual_dividend', name: '年間配当' }
+    ];
+    headers.forEach(h => {
+        const th = document.createElement('th');
+        th.textContent = h.name;
+        headerRow.appendChild(th);
+    });
 
-        // c. tbody を新規作成
-        const tbody = table.createTBody();
-        if (!holdings || holdings.length === 0) {
+    // tbody を新規作成
+    const tbody = table.createTBody();
+    if (!holdings || holdings.length === 0) {
+        const row = tbody.insertRow();
+        const cell = row.insertCell();
+        cell.colSpan = headers.length;
+        cell.textContent = 'データがありません。';
+        cell.style.textAlign = 'center';
+    } else {
+        holdings.forEach(holding => {
             const row = tbody.insertRow();
-            const cell = row.insertCell();
-            cell.colSpan = headers.length;
-            cell.textContent = 'データがありません。';
-            cell.style.textAlign = 'center';
-        } else {
-            holdings.forEach(holding => {
-                const row = tbody.insertRow();
-                const createTextCell = (text, className = '') => {
-                    const cell = row.insertCell();
-                    cell.textContent = text;
-                    if (className) cell.className = className;
-                    return cell;
-                };
-                createTextCell(holding.code);
-                createTextCell(holding.name);
-                createTextCell(holding.account_type);
-                createTextCell(holding.industry);
-                createTextCell(formatNumber(holding.quantity));
-                createTextCell(formatNumber(holding.purchase_price, 2));
-                createTextCell(formatNumber(holding.price));
-                createTextCell(formatNumber(holding.market_value));
-                createTextCell(formatProfit(holding.profit_loss), getProfitClass(holding.profit_loss));
-                createTextCell(holding.profit_loss_rate !== null ? `${holding.profit_loss_rate.toFixed(2)}%` : 'N/A', getProfitClass(holding.profit_loss_rate));
-                createTextCell(formatNumber(holding.estimated_annual_dividend));
-            });
-        }
+            const createTextCell = (text, className = '') => {
+                const cell = row.insertCell();
+                cell.textContent = text;
+                if (className) cell.className = className;
+                return cell;
+            };
+            createTextCell(holding.code);
+            createTextCell(holding.name);
+            createTextCell(holding.account_type);
+            createTextCell(holding.industry);
+            createTextCell(formatNumber(holding.quantity));
+            createTextCell(formatNumber(holding.purchase_price, 2));
+            createTextCell(formatNumber(holding.price));
+            createTextCell(formatNumber(holding.market_value));
+            createTextCell(formatProfit(holding.profit_loss), getProfitClass(holding.profit_loss));
+            createTextCell(holding.profit_loss_rate !== null ? `${holding.profit_loss_rate.toFixed(2)}%` : 'N/A', getProfitClass(holding.profit_loss_rate));
+            createTextCell(formatNumber(holding.estimated_annual_dividend));
+        });
     }
+}
 
     // --- イベントリスナー ---
     downloadCsvButton.addEventListener('click', () => {

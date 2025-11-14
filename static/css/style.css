@@ -582,7 +582,7 @@ button {
 .analysis-container {
     display: flex;
     gap: 1.5rem;
-    align-items: flex-start; /* stickyが機能するように、flexアイテムの高さをコンテンツに合わせる */
+    /* align-items: flex-start; を削除 */
 }
 
 .analysis-left-column {

@@ -181,16 +181,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const table = document.getElementById('analysis-table');
     if (!table) return;
 
-    // ─── ここでテーブルを完全にクリア ───
-    // 既存の thead/tbody/tr がどんな構造でも確実に消えるので、
-    // ヘッダーがデータ行の間に挿入される問題を防げます。
-    table.innerHTML = '';
-
-    // thead を新規作成
-    const thead = table.createTHead();
-    const headerRow = thead.insertRow();
-    headerRow.id = 'analysis-table-header-row';
-
     const headers = [
         { key: 'code', name: '銘柄コード' }, { key: 'name', name: '銘柄名' },
         { key: 'account_type', name: '口座種別' }, { key: 'industry', name: '業種' },
@@ -199,42 +189,47 @@ document.addEventListener('DOMContentLoaded', () => {
         { key: 'profit_loss', name: '損益' }, { key: 'profit_loss_rate', name: '損益率(%)' },
         { key: 'estimated_annual_dividend', name: '年間配当' }
     ];
-    headers.forEach(h => {
-        const th = document.createElement('th');
-        th.textContent = h.name;
-        headerRow.appendChild(th);
-    });
 
-    // tbody を新規作成
-    const tbody = table.createTBody();
+    // ヘッダーのHTML文字列を生成
+    const headerHtml = `
+        <thead>
+            <tr id="analysis-table-header-row">
+                ${headers.map(h => `<th>${h.name}</th>`).join('')}
+            </tr>
+        </thead>
+    `;
+
+    // ボディのHTML文字列を生成
+    let bodyHtml;
     if (!holdings || holdings.length === 0) {
-        const row = tbody.insertRow();
-        const cell = row.insertCell();
-        cell.colSpan = headers.length;
-        cell.textContent = 'データがありません。';
-        cell.style.textAlign = 'center';
+        bodyHtml = `
+            <tbody>
+                <tr>
+                    <td colspan="${headers.length}" style="text-align: center;">データがありません。</td>
+                </tr>
+            </tbody>
+        `;
     } else {
-        holdings.forEach(holding => {
-            const row = tbody.insertRow();
-            const createTextCell = (text, className = '') => {
-                const cell = row.insertCell();
-                cell.textContent = text;
-                if (className) cell.className = className;
-                return cell;
-            };
-            createTextCell(holding.code);
-            createTextCell(holding.name);
-            createTextCell(holding.account_type);
-            createTextCell(holding.industry);
-            createTextCell(formatNumber(holding.quantity));
-            createTextCell(formatNumber(holding.purchase_price, 2));
-            createTextCell(formatNumber(holding.price));
-            createTextCell(formatNumber(holding.market_value));
-            createTextCell(formatProfit(holding.profit_loss), getProfitClass(holding.profit_loss));
-            createTextCell(holding.profit_loss_rate !== null ? `${holding.profit_loss_rate.toFixed(2)}%` : 'N/A', getProfitClass(holding.profit_loss_rate));
-            createTextCell(formatNumber(holding.estimated_annual_dividend));
-        });
+        const rowsHtml = holdings.map(holding => `
+            <tr>
+                <td>${holding.code || 'N/A'}</td>
+                <td>${holding.name || 'N/A'}</td>
+                <td>${holding.account_type || 'N/A'}</td>
+                <td>${holding.industry || 'N/A'}</td>
+                <td>${formatNumber(holding.quantity)}</td>
+                <td>${formatNumber(holding.purchase_price, 2)}</td>
+                <td>${formatNumber(holding.price)}</td>
+                <td>${formatNumber(holding.market_value)}</td>
+                <td class="${getProfitClass(holding.profit_loss)}">${formatProfit(holding.profit_loss)}</td>
+                <td class="${getProfitClass(holding.profit_loss_rate)}">${holding.profit_loss_rate !== null ? `${holding.profit_loss_rate.toFixed(2)}%` : 'N/A'}</td>
+                <td>${formatNumber(holding.estimated_annual_dividend)}</td>
+            </tr>
+        `).join('');
+        bodyHtml = `<tbody>${rowsHtml}</tbody>`;
     }
+
+    // テーブル全体を一度に更新
+    table.innerHTML = headerHtml + bodyHtml;
 }
 
     // --- イベントリスナー ---

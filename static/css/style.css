@@ -676,11 +676,11 @@ button {
     justify-content: space-between;
     align-items: center;
     
-    /* 固定表示のためのスタイル */
-    position: sticky;
-    top: 1.5rem; /* main-contentのpadding-topに合わせる */
+    /* 固定表示のためのスタイルを解除 */
+    /* position: sticky; */
+    /* top: 1.5rem; */
     background-color: var(--content-background-color);
-    z-index: 2;
+    /* z-index: 2; */
 
     /* 高さとパディング */
     height: var(--analysis-card-header-height);
@@ -741,12 +741,15 @@ button {
 
 
 /* テーブルヘッダーを固定 */
-#analysis-table thead th {
+#analysis-table thead {
     position: sticky;
-    /* card-header の下に固定 */
-    top: calc(1.5rem + var(--analysis-card-header-height)); 
-    background-color: var(--header-bg-color, #f1f3f5);
+    top: 0;
     z-index: 1;
+}
+
+#analysis-table thead th {
+    /* theadに移動したため、個別のthからはsticky指定を削除 */
+    background-color: var(--header-bg-color, #f1f3f5);
 }
 
 /* テーブル行のホーバー効果 */

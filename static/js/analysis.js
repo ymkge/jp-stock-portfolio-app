@@ -9,6 +9,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const chartToggleButtons = document.querySelectorAll('.chart-toggle-btn');
     const downloadCsvButton = document.getElementById('download-analysis-csv-button');
     const analysisTable = document.getElementById('analysis-table');
+    const filterInput = document.getElementById('analysis-filter-input');
+    const visibilityToggle = document.getElementById('toggle-visibility'); // 追加
 
     // --- グローバル変数 ---
     let industryChartInstance = null;
@@ -21,23 +23,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- ヘルパー関数 ---
     const formatNumber = (num, fractionDigits = 0) => {
         if (num === null || num === undefined) return 'N/A';
+        if (visibilityToggle.checked) return '***'; // 変更
         return num.toLocaleString(undefined, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
     };
 
     const formatProfit = (num) => {
         if (num === null || num === undefined) return 'N/A';
+        if (visibilityToggle.checked) return '***'; // 変更
         const sign = num > 0 ? '+' : '';
-        return sign + formatNumber(num);
+        return sign + num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     };
 
     const getProfitClass = (num) => {
-        if (num === null || num === undefined) return '';
+        if (visibilityToggle.checked || num === null || num === undefined) return ''; // 変更
         if (num > 0) return 'text-plus';
         if (num < 0) return 'text-minus';
         return '';
     };
 
-    // --- ソート関連 ---
+    // --- ソートとフィルタリング関連 ---
     function sortData(data) {
         data.sort((a, b) => {
             let valA = a[currentSort.key], valB = b[currentSort.key];
@@ -70,6 +74,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- データ取得と描画 ---
     async function initialize() {
         try {
+            visibilityToggle.checked = true; // 初期状態は隠す
+
             const response = await fetch('/api/portfolio/analysis');
             if (!response.ok) {
                 throw new Error('分析データの取得に失敗しました。');
@@ -81,8 +87,8 @@ document.addEventListener('DOMContentLoaded', () => {
             accountTypeBreakdownData = data.account_type_breakdown;
 
             renderSummary(allHoldingsData);
-            renderChart('industry'); // 初期表示は業種別グラフ
-            renderTableAndApplySort();
+            renderChart('industry');
+            filterAndRenderTable();
 
         } catch (error) {
             console.error('Error initializing analysis page:', error);
@@ -90,9 +96,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    function renderTableAndApplySort() {
-        sortData(allHoldingsData);
-        renderTable(allHoldingsData);
+    function filterAndRenderTable() {
+        const filterText = filterInput.value.toLowerCase();
+        let filteredData = allHoldingsData;
+
+        if (filterText) {
+            filteredData = allHoldingsData.filter(holding =>
+                String(holding.code).toLowerCase().includes(filterText) ||
+                String(holding.name || '').toLowerCase().includes(filterText)
+            );
+        }
+        
+        sortData(filteredData);
+        renderTable(filteredData);
         updateSortHeaders();
     }
 
@@ -108,6 +124,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalProfitLossRate = totalInvestment !== 0 ? (totalProfitLoss / totalInvestment) * 100 : 0;
         const totalAnnualDividend = holdings.reduce((sum, h) => sum + (h.estimated_annual_dividend || 0), 0);
 
+        const profitLossRateText = visibilityToggle.checked ? '***' : `(${totalProfitLossRate.toFixed(2)}%)`;
+
         summarySection.innerHTML = `
             <ul>
                 <li><strong>口座別保有銘柄件数:</strong> ${holdings.length}</li>
@@ -115,7 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <li><strong>総評価額:</strong> ${formatNumber(totalMarketValue)}円</li>
                 <li class="${getProfitClass(totalProfitLoss)}">
                     <strong>総損益:</strong> ${formatProfit(totalProfitLoss)}円
-                    (${totalProfitLossRate.toFixed(2)}%)
+                    ${profitLossRateText}
                 </li>
                 <li><strong>年間配当金（予想）:</strong> ${formatNumber(totalAnnualDividend)}円</li>
             </ul>
@@ -123,34 +141,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderChart(chartType) {
-        // 既存のチャートを破棄
         if (industryChartInstance) industryChartInstance.destroy();
         if (accountTypeChartInstance) accountTypeChartInstance.destroy();
 
-        // canvasの表示/非表示を切り替え
         industryChartCanvas.classList.toggle('hidden', chartType !== 'industry');
         accountTypeChartCanvas.classList.toggle('hidden', chartType !== 'account-type');
 
-        let labels = [];
-        let data = [];
-        let title = '';
-        let ctx = null;
-        let chartInstance = null;
-
+        let labels, data, title, ctx;
         if (chartType === 'industry') {
             labels = Object.keys(industryBreakdownData);
             data = Object.values(industryBreakdownData);
             title = '業種別ポートフォリオ構成';
             ctx = industryChartCanvas.getContext('2d');
-            chartInstance = industryChartInstance;
-        } else if (chartType === 'account-type') {
+        } else {
             labels = Object.keys(accountTypeBreakdownData);
             data = Object.values(accountTypeBreakdownData);
             title = '口座種別ポートフォリオ構成';
             ctx = accountTypeChartCanvas.getContext('2d');
-            chartInstance = accountTypeChartInstance;
-        } else {
-            return;
         }
 
         if (!data || data.length === 0) {
@@ -158,48 +165,23 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const backgroundColors = [
-            '#332288', '#117733', '#44AA99', '#88CCEE', '#DDCC77', '#CC6677', '#AA4499', 
-            '#882255', '#E51E1E', '#6699CC', '#F77F00', '#994F00', '#33FF00', '#00FFCC',
-            '#0099FF', '#6600FF', '#CC00FF', '#FF00CC', '#FF0066', '#FF3300', '#FF9900',
-            '#FFFF00', '#99FF00', '#00FF00', '#00FF99', '#00FFFF', '#0066FF', '#3300FF',
-            '#9900FF', '#FF00FF'
-        ];
+        const backgroundColors = ['#332288', '#117733', '#44AA99', '#88CCEE', '#DDCC77', '#CC6677', '#AA4499', '#882255', '#E51E1E', '#6699CC', '#F77F00', '#994F00', '#33FF00', '#00FFCC', '#0099FF', '#6600FF', '#CC00FF', '#FF00CC', '#FF0066', '#FF3300', '#FF9900', '#FFFF00', '#99FF00', '#00FF00', '#00FF99', '#00FFFF', '#0066FF', '#3300FF', '#9900FF', '#FF00FF'];
 
-        chartInstance = new Chart(ctx, {
+        const chartInstance = new Chart(ctx, {
             type: 'pie',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: '評価額',
-                    data: data,
-                    backgroundColor: backgroundColors.slice(0, labels.length),
-                    borderColor: '#fff',
-                    borderWidth: 1
-                }]
-            },
+            data: { labels, datasets: [{ label: '評価額', data, backgroundColor: backgroundColors.slice(0, labels.length), borderColor: '#fff', borderWidth: 1 }] },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
+                responsive: true, maintainAspectRatio: false,
                 plugins: {
-                    title: {
-                        display: true,
-                        text: title,
-                        font: { size: 16 }
-                    },
-                    legend: {
-                        position: 'top',
-                    },
+                    title: { display: true, text: title, font: { size: 16 } },
+                    legend: { position: 'top' },
                     tooltip: {
                         callbacks: {
-                            label: function(context) {
+                            label: (context) => {
+                                if (visibilityToggle.checked) return `${context.label}: ***`;
                                 let label = context.label || '';
-                                if (label) {
-                                    label += ': ';
-                                }
-                                if (context.parsed !== null) {
-                                    label += formatNumber(context.parsed) + '円';
-                                }
+                                if (label) label += ': ';
+                                if (context.parsed !== null) label += formatNumber(context.parsed) + '円';
                                 return label;
                             }
                         }
@@ -208,11 +190,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        if (chartType === 'industry') {
-            industryChartInstance = chartInstance;
-        } else {
-            accountTypeChartInstance = chartInstance;
-        }
+        if (chartType === 'industry') industryChartInstance = chartInstance;
+        else accountTypeChartInstance = chartInstance;
     }
 
     function renderTable(holdings) {
@@ -228,27 +207,15 @@ document.addEventListener('DOMContentLoaded', () => {
             { key: 'estimated_annual_dividend', name: '年間配当' }
         ];
 
-        // ヘッダーのHTML文字列を生成
-        const headerHtml = `
-            <thead>
-                <tr id="analysis-table-header-row">
-                    ${headers.map(h => `<th class="sortable" data-key="${h.key}">${h.name}</th>`).join('')}
-                </tr>
-            </thead>
-        `;
+        const headerHtml = `<thead><tr id="analysis-table-header-row">${headers.map(h => `<th class="sortable" data-key="${h.key}">${h.name}</th>`).join('')}</tr></thead>`;
 
-        // ボディのHTML文字列を生成
         let bodyHtml;
         if (!holdings || holdings.length === 0) {
-            bodyHtml = `
-                <tbody>
-                    <tr>
-                        <td colspan="${headers.length}" style="text-align: center;">データがありません。</td>
-                    </tr>
-                </tbody>
-            `;
+            bodyHtml = `<tbody><tr><td colspan="${headers.length}" style="text-align: center;">データがありません。</td></tr></tbody>`;
         } else {
-            const rowsHtml = holdings.map(holding => `
+            const rowsHtml = holdings.map(holding => {
+                const profitLossRateText = visibilityToggle.checked ? '***' : (holding.profit_loss_rate !== null ? `${holding.profit_loss_rate.toFixed(2)}%` : 'N/A');
+                return `
                 <tr>
                     <td>${holding.code || 'N/A'}</td>
                     <td>${holding.name || 'N/A'}</td>
@@ -259,21 +226,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td>${formatNumber(holding.price)}</td>
                     <td>${formatNumber(holding.market_value)}</td>
                     <td class="${getProfitClass(holding.profit_loss)}">${formatProfit(holding.profit_loss)}</td>
-                    <td class="${getProfitClass(holding.profit_loss_rate)}">${holding.profit_loss_rate !== null ? `${holding.profit_loss_rate.toFixed(2)}%` : 'N/A'}</td>
+                    <td class="${getProfitClass(holding.profit_loss_rate)}">${profitLossRateText}</td>
                     <td>${formatNumber(holding.estimated_annual_dividend)}</td>
                 </tr>
-            `).join('');
+            `}).join('');
             bodyHtml = `<tbody>${rowsHtml}</tbody>`;
         }
-
-        // テーブル全体を一度に更新
         table.innerHTML = headerHtml + bodyHtml;
     }
 
     // --- イベントリスナー ---
-    downloadCsvButton.addEventListener('click', () => {
-        window.location.href = '/api/portfolio/analysis/csv';
-    });
+    downloadCsvButton.addEventListener('click', () => { window.location.href = '/api/portfolio/analysis/csv'; });
 
     chartToggleButtons.forEach(button => {
         button.addEventListener('click', () => {
@@ -293,8 +256,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentSort.key = key;
                 currentSort.order = 'asc';
             }
-            renderTableAndApplySort();
+            filterAndRenderTable();
         }
+    });
+
+    filterInput.addEventListener('input', filterAndRenderTable);
+
+    // 追加
+    visibilityToggle.addEventListener('change', () => {
+        renderSummary(allHoldingsData);
+        renderChart(document.querySelector('.chart-toggle-btn.active').dataset.chartType);
+        filterAndRenderTable();
     });
 
     // --- 初期実行 ---

@@ -15,7 +15,12 @@
             <header class="main-header">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <h2>ポートフォリオ分析</h2>
-                    <a href="/" style="font-size: 1rem;">メインページに戻る</a>
+                    <div>
+                        <label for="toggle-visibility" style="cursor: pointer; margin-right: 20px;">
+                            <input type="checkbox" id="toggle-visibility"> 金額を隠す
+                        </label>
+                        <a href="/" style="font-size: 1rem;">メインページに戻る</a>
+                    </div>
                 </div>
             </header>
             
@@ -42,6 +47,9 @@
                     <section class="portfolio-list card">
                         <div class="card-header">
                             <h3>保有銘柄一覧</h3>
+                            <div class="filter-section" style="margin-left: 20px; flex-grow: 1;">
+                                <input type="text" id="analysis-filter-input" placeholder="銘柄コードまたは銘柄名でフィルタ">
+                            </div>
                             <button id="download-analysis-csv-button">この一覧をCSVでダウンロード</button>
                         </div>
                         <div class="table-container">

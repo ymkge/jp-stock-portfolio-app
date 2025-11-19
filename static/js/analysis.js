@@ -10,7 +10,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const downloadCsvButton = document.getElementById('download-analysis-csv-button');
     const analysisTable = document.getElementById('analysis-table');
     const filterInput = document.getElementById('analysis-filter-input');
-    const visibilityToggle = document.getElementById('toggle-visibility'); // 追加
+    const industryFilter = document.getElementById('industry-filter'); // 追加
+    const accountTypeFilter = document.getElementById('account-type-filter'); // 追加
+    const visibilityToggle = document.getElementById('toggle-visibility');
 
     // --- グローバル変数 ---
     let industryChartInstance = null;
@@ -23,19 +25,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- ヘルパー関数 ---
     const formatNumber = (num, fractionDigits = 0) => {
         if (num === null || num === undefined) return 'N/A';
-        if (visibilityToggle.checked) return '***'; // 変更
+        if (visibilityToggle.checked) return '***';
         return num.toLocaleString(undefined, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
     };
 
     const formatProfit = (num) => {
         if (num === null || num === undefined) return 'N/A';
-        if (visibilityToggle.checked) return '***'; // 変更
+        if (visibilityToggle.checked) return '***';
         const sign = num > 0 ? '+' : '';
         return sign + num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     };
 
     const getProfitClass = (num) => {
-        if (visibilityToggle.checked || num === null || num === undefined) return ''; // 変更
+        if (visibilityToggle.checked || num === null || num === undefined) return '';
         if (num > 0) return 'text-plus';
         if (num < 0) return 'text-minus';
         return '';
@@ -74,18 +76,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- データ取得と描画 ---
     async function initialize() {
         try {
-            visibilityToggle.checked = true; // 初期状態は隠す
+            visibilityToggle.checked = true;
 
             const response = await fetch('/api/portfolio/analysis');
-            if (!response.ok) {
-                throw new Error('分析データの取得に失敗しました。');
-            }
-            const data = await response.json();
+            if (!response.ok) throw new Error('分析データの取得に失敗しました。');
             
+            const data = await response.json();
             allHoldingsData = data.holdings_list;
             industryBreakdownData = data.industry_breakdown;
             accountTypeBreakdownData = data.account_type_breakdown;
 
+            populateFilterDropdowns(); // 追加
             renderSummary(allHoldingsData);
             renderChart('industry');
             filterAndRenderTable();
@@ -96,16 +97,40 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    function populateFilterDropdowns() {
+        const industries = [...new Set(allHoldingsData.map(h => h.industry))].sort();
+        const accountTypes = [...new Set(allHoldingsData.map(h => h.account_type))].sort();
+
+        industries.forEach(industry => {
+            const option = document.createElement('option');
+            option.value = industry;
+            option.textContent = industry;
+            industryFilter.appendChild(option);
+        });
+
+        accountTypes.forEach(type => {
+            const option = document.createElement('option');
+            option.value = type;
+            option.textContent = type;
+            accountTypeFilter.appendChild(option);
+        });
+    }
+
     function filterAndRenderTable() {
         const filterText = filterInput.value.toLowerCase();
-        let filteredData = allHoldingsData;
+        const selectedIndustry = industryFilter.value;
+        const selectedAccountType = accountTypeFilter.value;
 
-        if (filterText) {
-            filteredData = allHoldingsData.filter(holding =>
+        let filteredData = allHoldingsData.filter(holding => {
+            const textMatch = filterText === '' ||
                 String(holding.code).toLowerCase().includes(filterText) ||
-                String(holding.name || '').toLowerCase().includes(filterText)
-            );
-        }
+                String(holding.name || '').toLowerCase().includes(filterText);
+            
+            const industryMatch = selectedIndustry === '' || holding.industry === selectedIndustry;
+            const accountTypeMatch = selectedAccountType === '' || holding.account_type === selectedAccountType;
+
+            return textMatch && industryMatch && accountTypeMatch;
+        });
         
         sortData(filteredData);
         renderTable(filteredData);
@@ -261,8 +286,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     filterInput.addEventListener('input', filterAndRenderTable);
+    industryFilter.addEventListener('change', filterAndRenderTable); // 追加
+    accountTypeFilter.addEventListener('change', filterAndRenderTable); // 追加
 
-    // 追加
     visibilityToggle.addEventListener('change', () => {
         renderSummary(allHoldingsData);
         renderChart(document.querySelector('.chart-toggle-btn.active').dataset.chartType);

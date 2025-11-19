@@ -47,8 +47,10 @@
                     <section class="portfolio-list card">
                         <div class="card-header">
                             <h3>保有銘柄一覧</h3>
-                            <div class="filter-section" style="margin-left: 20px; flex-grow: 1;">
-                                <input type="text" id="analysis-filter-input" placeholder="銘柄コードまたは銘柄名でフィルタ">
+                            <div class="filter-controls" style="display: flex; align-items: center; gap: 15px; margin-left: 20px; flex-grow: 1;">
+                                <input type="text" id="analysis-filter-input" placeholder="コード/銘柄名">
+                                <select id="industry-filter"><option value="">すべての業種</option></select>
+                                <select id="account-type-filter"><option value="">すべての口座種別</option></select>
                             </div>
                             <button id="download-analysis-csv-button">この一覧をCSVでダウンロード</button>
                         </div>

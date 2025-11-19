@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const accountTypeChartCanvas = document.getElementById('account-type-chart');
     const chartToggleButtons = document.querySelectorAll('.chart-toggle-btn');
     const downloadCsvButton = document.getElementById('download-analysis-csv-button');
+    const analysisTable = document.getElementById('analysis-table');
 
     // --- グローバル変数 ---
     let industryChartInstance = null;
@@ -15,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let allHoldingsData = []; // 全ての保有口座情報
     let industryBreakdownData = {};
     let accountTypeBreakdownData = {};
+    let currentSort = { key: 'market_value', order: 'desc' }; // デフォルトソート
 
     // --- ヘルパー関数 ---
     const formatNumber = (num, fractionDigits = 0) => {
@@ -35,6 +37,36 @@ document.addEventListener('DOMContentLoaded', () => {
         return '';
     };
 
+    // --- ソート関連 ---
+    function sortData(data) {
+        data.sort((a, b) => {
+            let valA = a[currentSort.key], valB = b[currentSort.key];
+            const parseValue = (v) => {
+                if (v === undefined || v === null || v === 'N/A' || v === '--' || v === '') return -Infinity;
+                if (typeof v === 'string') {
+                    const num = parseFloat(v.replace(/,/g, '').replace(/%|倍|円/g, ''));
+                    return isNaN(num) ? v : num;
+                }
+                return v;
+            };
+            const parsedA = parseValue(valA), parsedB = parseValue(valB);
+            if (typeof parsedA === 'number' && typeof parsedB === 'number') {
+                return currentSort.order === 'asc' ? parsedA - parsedB : parsedB - parsedA;
+            }
+            return currentSort.order === 'asc' ? String(parsedA).localeCompare(String(parsedB)) : String(parsedB).localeCompare(String(parsedA));
+        });
+    }
+
+    function updateSortHeaders() {
+        const tableHeaders = document.querySelectorAll('#analysis-table .sortable');
+        tableHeaders.forEach(header => {
+            header.classList.remove('sort-active', 'sort-asc', 'sort-desc');
+            if (header.dataset.key === currentSort.key) {
+                header.classList.add('sort-active', `sort-${currentSort.order}`);
+            }
+        });
+    }
+
     // --- データ取得と描画 ---
     async function initialize() {
         try {
@@ -50,12 +82,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
             renderSummary(allHoldingsData);
             renderChart('industry'); // 初期表示は業種別グラフ
-            renderTable(allHoldingsData);
+            renderTableAndApplySort();
 
         } catch (error) {
             console.error('Error initializing analysis page:', error);
             summarySection.innerHTML = `<p style="color: red;">${error.message}</p>`;
         }
+    }
+    
+    function renderTableAndApplySort() {
+        sortData(allHoldingsData);
+        renderTable(allHoldingsData);
+        updateSortHeaders();
     }
 
     function renderSummary(holdings) {
@@ -178,59 +216,59 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderTable(holdings) {
-    const table = document.getElementById('analysis-table');
-    if (!table) return;
+        const table = document.getElementById('analysis-table');
+        if (!table) return;
 
-    const headers = [
-        { key: 'code', name: '銘柄コード' }, { key: 'name', name: '銘柄名' },
-        { key: 'account_type', name: '口座種別' }, { key: 'industry', name: '業種' },
-        { key: 'quantity', name: '数量' }, { key: 'purchase_price', name: '取得単価' },
-        { key: 'price', name: '現在株価' }, { key: 'market_value', name: '評価額' },
-        { key: 'profit_loss', name: '損益' }, { key: 'profit_loss_rate', name: '損益率(%)' },
-        { key: 'estimated_annual_dividend', name: '年間配当' }
-    ];
+        const headers = [
+            { key: 'code', name: '銘柄コード' }, { key: 'name', name: '銘柄名' },
+            { key: 'account_type', name: '口座種別' }, { key: 'industry', name: '業種' },
+            { key: 'quantity', name: '数量' }, { key: 'purchase_price', name: '取得単価' },
+            { key: 'price', name: '現在株価' }, { key: 'market_value', name: '評価額' },
+            { key: 'profit_loss', name: '損益' }, { key: 'profit_loss_rate', name: '損益率(%)' },
+            { key: 'estimated_annual_dividend', name: '年間配当' }
+        ];
 
-    // ヘッダーのHTML文字列を生成
-    const headerHtml = `
-        <thead>
-            <tr id="analysis-table-header-row">
-                ${headers.map(h => `<th>${h.name}</th>`).join('')}
-            </tr>
-        </thead>
-    `;
-
-    // ボディのHTML文字列を生成
-    let bodyHtml;
-    if (!holdings || holdings.length === 0) {
-        bodyHtml = `
-            <tbody>
-                <tr>
-                    <td colspan="${headers.length}" style="text-align: center;">データがありません。</td>
+        // ヘッダーのHTML文字列を生成
+        const headerHtml = `
+            <thead>
+                <tr id="analysis-table-header-row">
+                    ${headers.map(h => `<th class="sortable" data-key="${h.key}">${h.name}</th>`).join('')}
                 </tr>
-            </tbody>
+            </thead>
         `;
-    } else {
-        const rowsHtml = holdings.map(holding => `
-            <tr>
-                <td>${holding.code || 'N/A'}</td>
-                <td>${holding.name || 'N/A'}</td>
-                <td>${holding.account_type || 'N/A'}</td>
-                <td>${holding.industry || 'N/A'}</td>
-                <td>${formatNumber(holding.quantity)}</td>
-                <td>${formatNumber(holding.purchase_price, 2)}</td>
-                <td>${formatNumber(holding.price)}</td>
-                <td>${formatNumber(holding.market_value)}</td>
-                <td class="${getProfitClass(holding.profit_loss)}">${formatProfit(holding.profit_loss)}</td>
-                <td class="${getProfitClass(holding.profit_loss_rate)}">${holding.profit_loss_rate !== null ? `${holding.profit_loss_rate.toFixed(2)}%` : 'N/A'}</td>
-                <td>${formatNumber(holding.estimated_annual_dividend)}</td>
-            </tr>
-        `).join('');
-        bodyHtml = `<tbody>${rowsHtml}</tbody>`;
-    }
 
-    // テーブル全体を一度に更新
-    table.innerHTML = headerHtml + bodyHtml;
-}
+        // ボディのHTML文字列を生成
+        let bodyHtml;
+        if (!holdings || holdings.length === 0) {
+            bodyHtml = `
+                <tbody>
+                    <tr>
+                        <td colspan="${headers.length}" style="text-align: center;">データがありません。</td>
+                    </tr>
+                </tbody>
+            `;
+        } else {
+            const rowsHtml = holdings.map(holding => `
+                <tr>
+                    <td>${holding.code || 'N/A'}</td>
+                    <td>${holding.name || 'N/A'}</td>
+                    <td>${holding.account_type || 'N/A'}</td>
+                    <td>${holding.industry || 'N/A'}</td>
+                    <td>${formatNumber(holding.quantity)}</td>
+                    <td>${formatNumber(holding.purchase_price, 2)}</td>
+                    <td>${formatNumber(holding.price)}</td>
+                    <td>${formatNumber(holding.market_value)}</td>
+                    <td class="${getProfitClass(holding.profit_loss)}">${formatProfit(holding.profit_loss)}</td>
+                    <td class="${getProfitClass(holding.profit_loss_rate)}">${holding.profit_loss_rate !== null ? `${holding.profit_loss_rate.toFixed(2)}%` : 'N/A'}</td>
+                    <td>${formatNumber(holding.estimated_annual_dividend)}</td>
+                </tr>
+            `).join('');
+            bodyHtml = `<tbody>${rowsHtml}</tbody>`;
+        }
+
+        // テーブル全体を一度に更新
+        table.innerHTML = headerHtml + bodyHtml;
+    }
 
     // --- イベントリスナー ---
     downloadCsvButton.addEventListener('click', () => {
@@ -243,6 +281,20 @@ document.addEventListener('DOMContentLoaded', () => {
             button.classList.add('active');
             renderChart(button.dataset.chartType);
         });
+    });
+
+    analysisTable.addEventListener('click', (event) => {
+        const header = event.target.closest('.sortable');
+        if (header) {
+            const key = header.dataset.key;
+            if (currentSort.key === key) {
+                currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.key = key;
+                currentSort.order = 'asc';
+            }
+            renderTableAndApplySort();
+        }
     });
 
     // --- 初期実行 ---

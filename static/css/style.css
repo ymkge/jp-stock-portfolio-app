@@ -277,6 +277,36 @@ button {
     content: '▼';
 }
 
+/* --- Analysis Page Sort --- */
+#analysis-table .sortable {
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+}
+
+#analysis-table .sortable:hover {
+    background-color: #e9e9e9;
+}
+
+#analysis-table .sort-active {
+    background-color: #e0e0e0;
+}
+
+#analysis-table .sortable::after {
+    content: '\00a0\00a0';
+    position: absolute;
+    right: 8px;
+    opacity: 0.5;
+}
+
+#analysis-table .sort-asc::after {
+    content: '▲';
+}
+
+#analysis-table .sort-desc::after {
+    content: '▼';
+}
+
 /* --- 指標ハイライト --- */
 .undervalued { background-color: var(--undervalued-bg); }
 .overvalued { background-color: var(--overvalued-bg); }
@@ -586,7 +616,7 @@ button {
 }
 
 .analysis-left-column {
-    flex: 0 0 420px; /* grow, shrink, basis */
+    flex: 0 0 480px; /* grow, shrink, basis */
     display: flex;
     flex-direction: column;
     gap: 1.5rem;

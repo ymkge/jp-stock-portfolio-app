@@ -188,7 +188,9 @@ def fetch_fund_data(fund_code: str) -> Optional[dict]:
             name = price_board.get("name", "N/A")
             price = price_board.get("price", "N/A")
             change = price_board.get("changePrice", "N/A")
-            change_percent = f'({price_board.get("changePriceRate", "N/A")}%)' if price_board.get("changePriceRate") else "N/A"
+            
+            rate_value = price_board.get("changePriceRate")
+            change_percent = f'{rate_value}%' if rate_value is not None else "N/A"
 
             net_assets_info = detail_items.get("netAssetBalance", {})
             net_assets_price = net_assets_info.get("price", "N/A")
@@ -234,7 +236,8 @@ def fetch_fund_data(fund_code: str) -> Optional[dict]:
                 if len(change_parts) > 0:
                     change = change_parts[0]
                 if len(change_parts) > 1:
-                    change_percent = change_parts[1]
+                    # e.g. "(-0.82%)" -> "-0.82%"
+                    change_percent = change_parts[1].strip('()')
 
         net_assets = "N/A"
         net_assets_th = soup.find('th', string='純資産残高')

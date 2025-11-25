@@ -265,6 +265,10 @@ document.addEventListener('DOMContentLoaded', () => {
         modalOverlay.classList.remove('hidden');
     }
     function renderHoldingsList(holdings) {
+        const asset = allAssetsData.find(a => a.code === currentManagingCode);
+        const isFund = asset && asset.asset_type === 'investment_trust';
+        const quantityDigits = isFund ? 6 : 0; // 投資信託なら小数点以下6桁、それ以外は0桁
+
         holdingsListContainer.innerHTML = '';
         if (!holdings || holdings.length === 0) {
             holdingsListContainer.innerHTML = '<p>この資産の保有情報はありません。</p>';
@@ -277,7 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="holding-info">
                     <span class="account-type">${h.account_type}</span>
                     <span>取得単価: ${formatNumber(h.purchase_price, 2)}円</span>
-                    <span>数量: ${formatNumber(h.quantity)}</span>
+                    <span>数量: ${formatNumber(h.quantity, quantityDigits)}</span>
                 </div>
                 <div class="holding-actions">
                     <button class="btn-sm btn-edit" data-holding-id="${h.id}">編集</button>

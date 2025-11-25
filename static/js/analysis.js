@@ -235,6 +235,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const rowsHtml = holdings.map(holding => {
             const profitLossRateText = visibilityToggle.checked ? '***' : (holding.profit_loss_rate !== null && !isNaN(holding.profit_loss_rate) ? `${holding.profit_loss_rate.toFixed(2)}%` : 'N/A');
             const assetTypeName = holding.asset_type === 'jp_stock' ? '国内株式' : (holding.asset_type === 'investment_trust' ? '投資信託' : 'N/A');
+            
+            const isFund = holding.asset_type === 'investment_trust';
+            const quantityDigits = isFund ? 6 : 0;
 
             return `
                 <tr>
@@ -242,7 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td>${holding.name || 'N/A'}</td>
                     <td>${assetTypeName}</td>
                     <td>${holding.account_type || 'N/A'}</td>
-                    <td>${formatNumber(holding.quantity)}</td>
+                    <td>${formatNumber(holding.quantity, quantityDigits)}</td>
                     <td>${formatNumber(holding.purchase_price, 2)}</td>
                     <td>${formatNumber(holding.price)}</td>
                     <td>${formatNumber(holding.market_value)}</td>

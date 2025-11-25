@@ -13,18 +13,22 @@
                 <h1>JP Stock Portfolio</h1>
             </header>
             <section class="portfolio-controls">
-                <h2>銘柄管理</h2>
-                <form id="add-stock-form">
-                    <input type="text" id="stock-code-input" placeholder="銘柄コード (例: 7203)" required>
+                <h2>資産管理</h2>
+                <form id="add-asset-form">
+                    <div class="asset-type-selector">
+                        <label><input type="radio" name="asset_type" value="jp_stock" checked> 国内株式</label>
+                        <label><input type="radio" name="asset_type" value="investment_trust"> 投資信託</label>
+                    </div>
+                    <input type="text" id="asset-code-input" placeholder="銘柄コードまたはファンドコード" required>
                     <button type="submit">追加</button>
                 </form>
                 <div class="recent-stocks-section">
-                    <h3>最近追加した銘柄</h3>
+                    <h3>最近追加した資産</h3>
                     <ul id="recent-stocks-list"></ul>
                 </div>
                 <div class="filter-section">
                     <h3>フィルタ</h3>
-                    <input type="text" id="filter-input" placeholder="銘柄コードまたは銘柄名でフィルタ">
+                    <input type="text" id="filter-input" placeholder="コードまたは名称でフィルタ">
                 </div>
             </section>
             <section class="portfolio-actions">
@@ -43,14 +47,17 @@
             <div id="alert-container"></div>
             <header class="main-header">
                 <h2>ポートフォリオ一覧</h2>
+                <div class="tab-nav">
+                    <button class="tab-link active" data-tab="jp_stock">国内株式</button>
+                    <button class="tab-link" data-tab="investment_trust">投資信託</button>
+                </div>
             </header>
-            <section class="portfolio-list">
-                <div id="loading-indicator" style="display: none;"><p>データを読み込み中...</p></div>
+            <section id="jp_stock" class="tab-content active">
                 <div class="table-container">
-                    <table id="stock-table">
+                    <table id="portfolio-table-jp_stock" class="portfolio-table">
                         <thead>
-                            <tr id="table-header-row">
-                                <th><input type="checkbox" id="select-all-stocks"></th>
+                            <tr>
+                                <th><input type="checkbox" class="select-all-assets" data-asset-type="jp_stock"></th>
                                 <th class="sortable" data-key="code">銘柄コード</th>
                                 <th class="sortable" data-key="name">銘柄名</th>
                                 <th class="sortable" data-key="industry">業種</th>
@@ -61,9 +68,27 @@
                                 <th class="sortable" data-key="per">PER</th>
                                 <th class="sortable" data-key="pbr">PBR</th>
                                 <th class="sortable" data-key="roe">ROE</th>
-                                <th class="sortable" data-key="eps">EPS</th>
                                 <th class="sortable" data-key="yield">配当利回り</th>
-                                <th class="sortable" data-key="consecutive_increase_years">連続増配(直近10年)</th>
+                                <th class="sortable" data-key="consecutive_increase_years">連続増配</th>
+                                <th>保有管理</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+            <section id="investment_trust" class="tab-content">
+                <div class="table-container">
+                    <table id="portfolio-table-investment_trust" class="portfolio-table">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" class="select-all-assets" data-asset-type="investment_trust"></th>
+                                <th class="sortable" data-key="code">ファンドコード</th>
+                                <th class="sortable" data-key="name">ファンド名</th>
+                                <th class="sortable" data-key="price">基準価額</th>
+                                <th class="sortable" data-key="change">前日比</th>
+                                <th class="sortable" data-key="net_assets">純資産総額</th>
+                                <th class="sortable" data-key="trust_fee">信託報酬</th>
                                 <th>保有管理</th>
                             </tr>
                         </thead>

@@ -43,6 +43,31 @@ def _migrate_to_multi_account(portfolio: List[Dict[str, Any]]) -> List[Dict[str,
     
     return portfolio
 
+def _migrate_asset_type(portfolio: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    各資産に asset_type がない場合にデフォルト値を設定する移行処理。
+    一つでも asset_type がない資産があれば、全資産をチェックして更新・保存する。
+    """
+    if not portfolio:
+        return portfolio
+
+    # 1つでも asset_type がない要素があるかチェック
+    needs_migration = any("asset_type" not in asset for asset in portfolio)
+
+    if not needs_migration:
+        return portfolio
+
+    print("Asset type not found in some assets. Migrating to new asset type format.")
+    
+    # 全要素をループして、必要なら asset_type を設定
+    for asset in portfolio:
+        if "asset_type" not in asset:
+            asset["asset_type"] = "jp_stock"
+    
+    save_portfolio(portfolio) # 更新された portfolio を保存
+    print("Asset type migration complete.")
+    return portfolio
+
 
 def load_portfolio() -> List[Dict[str, Any]]:
     """
@@ -60,11 +85,12 @@ def load_portfolio() -> List[Dict[str, Any]]:
         
         # オブジェクトのリストであることを期待
         if isinstance(data, list):
-            return _migrate_to_multi_account(data)
+            migrated_data = _migrate_to_multi_account(data)
+            return _migrate_asset_type(migrated_data)
         # 初代の{"codes": []}形式からの移行
         elif isinstance(data, dict) and "codes" in data:
              print("Legacy format detected. Migrating...")
-             new_portfolio = [{"code": code, "holdings": []} for code in data["codes"]]
+             new_portfolio = [{"code": code, "asset_type": "jp_stock", "holdings": []} for code in data["codes"]]
              save_portfolio(new_portfolio)
              return new_portfolio
 
@@ -81,17 +107,17 @@ def save_portfolio(portfolio: List[Dict[str, Any]]):
     with open(PORTFOLIO_FILE, "w", encoding="utf-8") as f:
         json.dump(sorted_portfolio, f, indent=4, ensure_ascii=False)
 
-def add_stock(code: str) -> bool:
+def add_asset(code: str, asset_type: str) -> bool:
     """
-    新しい銘柄をポートフォリオに追加する。
+    新しい資産をポートフォリオに追加する。
     成功すればTrue、既に存在する場合はFalseを返す。
     """
     portfolio = load_portfolio()
-    if any(stock['code'] == code for stock in portfolio):
+    if any(asset['code'] == code for asset in portfolio):
         return False
 
-    new_stock = {"code": code, "holdings": []}
-    portfolio.append(new_stock)
+    new_asset = {"code": code, "asset_type": asset_type, "holdings": []}
+    portfolio.append(new_asset)
     save_portfolio(portfolio)
     return True
 
@@ -181,33 +207,61 @@ def delete_holding(holding_id: str) -> bool:
 
 def create_csv_data(data: list[dict]) -> str:
     """
-    銘柄データのリストからCSV文字列を生成する。
+    ポートフォリオデータのリストからCSV文字列を生成する。
+    国内株式と投資信託の両方に対応する。
     """
     if not data:
         return ""
     output = io.StringIO()
     output.write('\ufeff')
     writer = csv.writer(output)
+
+    # ヘッダー定義
     headers = [
-        "code", "name", "industry", "score", "price", "change", "change_percent",
-        "market_cap", "per", "pbr", "roe", "eps", "yield"
+        "code", "name", "asset_type", "industry", "score", "price", "change", "change_percent",
+        "market_cap", "per", "pbr", "roe", "eps", "yield", "annual_dividend", "consecutive_increase_years",
+        "net_assets", "trust_fee"
     ]
     display_headers = [
-        "銘柄コード", "銘柄名", "業種", "スコア", "現在株価", "前日比", "前日比(%)",
-        "時価総額(億円)", "PER(倍)", "PBR(倍)", "ROE(%)", "EPS(円)", "配当利回り(%)"
+        "コード", "名称", "資産タイプ", "業種", "スコア", "現在値", "前日比", "前日比(%)",
+        "時価総額(億円)", "PER(倍)", "PBR(倍)", "ROE(%)", "EPS(円)", "配当利回り(%)", "年間配当(円)", "連続増配年数",
+        "純資産総額", "信託報酬"
     ]
     writer.writerow(display_headers)
+
     for item in data:
         row = []
+        asset_type_display = ""
+        if item.get("asset_type") == "jp_stock":
+            asset_type_display = "国内株式"
+        elif item.get("asset_type") == "investment_trust":
+            asset_type_display = "投資信託"
+
         for h in headers:
-            value = item.get(h, "")
-            if h == 'market_cap' and value not in ["N/A", "", None]:
+            value = ""
+            if h == "asset_type":
+                value = asset_type_display
+            elif h == 'market_cap' and item.get("asset_type") == "jp_stock" and item.get(h) not in ["N/A", "", None]:
                 try:
-                    yen_value = float(str(value).replace(',', ''))
+                    yen_value = float(str(item.get(h)).replace(',', ''))
                     oku_yen_value = yen_value / 100_000_000
                     value = f"{oku_yen_value:.2f}"
                 except (ValueError, TypeError):
                     value = "N/A"
+            elif h == 'score' and item.get("asset_type") == "jp_stock":
+                value = item.get(h, "")
+            elif h == 'consecutive_increase_years' and item.get("asset_type") == "jp_stock":
+                value = item.get(h, "")
+            elif h == 'net_assets' and item.get("asset_type") == "investment_trust":
+                value = item.get(h, "")
+            elif h == 'trust_fee' and item.get("asset_type") == "investment_trust":
+                value = item.get(h, "")
+            elif h in ["code", "name", "price", "change", "change_percent"]:
+                value = item.get(h, "")
+            elif item.get("asset_type") == "jp_stock" and h in ["industry", "per", "pbr", "roe", "eps", "yield", "annual_dividend"]:
+                value = item.get(h, "")
+            # その他の項目は空欄のまま
+
             row.append(value)
         writer.writerow(row)
     return output.getvalue()
@@ -215,37 +269,43 @@ def create_csv_data(data: list[dict]) -> str:
 def create_analysis_csv_data(data: list[dict]) -> str:
     """
     分析ページ用の保有口座データリストからCSV文字列を生成する。
-    副作用を避けるため、引数のリストをコピーしてから処理する。
+    国内株式と投資信託の両方に対応する。
     """
     if not data:
         return ""
     
-    # 副作用を完全に防ぐため、リストのコピーを作成して使用する
-    data_copy = list(data)
-
     output = io.StringIO()
     output.write('\ufeff')
     writer = csv.writer(output)
 
     headers = [
-        "code", "name", "account_type", "industry", "quantity", "purchase_price", "price",
+        "code", "name", "asset_type", "account_type", "industry", "quantity", "purchase_price", "price",
         "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend"
     ]
     display_headers = [
-        "銘柄コード", "銘柄名", "口座種別", "業種", "数量", "取得単価", "現在株価",
+        "コード", "名称", "資産タイプ", "口座種別", "業種", "数量", "取得単価", "現在値",
         "評価額", "損益", "損益率(%)", "年間配当"
     ]
     writer.writerow(display_headers)
 
-    # ヘッダー行の辞書を作成し、コピーしたデータの先頭に追加（バグの再現と修正）
-    # この部分が意図せず副作用を起こしていたと仮定し、修正する
-    # header_dict = {key: val for key, val in zip(headers, display_headers)}
-    # data_copy.insert(0, header_dict) # この行がバグの原因だったと仮定して削除
-
-    for item in data_copy:
+    for item in data:
         row = []
+        asset_type_display = ""
+        if item.get("asset_type") == "jp_stock":
+            asset_type_display = "国内株式"
+        elif item.get("asset_type") == "investment_trust":
+            asset_type_display = "投資信託"
+
         for h in headers:
-            value = item.get(h, "")
+            value = ""
+            if h == "asset_type":
+                value = asset_type_display
+            elif h == "industry" and item.get("asset_type") == "investment_trust":
+                value = "投資信託" # 投資信託の業種は「投資信託」とする
+            elif h == "estimated_annual_dividend" and item.get("asset_type") == "investment_trust":
+                value = "" # 投資信託には年間配当は表示しない
+            else:
+                value = item.get(h, "")
             row.append(value)
         writer.writerow(row)
 

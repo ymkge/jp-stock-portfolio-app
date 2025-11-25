@@ -56,7 +56,23 @@
                         </div>
                         <div class="table-container">
                             <table id="analysis-table">
-                                <!-- theadとtbodyはJSによって動的に生成されます -->
+                                <thead>
+                                    <tr id="analysis-table-header-row">
+                                        <th class="sortable" data-key="code">コード</th>
+                                        <th class="sortable" data-key="name">名称</th>
+                                        <th class="sortable" data-key="asset_type">資産タイプ</th>
+                                        <th class="sortable" data-key="account_type">口座種別</th>
+                                        <th class="sortable" data-key="quantity">数量</th>
+                                        <th class="sortable" data-key="purchase_price">取得単価</th>
+                                        <th class="sortable" data-key="price">現在値</th>
+                                        <th class="sortable" data-key="market_value">評価額</th>
+                                        <th class="sortable" data-key="profit_loss">損益</th>
+                                        <th class="sortable" data-key="profit_loss_rate">損益率(%)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- JSによって動的に生成されます -->
+                                </tbody>
                             </table>
                         </div>
                     </section>

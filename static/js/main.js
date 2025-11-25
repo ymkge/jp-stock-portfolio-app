@@ -1,18 +1,16 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- DOM要素の取得 ---
-    const stockTableBody = document.querySelector('#stock-table tbody');
     const loadingIndicator = document.getElementById('loading-indicator');
-    const addStockForm = document.getElementById('add-stock-form');
-    const stockCodeInput = document.getElementById('stock-code-input');
-    const tableHeaderRow = document.getElementById('table-header-row');
+    const addAssetForm = document.getElementById('add-asset-form');
+    const assetCodeInput = document.getElementById('asset-code-input');
     const downloadCsvButton = document.getElementById('download-csv-button');
-    const refreshAllButton = document.getElementById('refresh-all-button'); // 追加
+    const refreshAllButton = document.getElementById('refresh-all-button');
     const alertContainer = document.getElementById('alert-container');
-    const selectAllStocksCheckbox = document.getElementById('select-all-stocks');
     const deleteSelectedStocksButton = document.getElementById('delete-selected-stocks-button');
     const recentStocksList = document.getElementById('recent-stocks-list');
     const filterInput = document.getElementById('filter-input');
-    
+    const tabNav = document.querySelector('.tab-nav');
+
     // --- モーダル関連DOM要素 ---
     const modalOverlay = document.getElementById('modal-overlay');
     const modalTitle = document.getElementById('modal-title');
@@ -28,26 +26,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const holdingFormCancelBtn = document.getElementById('holding-form-cancel-btn');
     const modalCloseBtn = document.getElementById('modal-close-btn');
 
-    let tableHeaders = document.querySelectorAll('#stock-table .sortable');
-
     // --- グローバル変数 ---
-    let stocksData = [];
+    let allAssetsData = [];
     let accountTypes = [];
     let highlightRules = {};
     let currentSort = { key: 'code', order: 'asc' };
     let currentManagingCode = null;
+    let activeTab = 'jp_stock';
 
     // --- 初期化処理 ---
     async function initialize() {
         showLoading(true);
         try {
-            const [stocks, rules, recent, accTypes] = await Promise.all([
+            const [assets, rules, recent, accTypes] = await Promise.all([
                 fetch('/api/stocks').then(res => res.json()),
                 fetch('/api/highlight-rules').then(res => res.json()),
                 fetch('/api/recent-stocks').then(res => res.json()),
                 fetch('/api/account-types').then(res => res.json())
             ]);
-            stocksData = stocks;
+            allAssetsData = assets;
             highlightRules = rules;
             accountTypes = accTypes;
             renderRecentStocksList(recent);
@@ -62,71 +59,106 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- レンダリング関連 ---
     function filterAndRender() {
-        const filterText = filterInput ? filterInput.value.toLowerCase() : '';
-        let filteredStocks = stocksData;
+        const filterText = filterInput.value.toLowerCase();
+        let filteredAssets = allAssetsData.filter(asset => asset.asset_type === activeTab);
+
         if (filterText) {
-            filteredStocks = stocksData.filter(stock => 
-                String(stock.code).toLowerCase().includes(filterText) || 
-                String(stock.name || '').toLowerCase().includes(filterText)
+            filteredAssets = filteredAssets.filter(asset =>
+                String(asset.code).toLowerCase().includes(filterText) ||
+                String(asset.name || '').toLowerCase().includes(filterText)
             );
         }
-        sortStocks(filteredStocks);
-        renderStockTable(filteredStocks);
+        sortAssets(filteredAssets);
+        if (activeTab === 'jp_stock') {
+            renderStockTable(filteredAssets);
+        } else {
+            renderFundTable(filteredAssets);
+        }
         updateSortHeaders();
         updateDeleteSelectedButtonState();
     }
 
     function renderStockTable(stocks) {
-        stockTableBody.innerHTML = '';
-        const colspan = tableHeaderRow.children.length;
+        const tableBody = document.querySelector('#portfolio-table-jp_stock tbody');
+        tableBody.innerHTML = '';
         if (!stocks || stocks.length === 0) {
-            stockTableBody.innerHTML = `<tr><td colspan="${colspan}" style="text-align:center;">登録されている銘柄はありません。</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="14" style="text-align:center;">登録されている銘柄はありません。</td></tr>`;
             return;
         }
         stocks.forEach(stock => {
-            const row = stockTableBody.insertRow();
+            const row = tableBody.insertRow();
+            row.dataset.code = stock.code;
             const createCell = (html, className = '') => {
                 const cell = row.insertCell();
                 cell.innerHTML = html;
                 if (className) cell.className = className;
                 return cell;
             };
-            const createTextCell = (text, className = '') => {
-                const cell = row.insertCell();
-                cell.textContent = text;
-                if (className) cell.className = className;
-                return cell;
-            };
-
             if (stock.error) {
                 row.className = 'error-row';
                 row.title = stock.error;
-                row.innerHTML = `<td><input type="checkbox" disabled></td>` +
-                                `<td>${stock.code || 'N/A'}</td>` +
-                                `<td colspan="${colspan - 3}">銘柄が見つからないか、データの取得に失敗しました。</td>` +
-                                `<td><button class="manage-btn" data-code="${stock.code || ''}" disabled>管理</button></td>`;
+                createCell(`<input type="checkbox" class="asset-checkbox" data-code="${stock.code}" disabled>`);
+                createCell(stock.code);
+                const errorCell = createCell(stock.error, 'error-message');
+                errorCell.colSpan = 11;
+                createCell(`<button class="manage-btn" data-code="${stock.code}" disabled>管理</button>`);
                 return;
             }
-            
-            createCell(`<input type="checkbox" class="stock-checkbox" data-code="${stock.code}">`);
-            createTextCell(stock.code);
+            createCell(`<input type="checkbox" class="asset-checkbox" data-code="${stock.code}">`);
+            createCell(stock.code);
             createCell(`<a href="https://finance.yahoo.co.jp/quote/${stock.code}.T" target="_blank">${stock.name}</a>`);
-            createTextCell(stock.industry || 'N/A');
+            createCell(stock.industry || 'N/A');
             createCell(renderScoreAsStars(stock.score, stock.score_details));
-            createTextCell(stock.price);
-            createTextCell(`${stock.change} (${stock.change_percent === 'N/A' ? 'N/A' : stock.change_percent + '%'})`);
-            createTextCell(formatMarketCap(stock.market_cap));
-            createTextCell(stock.per, getHighlightClass('per', stock.per));
-            createTextCell(stock.pbr, getHighlightClass('pbr', stock.pbr));
-            createTextCell(stock.roe === 'N/A' ? 'N/A' : stock.roe + '%', getHighlightClass('roe', stock.roe));
-            createTextCell(stock.eps === 'N/A' ? 'N/A' : stock.eps + '円');
-            createTextCell(stock.yield === 'N/A' ? 'N/A' : stock.yield + '%', getHighlightClass('yield', stock.yield));
+            createCell(stock.price);
+            createCell(`${stock.change} (${stock.change_percent || 'N/A'})`);
+            createCell(formatMarketCap(stock.market_cap));
+            createCell(stock.per, getHighlightClass('per', stock.per));
+            createCell(stock.pbr, getHighlightClass('pbr', stock.pbr));
+            createCell(stock.roe, getHighlightClass('roe', stock.roe));
+            createCell(stock.yield, getHighlightClass('yield', stock.yield));
             const dividendCell = createCell('');
             dividendCell.title = formatDividendHistory(stock.dividend_history);
             dividendCell.innerHTML = `<a href="https://finance.yahoo.co.jp/quote/${stock.code}.T/dividend" target="_blank" class="dividend-link">
                 ${stock.consecutive_increase_years > 0 ? `<span class="increase-badge">${stock.consecutive_increase_years}年連続</span>` : '-'}
             </a>`;
             createCell(`<button class="manage-btn" data-code="${stock.code}">管理</button>`);
+        });
+    }
+
+    function renderFundTable(funds) {
+        const tableBody = document.querySelector('#portfolio-table-investment_trust tbody');
+        tableBody.innerHTML = '';
+        if (!funds || funds.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">登録されている投資信託はありません。</td></tr>`;
+            return;
+        }
+        funds.forEach(fund => {
+            const row = tableBody.insertRow();
+            row.dataset.code = fund.code;
+            const createCell = (html, className = '') => {
+                const cell = row.insertCell();
+                cell.innerHTML = html;
+                if (className) cell.className = className;
+                return cell;
+            };
+            if (fund.error) {
+                row.className = 'error-row';
+                row.title = fund.error;
+                createCell(`<input type="checkbox" class="asset-checkbox" data-code="${fund.code}" disabled>`);
+                createCell(fund.code);
+                const errorCell = createCell(fund.error, 'error-message');
+                errorCell.colSpan = 5;
+                createCell(`<button class="manage-btn" data-code="${fund.code}" disabled>管理</button>`);
+                return;
+            }
+            createCell(`<input type="checkbox" class="asset-checkbox" data-code="${fund.code}">`);
+            createCell(fund.code);
+            createCell(`<a href="https://finance.yahoo.co.jp/quote/${fund.code}" target="_blank">${fund.name}</a>`);
+            createCell(fund.price);
+            createCell(`${fund.change} (${fund.change_percent || 'N/A'})`);
+            createCell(fund.net_assets);
+            createCell(fund.trust_fee);
+            createCell(`<button class="manage-btn" data-code="${fund.code}">管理</button>`);
         });
     }
 
@@ -144,7 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
             alert.addEventListener('transitionend', () => alert.remove());
         }, 5000);
     }
-    function sortStocks(data) {
+    function sortAssets(data) {
         data.sort((a, b) => {
             let valA = a[currentSort.key], valB = b[currentSort.key];
             const parseValue = (v) => {
@@ -161,26 +193,29 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     function updateSortHeaders() {
-        tableHeaders.forEach(header => {
+        document.querySelectorAll(`#${activeTab} .sortable`).forEach(header => {
             header.classList.remove('sort-active', 'sort-asc', 'sort-desc');
-            if (header.dataset.key === currentSort.key) header.classList.add('sort-active', `sort-${currentSort.order}`);
+            if (header.dataset.key === currentSort.key) {
+                header.classList.add('sort-active', `sort-${currentSort.order}`);
+            }
         });
     }
     function showLoading(isLoading) {
-        loadingIndicator.style.display = isLoading ? 'block' : 'none';
-        stockTableBody.style.display = isLoading ? 'none' : '';
+        // loadingIndicator.style.display = isLoading ? 'block' : 'none';
+        // document.querySelectorAll('.tab-content').forEach(tc => tc.style.display = isLoading ? 'none' : '');
     }
     function updateDeleteSelectedButtonState() {
-        deleteSelectedStocksButton.disabled = document.querySelectorAll('.stock-checkbox:checked').length === 0;
+        const checkedCount = document.querySelectorAll(`#${activeTab} .asset-checkbox:checked`).length;
+        deleteSelectedStocksButton.disabled = checkedCount === 0;
     }
     function formatMarketCap(value) {
         if (value === 'N/A' || value === null || value === undefined || value === '--') return 'N/A';
         const num = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
         if (isNaN(num)) return 'N/A';
-        const trillion = 1e12, oku = 1e8, million = 1e6;
+        const trillion = 1e12, oku = 1e8;
         if (num >= trillion) return `${(num / trillion).toFixed(2)}兆円`;
         if (num >= oku) return `${(num / oku).toFixed(2)}億円`;
-        return `${(num / million).toLocaleString()}百万円`;
+        return `${(num / 1e6).toLocaleString()}百万円`;
     }
     function formatDividendHistory(history) {
         if (!history || Object.keys(history).length === 0) return 'N/A';
@@ -209,31 +244,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function renderRecentStocksList(codes) {
         if (!recentStocksList) return;
-        recentStocksList.innerHTML = codes.length ? '' : '<li>最近追加した銘柄はありません。</li>';
+        recentStocksList.innerHTML = codes.length ? '' : '<li>最近追加した資産はありません。</li>';
         codes.forEach(code => {
             const li = document.createElement('li');
             li.className = 'recent-stock-item';
             li.textContent = code;
-            li.addEventListener('click', () => { stockCodeInput.value = code; });
+            li.addEventListener('click', () => { assetCodeInput.value = code; });
             recentStocksList.appendChild(li);
         });
     }
 
-    // --- 新しいモーダル関連の関数 ---
+    // --- モーダル関連 ---
     function openManagementModal(code) {
         currentManagingCode = code;
-        const stock = stocksData.find(s => s.code === code);
-        if (!stock) return;
-        modalTitle.textContent = `保有情報管理 (${stock.code} ${stock.name})`;
-        renderHoldingsList(stock.holdings);
+        const asset = allAssetsData.find(s => s.code === code);
+        if (!asset) return;
+        modalTitle.textContent = `保有情報管理 (${asset.code} ${asset.name})`;
+        renderHoldingsList(asset.holdings);
         hideHoldingForm();
         modalOverlay.classList.remove('hidden');
     }
-
     function renderHoldingsList(holdings) {
         holdingsListContainer.innerHTML = '';
         if (!holdings || holdings.length === 0) {
-            holdingsListContainer.innerHTML = '<p>この銘柄の保有情報はありません。</p>';
+            holdingsListContainer.innerHTML = '<p>この資産の保有情報はありません。</p>';
             return;
         }
         holdings.forEach(h => {
@@ -243,7 +277,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="holding-info">
                     <span class="account-type">${h.account_type}</span>
                     <span>取得単価: ${formatNumber(h.purchase_price, 2)}円</span>
-                    <span>数量: ${formatNumber(h.quantity)}株</span>
+                    <span>数量: ${formatNumber(h.quantity)}</span>
                 </div>
                 <div class="holding-actions">
                     <button class="btn-sm btn-edit" data-holding-id="${h.id}">編集</button>
@@ -253,143 +287,111 @@ document.addEventListener('DOMContentLoaded', () => {
             holdingsListContainer.appendChild(item);
         });
     }
-
     function showHoldingForm(holding = null) {
         holdingForm.reset();
         accountTypeSelect.innerHTML = accountTypes.map(t => `<option value="${t}">${t}</option>`).join('');
-        if (holding) { // 編集モード
+        if (holding) {
             holdingFormTitle.textContent = '保有情報の編集';
             holdingIdInput.value = holding.id;
             accountTypeSelect.value = holding.account_type;
             purchasePriceInput.value = holding.purchase_price;
             quantityInput.value = holding.quantity;
-        } else { // 新規追加モード
+        } else {
             holdingFormTitle.textContent = '保有情報の新規追加';
             holdingIdInput.value = '';
         }
         holdingFormContainer.classList.remove('hidden');
     }
-
-    function hideHoldingForm() {
-        holdingFormContainer.classList.add('hidden');
-    }
-
+    function hideHoldingForm() { holdingFormContainer.classList.add('hidden'); }
     async function handleHoldingFormSubmit(event) {
         event.preventDefault();
         const holdingId = holdingIdInput.value;
         const data = {
             account_type: accountTypeSelect.value,
             purchase_price: parseFloat(purchasePriceInput.value),
-            quantity: parseInt(quantityInput.value, 10)
+            quantity: parseFloat(quantityInput.value)
         };
-
         const url = holdingId ? `/api/holdings/${holdingId}` : `/api/stocks/${currentManagingCode}/holdings`;
         const method = holdingId ? 'PUT' : 'POST';
-
         try {
-            const response = await fetch(url, {
-                method: method,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data),
-            });
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || '保存に失敗しました。');
-            }
+            const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+            if (!response.ok) throw new Error((await response.json()).detail || '保存失敗');
             showAlert('保有情報を保存しました。', 'success');
-            // initialize() の代わりに部分更新
-            const updatedStockData = await fetch(`/api/stocks/${currentManagingCode}`).then(res => res.json());
-            if (updatedStockData && !updatedStockData.error) {
-                const index = stocksData.findIndex(s => s.code === currentManagingCode);
-                if (index !== -1) {
-                    stocksData[index] = updatedStockData; // stocksData を更新
-                }
-                renderHoldingsList(updatedStockData.holdings); // モーダル内の保有リストを更新
-                filterAndRender(); // メインテーブルを再描画
-            } else {
-                showAlert('更新された銘柄のデータ取得に失敗しました。', 'danger');
-                await initialize(); // フォールバックとして全更新
-            }
+            const updatedAsset = await fetch(`/api/stocks/${currentManagingCode}`).then(res => res.json());
+            const index = allAssetsData.findIndex(a => a.code === currentManagingCode);
+            if (index !== -1) allAssetsData[index] = updatedAsset;
+            renderHoldingsList(updatedAsset.holdings);
+            filterAndRender();
             hideHoldingForm();
-        } catch (error) {
-            showAlert(error.message, 'danger');
-        }
+        } catch (error) { showAlert(error.message, 'danger'); }
     }
-
     async function handleHoldingDelete(holdingId) {
         if (!confirm('この保有情報を削除しますか？')) return;
         try {
             const response = await fetch(`/api/holdings/${holdingId}`, { method: 'DELETE' });
-            if (!response.ok) throw new Error('削除に失敗しました。');
+            if (!response.ok) throw new Error('削除失敗');
             showAlert('保有情報を削除しました。', 'success');
-            // initialize() の代わりに部分更新
-            const updatedStockData = await fetch(`/api/stocks/${currentManagingCode}`).then(res => res.json());
-            if (updatedStockData && !updatedStockData.error) {
-                const index = stocksData.findIndex(s => s.code === currentManagingCode);
-                if (index !== -1) {
-                    stocksData[index] = updatedStockData; // stocksData を更新
-                }
-                renderHoldingsList(updatedStockData.holdings); // モーダル内の保有リストを更新
-                filterAndRender(); // メインテーブルを再描画
-            } else {
-                showAlert('更新された銘柄のデータ取得に失敗しました。', 'danger');
-                await initialize(); // フォールバックとして全更新
-            }
-        } catch (error) {
-            showAlert(error.message, 'danger');
-        }
+            const updatedAsset = await fetch(`/api/stocks/${currentManagingCode}`).then(res => res.json());
+            const index = allAssetsData.findIndex(a => a.code === currentManagingCode);
+            if (index !== -1) allAssetsData[index] = updatedAsset;
+            renderHoldingsList(updatedAsset.holdings);
+            filterAndRender();
+        } catch (error) { showAlert(error.message, 'danger'); }
     }
-
-    function closeModal() {
-        modalOverlay.classList.add('hidden');
-        currentManagingCode = null;
-    }
+    function closeModal() { modalOverlay.classList.add('hidden'); currentManagingCode = null; }
 
     // --- イベントリスナー ---
-    addStockForm.addEventListener('submit', async (event) => {
+    addAssetForm.addEventListener('submit', async (event) => {
         event.preventDefault();
-        const code = stockCodeInput.value.trim();
+        const code = assetCodeInput.value.trim();
+        const assetType = addAssetForm.querySelector('input[name="asset_type"]:checked').value;
         if (!code) return;
         try {
             const response = await fetch('/api/stocks', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code }),
+                body: JSON.stringify({ code, asset_type: assetType }),
             });
             const data = await response.json();
             showAlert(data.message, data.status === 'success' ? 'success' : (data.status === 'exists' ? 'warning' : 'danger'));
+            
             if (data.status === 'success') {
-                // initialize() の代わりに部分更新
-                // 新しく追加された銘柄のデータを取得
-                const newStockResponse = await fetch(`/api/stocks/${code}`);
-                const newStockData = await newStockResponse.json();
+                const newAsset = await fetch(`/api/stocks/${code}`).then(res => res.json());
+                allAssetsData.push(newAsset);
 
-                if (newStockResponse.ok && !newStockData.error) {
-                    stocksData.push(newStockData); // stocksData に追加
-                    // recentStocks も更新
-                    const recent = await fetch('/api/recent-stocks').then(res => res.json());
-                    renderRecentStocksList(recent);
-                    filterAndRender(); // テーブルを再描画
-                } else {
-                    // エラーの場合は、念のためinitialize()を呼び出すか、エラー表示を強化
-                    showAlert('追加された銘柄のデータ取得に失敗しました。', 'danger');
-                    await initialize(); // フォールバックとして全更新
+                // 追加した資産のタブに切り替える
+                const newAssetType = newAsset.asset_type;
+                if (activeTab !== newAssetType) {
+                    activeTab = newAssetType;
+                    document.querySelector('.tab-link.active').classList.remove('active');
+                    const newTabLink = document.querySelector(`.tab-link[data-tab="${newAssetType}"]`);
+                    if (newTabLink) newTabLink.classList.add('active');
+                    
+                    document.querySelector('.tab-content.active').classList.remove('active');
+                    const newTabContent = document.getElementById(newAssetType);
+                    if (newTabContent) newTabContent.classList.add('active');
                 }
+
+                const recent = await fetch('/api/recent-stocks').then(res => res.json());
+                renderRecentStocksList(recent);
+                filterAndRender();
             }
-            stockCodeInput.value = '';
-        } catch (error) {
-            showAlert('銘柄の追加中にエラーが発生しました。', 'danger');
-        }
+            assetCodeInput.value = '';
+        } catch (error) { showAlert('資産の追加中にエラーが発生しました。', 'danger'); }
     });
 
-    stockTableBody.addEventListener('click', (event) => {
-        if (event.target.classList.contains('manage-btn')) {
-            openManagementModal(event.target.dataset.code);
-        }
+    document.querySelectorAll('.portfolio-table tbody').forEach(tbody => {
+        tbody.addEventListener('click', (event) => {
+            if (event.target.classList.contains('manage-btn')) {
+                openManagementModal(event.target.dataset.code);
+            }
+        });
     });
 
-    tableHeaders.forEach(header => {
-        header.addEventListener('click', () => {
+    document.querySelectorAll('.portfolio-table thead').forEach(thead => {
+        thead.addEventListener('click', (event) => {
+            const header = event.target.closest('.sortable');
+            if (!header) return;
             const key = header.dataset.key;
             if (currentSort.key === key) {
                 currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
@@ -401,52 +403,68 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    tabNav.addEventListener('click', (event) => {
+        if (event.target.classList.contains('tab-link')) {
+            activeTab = event.target.dataset.tab;
+            document.querySelector('.tab-link.active').classList.remove('active');
+            event.target.classList.add('active');
+            document.querySelector('.tab-content.active').classList.remove('active');
+            document.getElementById(activeTab).classList.add('active');
+            filterAndRender();
+        }
+    });
+
     downloadCsvButton.addEventListener('click', () => { window.location.href = '/api/stocks/csv'; });
     filterInput.addEventListener('input', filterAndRender);
     
-    selectAllStocksCheckbox.addEventListener('change', () => {
-        document.querySelectorAll('.stock-checkbox:not(:disabled)').forEach(cb => { cb.checked = selectAllStocksCheckbox.checked; });
-        updateDeleteSelectedButtonState();
-    });
-    stockTableBody.addEventListener('change', (event) => {
-        if (event.target.classList.contains('stock-checkbox')) {
-            const all = document.querySelectorAll('.stock-checkbox:not(:disabled)');
-            const checked = document.querySelectorAll('.stock-checkbox:checked:not(:disabled)');
-            selectAllStocksCheckbox.checked = all.length > 0 && all.length === checked.length;
+    document.querySelectorAll('.select-all-assets').forEach(checkbox => {
+        checkbox.addEventListener('change', (event) => {
+            const assetType = event.target.dataset.assetType;
+            document.querySelectorAll(`#portfolio-table-${assetType} .asset-checkbox:not(:disabled)`).forEach(cb => {
+                cb.checked = event.target.checked;
+            });
             updateDeleteSelectedButtonState();
-        }
+        });
     });
+
+    document.querySelectorAll('.portfolio-table tbody').forEach(tbody => {
+        tbody.addEventListener('change', (event) => {
+            if (event.target.classList.contains('asset-checkbox')) {
+                const tableId = event.target.closest('.portfolio-table').id;
+                const all = document.querySelectorAll(`#${tableId} .asset-checkbox:not(:disabled)`);
+                const checked = document.querySelectorAll(`#${tableId} .asset-checkbox:checked:not(:disabled)`);
+                const selectAllCheckbox = document.querySelector(`.select-all-assets[data-asset-type="${activeTab}"]`);
+                selectAllCheckbox.checked = all.length > 0 && all.length === checked.length;
+                updateDeleteSelectedButtonState();
+            }
+        });
+    });
+
     deleteSelectedStocksButton.addEventListener('click', async () => {
-        const codesToDelete = Array.from(document.querySelectorAll('.stock-checkbox:checked')).map(cb => cb.dataset.code);
-        if (codesToDelete.length === 0 || !confirm(`選択された ${codesToDelete.length} 件の銘柄を削除しますか？`)) return;
+        const codesToDelete = Array.from(document.querySelectorAll(`#${activeTab} .asset-checkbox:checked`)).map(cb => cb.dataset.code);
+        if (codesToDelete.length === 0 || !confirm(`選択された ${codesToDelete.length} 件の資産を削除しますか？`)) return;
         try {
             const response = await fetch('/api/stocks/bulk-delete', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ codes: codesToDelete }),
             });
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || '一括削除に失敗しました。');
-            }
-            showAlert(`${codesToDelete.length} 件の銘柄を削除しました。`, 'success');
-            // initialize() の代わりに部分更新
-            stocksData = stocksData.filter(stock => !codesToDelete.includes(stock.code)); // stocksData から削除
-            filterAndRender(); // テーブルを再描画
-            selectAllStocksCheckbox.checked = false; // 全選択チェックボックスを解除
-            updateDeleteSelectedButtonState(); // 削除ボタンの状態を更新
-        } catch (error) {
-            showAlert(error.message, 'danger');
-        }
+            if (!response.ok) throw new Error((await response.json()).detail || '一括削除失敗');
+            showAlert(`${codesToDelete.length} 件の資産を削除しました。`, 'success');
+            allAssetsData = allAssetsData.filter(asset => !codesToDelete.includes(asset.code));
+            filterAndRender();
+            document.querySelector(`.select-all-assets[data-asset-type="${activeTab}"]`).checked = false;
+            updateDeleteSelectedButtonState();
+        } catch (error) { showAlert(error.message, 'danger'); }
     });
 
-    refreshAllButton.addEventListener('click', async () => { // 追加
-        showAlert('全銘柄のデータを更新しています...', 'info');
+    refreshAllButton.addEventListener('click', async () => {
+        showAlert('全資産のデータを更新しています...', 'info');
         await initialize();
-        showAlert('全銘柄のデータを更新しました。', 'success');
+        showAlert('全資産のデータを更新しました。', 'success');
     });
 
-    // 新しいモーダルのイベントリスナー
+    // モーダルイベント
     addNewHoldingBtn.addEventListener('click', () => showHoldingForm());
     holdingForm.addEventListener('submit', handleHoldingFormSubmit);
     holdingFormCancelBtn.addEventListener('click', hideHoldingForm);
@@ -454,17 +472,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const target = event.target;
         if (target.classList.contains('btn-edit')) {
             const holdingId = target.dataset.holdingId;
-            const stock = stocksData.find(s => s.code === currentManagingCode);
-            const holding = stock.holdings.find(h => h.id === holdingId);
+            const asset = allAssetsData.find(s => s.code === currentManagingCode);
+            const holding = asset.holdings.find(h => h.id === holdingId);
             showHoldingForm(holding);
         } else if (target.classList.contains('btn-delete-holding')) {
             handleHoldingDelete(target.dataset.holdingId);
         }
     });
     modalCloseBtn.addEventListener('click', closeModal);
-    modalOverlay.addEventListener('click', (event) => {
-        if (event.target === modalOverlay) closeModal();
-    });
+    modalOverlay.addEventListener('click', (event) => { if (event.target === modalOverlay) closeModal(); });
 
     // --- 初期実行 ---
     initialize();

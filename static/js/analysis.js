@@ -10,8 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const downloadCsvButton = document.getElementById('download-analysis-csv-button');
     const analysisTable = document.getElementById('analysis-table');
     const filterInput = document.getElementById('analysis-filter-input');
-    const industryFilter = document.getElementById('industry-filter'); // 追加
-    const accountTypeFilter = document.getElementById('account-type-filter'); // 追加
+    const industryFilter = document.getElementById('industry-filter');
+    const accountTypeFilter = document.getElementById('account-type-filter');
     const visibilityToggle = document.getElementById('toggle-visibility');
 
     // --- グローバル変数 ---
@@ -24,20 +24,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- ヘルパー関数 ---
     const formatNumber = (num, fractionDigits = 0) => {
-        if (num === null || num === undefined) return 'N/A';
+        if (num === null || num === undefined || isNaN(num)) return 'N/A';
         if (visibilityToggle.checked) return '***';
         return num.toLocaleString(undefined, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
     };
 
     const formatProfit = (num) => {
-        if (num === null || num === undefined) return 'N/A';
+        if (num === null || num === undefined || isNaN(num)) return 'N/A';
         if (visibilityToggle.checked) return '***';
         const sign = num > 0 ? '+' : '';
         return sign + num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     };
 
     const getProfitClass = (num) => {
-        if (visibilityToggle.checked || num === null || num === undefined) return '';
+        if (visibilityToggle.checked || num === null || num === undefined || isNaN(num)) return '';
         if (num > 0) return 'text-plus';
         if (num < 0) return 'text-minus';
         return '';
@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
         data.sort((a, b) => {
             let valA = a[currentSort.key], valB = b[currentSort.key];
             const parseValue = (v) => {
-                if (v === undefined || v === null || v === 'N/A' || v === '--' || v === '') return -Infinity;
+                if (v === undefined || v === null || v === 'N/A' || v === '--' || v === '' || v === '投資信託') return -Infinity; // 投資信託はソート対象外
                 if (typeof v === 'string') {
                     const num = parseFloat(v.replace(/,/g, '').replace(/%|倍|円/g, ''));
                     return isNaN(num) ? v : num;
@@ -86,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
             industryBreakdownData = data.industry_breakdown;
             accountTypeBreakdownData = data.account_type_breakdown;
 
-            populateFilterDropdowns(); // 追加
+            populateFilterDropdowns();
             renderSummary(allHoldingsData);
             renderChart('industry');
             filterAndRenderTable();
@@ -98,6 +98,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function populateFilterDropdowns() {
+        // 既存のオプションをクリア
+        industryFilter.innerHTML = '<option value="">すべての業種</option>';
+        accountTypeFilter.innerHTML = '<option value="">すべての口座種別</option>';
+
         const industries = [...new Set(allHoldingsData.map(h => h.industry))].sort();
         const accountTypes = [...new Set(allHoldingsData.map(h => h.account_type))].sort();
 
@@ -139,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderSummary(holdings) {
         if (!holdings || holdings.length === 0) {
-            summarySection.innerHTML = '<p>分析対象の保有銘柄がありません。</p>';
+            summarySection.innerHTML = '<p>分析対象の保有資産がありません。</p>';
             return;
         }
 
@@ -153,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         summarySection.innerHTML = `
             <ul>
-                <li><strong>口座別保有銘柄件数:</strong> ${holdings.length}</li>
+                <li><strong>保有資産件数:</strong> ${holdings.length}</li>
                 <li><strong>総投資額:</strong> ${formatNumber(totalInvestment)}円</li>
                 <li><strong>総評価額:</strong> ${formatNumber(totalMarketValue)}円</li>
                 <li class="${getProfitClass(totalProfitLoss)}">
@@ -220,44 +224,34 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderTable(holdings) {
-        const table = document.getElementById('analysis-table');
-        if (!table) return;
+        const tableBody = document.querySelector('#analysis-table tbody');
+        tableBody.innerHTML = ''; // 既存のtbodyをクリア
 
-        const headers = [
-            { key: 'code', name: '銘柄コード' }, { key: 'name', name: '銘柄名' },
-            { key: 'account_type', name: '口座種別' }, { key: 'industry', name: '業種' },
-            { key: 'quantity', name: '数量' }, { key: 'purchase_price', name: '取得単価' },
-            { key: 'price', name: '現在株価' }, { key: 'market_value', name: '評価額' },
-            { key: 'profit_loss', name: '損益' }, { key: 'profit_loss_rate', name: '損益率(%)' },
-            { key: 'estimated_annual_dividend', name: '年間配当' }
-        ];
-
-        const headerHtml = `<thead><tr id="analysis-table-header-row">${headers.map(h => `<th class="sortable" data-key="${h.key}">${h.name}</th>`).join('')}</tr></thead>`;
-
-        let bodyHtml;
         if (!holdings || holdings.length === 0) {
-            bodyHtml = `<tbody><tr><td colspan="${headers.length}" style="text-align: center;">データがありません。</td></tr></tbody>`;
-        } else {
-            const rowsHtml = holdings.map(holding => {
-                const profitLossRateText = visibilityToggle.checked ? '***' : (holding.profit_loss_rate !== null ? `${holding.profit_loss_rate.toFixed(2)}%` : 'N/A');
-                return `
+            tableBody.innerHTML = `<tr><td colspan="10" style="text-align: center;">データがありません。</td></tr>`;
+            return;
+        }
+
+        const rowsHtml = holdings.map(holding => {
+            const profitLossRateText = visibilityToggle.checked ? '***' : (holding.profit_loss_rate !== null && !isNaN(holding.profit_loss_rate) ? `${holding.profit_loss_rate.toFixed(2)}%` : 'N/A');
+            const assetTypeName = holding.asset_type === 'jp_stock' ? '国内株式' : (holding.asset_type === 'investment_trust' ? '投資信託' : 'N/A');
+
+            return `
                 <tr>
                     <td>${holding.code || 'N/A'}</td>
                     <td>${holding.name || 'N/A'}</td>
+                    <td>${assetTypeName}</td>
                     <td>${holding.account_type || 'N/A'}</td>
-                    <td>${holding.industry || 'N/A'}</td>
                     <td>${formatNumber(holding.quantity)}</td>
                     <td>${formatNumber(holding.purchase_price, 2)}</td>
                     <td>${formatNumber(holding.price)}</td>
                     <td>${formatNumber(holding.market_value)}</td>
                     <td class="${getProfitClass(holding.profit_loss)}">${formatProfit(holding.profit_loss)}</td>
                     <td class="${getProfitClass(holding.profit_loss_rate)}">${profitLossRateText}</td>
-                    <td>${formatNumber(holding.estimated_annual_dividend)}</td>
                 </tr>
-            `}).join('');
-            bodyHtml = `<tbody>${rowsHtml}</tbody>`;
-        }
-        table.innerHTML = headerHtml + bodyHtml;
+            `;
+        }).join('');
+        tableBody.innerHTML = rowsHtml;
     }
 
     // --- イベントリスナー ---
@@ -286,8 +280,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     filterInput.addEventListener('input', filterAndRenderTable);
-    industryFilter.addEventListener('change', filterAndRenderTable); // 追加
-    accountTypeFilter.addEventListener('change', filterAndRenderTable); // 追加
+    industryFilter.addEventListener('change', filterAndRenderTable);
+    accountTypeFilter.addEventListener('change', filterAndRenderTable);
 
     visibilityToggle.addEventListener('change', () => {
         renderSummary(allHoldingsData);

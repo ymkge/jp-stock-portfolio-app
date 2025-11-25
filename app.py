@@ -51,7 +51,7 @@ class StockCodesToDelete(BaseModel):
 class HoldingData(BaseModel):
     account_type: str
     purchase_price: float
-    quantity: int
+    quantity: float
 
 # --- 計算ヘルパー関数 ---
 def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
@@ -279,7 +279,7 @@ async def get_portfolio_analysis():
         for holding in asset["holdings"]:
             try:
                 purchase_price = float(holding["purchase_price"])
-                quantity = int(holding["quantity"])
+                quantity = float(holding["quantity"])
                 price_str = str(asset.get("price", "0")).replace(',', '')
                 price = float(price_str)
                 

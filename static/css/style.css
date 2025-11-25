@@ -841,3 +841,12 @@ button {
 .asset-type-selector input[type="radio"] {
     margin-right: 5px;
 }
+
+#refresh-all-button {
+    width: 100%;
+    background-color: var(--primary-color);
+}
+
+#refresh-all-button:hover {
+    background-color: var(--primary-hover-color);
+}

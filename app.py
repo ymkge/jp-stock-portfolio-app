@@ -277,51 +277,57 @@ async def get_portfolio_analysis():
             continue
 
         for holding in asset["holdings"]:
+            # Initialize detail dict with base data and None for calculated values
+            holding_detail = {
+                **asset,
+                **holding,
+                "investment_amount": None,
+                "market_value": None,
+                "profit_loss": None,
+                "profit_loss_rate": None,
+                "estimated_annual_dividend": None,
+            }
+
             try:
+                # Safely calculate investment amount first
                 purchase_price = float(holding["purchase_price"])
                 quantity = float(holding["quantity"])
-                price_str = str(asset.get("price", "0")).replace(',', '')
-                price = float(price_str)
-                
                 investment_amount = purchase_price * quantity
-                market_value = price * quantity
-                profit_loss = market_value - investment_amount
-                profit_loss_rate = (profit_loss / investment_amount) * 100 if investment_amount != 0 else 0
-                
-                estimated_annual_dividend = None
+                holding_detail["investment_amount"] = investment_amount
+
+                # Safely calculate market value and profit/loss
+                price_str = str(asset.get("price", "")).replace(',', '')
+                if price_str and price_str not in ['N/A', '---', '']:
+                    price = float(price_str)
+                    market_value = price * quantity
+                    profit_loss = market_value - investment_amount
+                    profit_loss_rate = (profit_loss / investment_amount) * 100 if investment_amount != 0 else 0
+                    
+                    holding_detail["price"] = price
+                    holding_detail["market_value"] = market_value
+                    holding_detail["profit_loss"] = profit_loss
+                    holding_detail["profit_loss_rate"] = profit_loss_rate
+
+                    # Aggregation for charts
+                    industry = "投資信託" if asset.get("asset_type") == "investment_trust" else asset.get("industry", "その他")
+                    industry_breakdown[industry] = industry_breakdown.get(industry, 0) + market_value
+                    
+                    account_type = holding.get("account_type", "不明")
+                    account_type_breakdown[account_type] = account_type_breakdown.get(account_type, 0) + market_value
+
+                # Safely calculate dividend
                 if asset.get("asset_type") == "jp_stock":
                     try:
                         annual_dividend = float(str(asset.get("annual_dividend", "")).replace(',', ''))
-                        estimated_annual_dividend = annual_dividend * quantity
+                        holding_detail["estimated_annual_dividend"] = annual_dividend * quantity
                     except (ValueError, TypeError):
                         pass
 
-                holding_detail = {
-                    **asset,
-                    **holding,
-                    "investment_amount": investment_amount,
-                    "market_value": market_value,
-                    "profit_loss": profit_loss,
-                    "profit_loss_rate": profit_loss_rate,
-                    "estimated_annual_dividend": estimated_annual_dividend,
-                }
-                del holding_detail["holdings"]
-                holdings_list.append(holding_detail)
-
-                # 集計
-                if asset.get("asset_type") == "investment_trust":
-                    industry = "投資信託"
-                else:
-                    industry = asset.get("industry", "その他")
-                
-                industry_breakdown[industry] = industry_breakdown.get(industry, 0) + market_value
-                
-                account_type = holding.get("account_type", "不明")
-                account_type_breakdown[account_type] = account_type_breakdown.get(account_type, 0) + market_value
-
             except (ValueError, TypeError, KeyError, ZeroDivisionError) as e:
-                logger.warning(f"Analysis calculation error for code {asset.get('code')}: {e}")
-                continue
+                logger.warning(f"Analysis calculation error for code {asset.get('code')}, holding {holding.get('id')}: {e}")
+            
+            del holding_detail["holdings"]
+            holdings_list.append(holding_detail)
 
     return {
         "holdings_list": holdings_list,

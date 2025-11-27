@@ -243,6 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <tr>
                     <td>${holding.code || 'N/A'}</td>
                     <td>${holding.name || 'N/A'}</td>
+                    <td>${holding.asset_type === 'investment_trust' ? '-' : (holding.industry || 'N/A')}</td>
                     <td>${assetTypeName}</td>
                     <td>${holding.account_type || 'N/A'}</td>
                     <td>${formatNumber(holding.quantity, quantityDigits)}</td>

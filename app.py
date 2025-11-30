@@ -1,11 +1,11 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import Depends, FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 import io
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
 import scraper
@@ -17,6 +17,22 @@ import logging
 # --- ロギング設定 ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+# --------------------
+
+# --- クールダウン設定 ---
+last_full_update_time: Optional[datetime] = None
+UPDATE_COOLDOWN = timedelta(minutes=10)
+
+async def check_update_cooldown():
+    """全件更新APIのクールダウンをチェックする依存関係"""
+    global last_full_update_time
+    if last_full_update_time and (datetime.now() - last_full_update_time < UPDATE_COOLDOWN):
+        remaining_time = UPDATE_COOLDOWN - (datetime.now() - last_full_update_time)
+        minutes, seconds = divmod(int(remaining_time.total_seconds()), 60)
+        raise HTTPException(
+            status_code=429,
+            detail=f"リクエストが多すぎます。あと {minutes}分{seconds}秒 お待ちください。"
+        )
 # --------------------
 
 app = FastAPI()
@@ -162,8 +178,11 @@ async def get_recent_stocks():
     return recent_stocks_manager.load_recent_codes()
 
 @app.get("/api/stocks")
-async def get_stocks():
-    return await _get_processed_asset_data()
+async def get_stocks(cooldown_check: None = Depends(check_update_cooldown)):
+    global last_full_update_time
+    processed_data = await _get_processed_asset_data()
+    last_full_update_time = datetime.now()
+    return processed_data
 
 @app.get("/api/stocks/{code}")
 async def get_single_stock(code: str):
@@ -251,7 +270,8 @@ async def delete_holding_endpoint(holding_id: str):
     return {"status": "success"}
 
 @app.get("/api/stocks/csv")
-async def download_csv():
+async def download_csv(cooldown_check: None = Depends(check_update_cooldown)):
+    global last_full_update_time
     data = await _get_processed_asset_data()
     if not data:
         return StreamingResponse(io.StringIO(""), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=portfolio.csv"})
@@ -261,11 +281,14 @@ async def download_csv():
     filename = f"portfolio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     response = StreamingResponse(io.StringIO(csv_data), media_type="text/csv")
     response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    
+    last_full_update_time = datetime.now()
     return response
 
 @app.get("/api/portfolio/analysis")
-async def get_portfolio_analysis():
+async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_cooldown)):
     """保有資産の分析データを返す"""
+    global last_full_update_time
     all_assets = await _get_processed_asset_data()
     
     holdings_list = []
@@ -329,6 +352,7 @@ async def get_portfolio_analysis():
             del holding_detail["holdings"]
             holdings_list.append(holding_detail)
 
+    last_full_update_time = datetime.now()
     return {
         "holdings_list": holdings_list,
         "industry_breakdown": industry_breakdown,

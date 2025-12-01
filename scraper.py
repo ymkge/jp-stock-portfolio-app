@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any
 from abc import ABC, abstractmethod
 from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
-from cachetools import cached, TTLCache
+from cachetools import cached, TTLCache, cachedmethod
 
 # --- ロガー設定 ---
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ class JPStockScraper(BaseScraper):
         super().__init__(cache_size)
         self.dividend_cache = TTLCache(maxsize=dividend_cache_size, ttl=CACHE_TTL)
 
-    @cached(lambda self: self.dividend_cache)
+    @cachedmethod(lambda self: self.dividend_cache)
     def _fetch_dividend_history(self, stock_code: str, num_years: int = 10) -> dict:
         """過去の配当履歴を取得する"""
         dividend_url = f"https://finance.yahoo.co.jp/quote/{stock_code}.T/dividend"
@@ -93,7 +93,7 @@ class JPStockScraper(BaseScraper):
             logger.error(f"銘柄 {stock_code} の配当データ解析中にエラー: {e}", exc_info=True)
             return {}
 
-    @cached(lambda self: self.cache)
+    @cachedmethod(lambda self: self.cache)
     def fetch_data(self, code: str, num_years_dividend: int = 10) -> Optional[Dict[str, Any]]:
         url = f"https://finance.yahoo.co.jp/quote/{code}.T"
         response = self._make_request(url)
@@ -112,9 +112,14 @@ class JPStockScraper(BaseScraper):
             market_cap_str = ref_index.get("totalPrice", "N/A")
             market_cap = "N/A"
             if market_cap_str != "N/A":
-                mc_val_str = re.sub(r'[\^\d]', '', market_cap_str)
-                if mc_val_str:
-                    market_cap = f"{int(mc_val_str) * 1_000_000:,}"
+                mc_val_str = re.sub(r'[^\d]', '', market_cap_str)
+                if mc_val_str and mc_val_str.isdigit(): # isdigit() を追加
+                    try:
+                        market_cap = f"{int(mc_val_str) * 1_000_000:,}"
+                    except (ValueError, TypeError):
+                        market_cap = "N/A"
+                else:
+                    market_cap = "N/A" # 数字でない場合はN/Aとする
 
             dividend_history = self._fetch_dividend_history(code, num_years_dividend)
             
@@ -136,7 +141,7 @@ class JPStockScraper(BaseScraper):
 # --- 投資信託スクレイパー ---
 class InvestTrustScraper(BaseScraper):
     """投資信託のデータをYahoo!ファイナンスから取得する"""
-    @cached(lambda self: self.cache)
+    @cachedmethod(lambda self: self.cache)
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
         url = f"https://finance.yahoo.co.jp/quote/{code}"
         response = self._make_request(url)
@@ -171,46 +176,84 @@ class InvestTrustScraper(BaseScraper):
 # --- 米国株式スクレイパー ---
 class USStockScraper(BaseScraper):
     """米国株式のデータをYahoo! Finance (US) から取得する"""
-    @cached(lambda self: self.cache)
+    @cachedmethod(lambda self: self.cache)
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
         url = f"https://finance.yahoo.com/quote/{code}"
         response = self._make_request(url)
         if not response:
+            logger.error(f"米国株 {code}: ネットワークエラーにより情報を取得できませんでした。")
             return {"code": code, "name": f"{code}", "error": "ネットワークエラー"}
 
         try:
             soup = BeautifulSoup(response.content, "lxml")
             
-            # データ抽出用のメインコンテンツ領域
-            main_content = soup.find("div", {"id": "quote-header-info"})
-            if not main_content:
-                return {"code": code, "name": f"{code}", "error": "銘柄情報が見つかりません"}
+            # デバッグログ: 取得したHTMLの一部を出力
+            logger.debug(f"米国株 {code}: 取得したHTMLの先頭部分:\n{response.text[:500]}...")
 
-            name_tag = main_content.find("h1", {"data-test": "quote-header"})
-            name = name_tag.text.strip() if name_tag else "N/A"
+            soup = BeautifulSoup(response.content, "lxml")
+            
+            logger.debug(f"米国株 {code}: 取得したHTMLの先頭部分:\n{response.text[:500]}...")
 
-            price_tag = main_content.find("fin-streamer", {"data-field": "regularMarketPrice"})
+            # 銘柄名
+            name_tag = soup.find("h1", {"data-test": "quote-header-info"})
+            if not name_tag:
+                name_tag = soup.find("h1", class_="D(ib) Fz(24px) Fw(b) Lh(24px) Mend(0px) D(ib)") # 新しいクラス名
+            name = name_tag.text.replace(f"({code})", "").strip() if name_tag else "N/A"
+            logger.debug(f"米国株 {code}: Name: {name}")
+
+            # 市場情報
+            market_info_div = soup.find("h1", {"data-test": "quote-header-info"})
+            if market_info_div:
+                market_info_div = market_info_div.find_next_sibling("div", class_="D(ib) Fz(12px) C($tertiaryColor) My(0px) Mstart(15px)")
+            
+            market_tag = None
+            if market_info_div:
+                market_span = market_info_div.find("span", class_="C($tertiaryColor) Fz(12px)")
+                if market_span:
+                    market = market_span.text.split(" - ")[0].strip()
+                else:
+                    market = "N/A"
+            else:
+                market = "N/A"
+            logger.debug(f"米国株 {code}: Market: {market}")
+
+            # 株価
+            price_tag = soup.find("fin-streamer", {"data-field": "regularMarketPrice"})
             price = price_tag.text.strip() if price_tag else "N/A"
+            logger.debug(f"米国株 {code}: Price: {price}")
 
-            change_tag = main_content.find("fin-streamer", {"data-field": "regularMarketChange"})
+            # 前日比
+            change_tag = soup.find("fin-streamer", {"data-field": "regularMarketChange"})
             change = change_tag.text.strip() if change_tag else "N/A"
+            logger.debug(f"米国株 {code}: Change: {change}")
 
-            change_percent_tag = main_content.find("fin-streamer", {"data-field": "regularMarketChangePercent"})
+            # 前日比率
+            change_percent_tag = soup.find("fin-streamer", {"data-field": "regularMarketChangePercent"})
             change_percent_raw = change_percent_tag.text.strip("() ") if change_percent_tag else "N/A"
+            logger.debug(f"米国株 {code}: Change Percent: {change_percent_raw}")
             
             # PER, 時価総額などの指標を取得
-            summary_table = soup.find("div", {"data-test": "summary-table"})
-            market_cap, per = "N/A", "N/A"
+            summary_table = soup.find("div", {"data-test": "summary-detail"})
+            market_cap, per, yield_val = "N/A", "N/A", "N/A"
             if summary_table:
                 mc_tag = summary_table.find("td", {"data-test": "MARKET_CAP-value"})
                 market_cap = mc_tag.text.strip() if mc_tag else "N/A"
+                
                 per_tag = summary_table.find("td", {"data-test": "PE_RATIO-value"})
                 per = per_tag.text.strip() if per_tag else "N/A"
 
+                yield_tag = summary_table.find("td", {"data-test": "DIVIDEND_AND_YIELD-value"})
+                if yield_tag:
+                    yield_text = yield_tag.text.strip()
+                    yield_match = re.search(r'\((\d+\.\d+)%\)', yield_text)
+                    yield_val = yield_match.group(1) if yield_match else "N/A"
+                
+            logger.debug(f"米国株 {code}: Market Cap: {market_cap}, PER: {per}, Yield: {yield_val}")
+
             return {
-                "code": code, "name": name, "price": price, "change": change,
+                "code": code, "name": name, "market": market, "price": price, "change": change,
                 "change_percent": change_percent_raw, "market_cap": market_cap,
-                "per": per, "pbr": "N/A", "roe": "N/A", "eps": "N/A", "yield": "N/A",
+                "per": per, "pbr": "N/A", "roe": "N/A", "eps": "N/A", "yield": yield_val,
                 "asset_type": "us_stock", "currency": "USD"
             }
         except Exception as e:

@@ -236,9 +236,10 @@ def calculate_holding_values(
         
         # 現在値
         price_str = str(asset_data.get("price", "")).replace(',', '')
+        # N/A の場合は計算をスキップ
         if not price_str or price_str in ['N/A', '---', '']:
-            raise ValueError("現在値が取得できません。")
-        
+            raise ValueError("現在値が取得できません。") # エラーを発生させて計算を中断
+
         current_price_foreign = float(price_str)
         
         # 評価額 (外貨建て)
@@ -266,8 +267,12 @@ def calculate_holding_values(
             calculated_holding["estimated_annual_dividend"] = annual_dividend_foreign * quantity
         elif asset_data.get("asset_type") == "us_stock":
             # 米国株の年間配当はUSD建てで取得されると仮定
-            annual_dividend_foreign = float(str(asset_data.get("annual_dividend", "0")).replace(',', ''))
-            calculated_holding["estimated_annual_dividend"] = annual_dividend_foreign * quantity * exchange_rate
+            annual_dividend_foreign_str = str(asset_data.get("annual_dividend", "0")).replace(',', '')
+            if annual_dividend_foreign_str not in ['N/A', '---', '']: # N/Aチェックを追加
+                annual_dividend_foreign = float(annual_dividend_foreign_str)
+                calculated_holding["estimated_annual_dividend"] = annual_dividend_foreign * quantity * exchange_rate
+            else:
+                calculated_holding["estimated_annual_dividend"] = 0
         else:
             calculated_holding["estimated_annual_dividend"] = 0 # 投資信託など
 

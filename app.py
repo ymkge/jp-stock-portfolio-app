@@ -7,6 +7,7 @@ from pydantic import BaseModel
 import asyncio
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
+import re
 
 import scraper
 import portfolio_manager
@@ -39,7 +40,8 @@ app = FastAPI()
 
 # --- 定数 ---
 ACCOUNT_TYPES = ["特定口座", "一般口座", "新NISA", "旧NISA"]
-ASSET_TYPES = ["jp_stock", "investment_trust"]
+# 対応資産タイプにus_stockを追加
+ASSET_TYPES = ["jp_stock", "investment_trust", "us_stock"]
 
 
 # --- ハイライトルールの読み込み ---
@@ -58,8 +60,7 @@ templates = Jinja2Templates(directory="templates")
 
 # --- Pydanticモデル ---
 class Asset(BaseModel):
-    code: str
-    asset_type: str
+    code: str # asset_typeは自動判定するため不要に
 
 class StockCodesToDelete(BaseModel):
     codes: List[str]
@@ -122,18 +123,26 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
     return total_score if is_calculable else -1, details
 
 async def _get_processed_asset_data() -> List[Dict[str, Any]]:
+    """
+    ポートフォリオ内の全資産のデータを並行して取得し、スコア計算などを行う。
+    新しいscraperのアーキテクチャに対応。
+    """
     portfolio = portfolio_manager.load_portfolio()
     if not portfolio: return []
 
     tasks = []
     for asset_info in portfolio:
         code = asset_info['code']
-        asset_type = asset_info.get('asset_type', 'jp_stock') # デフォルトは株式
+        asset_type = asset_info.get('asset_type', 'jp_stock')
         
-        if asset_type == 'jp_stock':
-            tasks.append(asyncio.to_thread(scraper.fetch_stock_data, code))
-        elif asset_type == 'investment_trust':
-            tasks.append(asyncio.to_thread(scraper.fetch_fund_data, code))
+        try:
+            scraper_instance = scraper.get_scraper(asset_type)
+            tasks.append(asyncio.to_thread(scraper_instance.fetch_data, code))
+        except ValueError as e:
+            logger.warning(f"銘柄 {code} のスクレイパー取得に失敗: {e}")
+            async def dummy_task(c=code, at=asset_type): 
+                return {"code": c, "asset_type": at, "error": "不明な資産タイプ"}
+            tasks.append(dummy_task())
 
     scraped_results = await asyncio.gather(*tasks)
     scraped_data_map = {item['code']: item for item in scraped_results if item}
@@ -192,12 +201,11 @@ async def get_single_stock(code: str):
 
     asset_type = asset_info.get('asset_type', 'jp_stock')
     
-    if asset_type == 'jp_stock':
-        scraped_data = await asyncio.to_thread(scraper.fetch_stock_data, code)
-    elif asset_type == 'investment_trust':
-        scraped_data = await asyncio.to_thread(scraper.fetch_fund_data, code)
-    else:
-        raise HTTPException(status_code=400, detail=f"不明な資産タイプです: {asset_type}")
+    try:
+        scraper_instance = scraper.get_scraper(asset_type)
+        scraped_data = await asyncio.to_thread(scraper_instance.fetch_data, code)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     if not scraped_data or "error" in scraped_data:
         raise HTTPException(status_code=404, detail=scraped_data.get("error", f"資産 {code} のデータ取得に失敗しました。"))
@@ -214,25 +222,44 @@ async def get_single_stock(code: str):
 
 @app.post("/api/stocks")
 async def add_asset_endpoint(asset: Asset):
-    if asset.asset_type not in ASSET_TYPES:
-        raise HTTPException(status_code=400, detail=f"無効な資産タイプです: {asset.asset_type}")
+    code = asset.code.strip().upper()
+    
+    # 銘柄コードの形式から asset_type を自動判定
+    if re.match(r'^[A-Z]{1,5}(\.[A-Z]{1,2})?$', code): # 米国株ティッカー (例: AAPL, BRK.B)
+        asset_type = "us_stock"
+    elif re.match(r'^\d{4}$', code): # 国内株コード
+        asset_type = "jp_stock"
+    elif re.match(r'^[A-Z0-9]{10}$', code): # 投資信託コード (仮)
+        asset_type = "investment_trust"
+    else:
+        raise HTTPException(status_code=400, detail=f"無効または未対応の銘柄コード形式です: {code}")
 
-    is_added = portfolio_manager.add_asset(asset.code, asset.asset_type)
+    if asset_type not in ASSET_TYPES:
+        raise HTTPException(status_code=400, detail=f"無効な資産タイプです: {asset_type}")
+
+    is_added = portfolio_manager.add_asset(code, asset_type)
     if not is_added:
-        return {"status": "exists", "message": f"資産コード {asset.code} は既に追加されています。"}
+        return {"status": "exists", "message": f"資産コード {code} は既に追加されています。"}
 
-    if asset.asset_type == 'jp_stock':
-        new_asset_data = await asyncio.to_thread(scraper.fetch_stock_data, asset.code)
-    else: # investment_trust
-        new_asset_data = await asyncio.to_thread(scraper.fetch_fund_data, asset.code)
+    try:
+        scraper_instance = scraper.get_scraper(asset_type)
+        new_asset_data = await asyncio.to_thread(scraper_instance.fetch_data, code)
+    except ValueError as e:
+        portfolio_manager.delete_stocks([code]) # 追加をロールバック
+        raise HTTPException(status_code=400, detail=str(e))
 
     if new_asset_data and "error" not in new_asset_data:
-        recent_stocks_manager.add_recent_code(asset.code)
+        recent_stocks_manager.add_recent_code(code)
+        if asset_type == 'jp_stock':
+            new_asset_data["consecutive_increase_years"] = calculate_consecutive_dividend_increase(new_asset_data.get("dividend_history", {}))
+            score, details = calculate_score(new_asset_data)
+            new_asset_data["score"] = score
+            new_asset_data["score_details"] = details
         return {"status": "success", "stock": new_asset_data}
     else:
-        portfolio_manager.delete_stocks([asset.code])
-        error_message = new_asset_data.get("error", "不明なエラー")
-        return {"status": "error", "message": f"資産 {asset.code} は存在しないか、データの取得に失敗しました: {error_message}", "code": asset.code}
+        portfolio_manager.delete_stocks([code]) # 追加をロールバック
+        error_message = new_asset_data.get("error", "不明なエラー") if new_asset_data else "不明なエラー"
+        return {"status": "error", "message": f"資産 {code} は存在しないか、データの取得に失敗しました: {error_message}", "code": code}
 
 @app.delete("/api/stocks/bulk-delete")
 async def bulk_delete_stocks(stock_codes: StockCodesToDelete):
@@ -276,7 +303,6 @@ async def download_csv(cooldown_check: None = Depends(check_update_cooldown)):
     if not data:
         return StreamingResponse(io.StringIO(""), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=portfolio.csv"})
     
-    # ここでは簡単のため、CSV生成は既存の株式用を流用。別途改修が必要。
     csv_data = portfolio_manager.create_csv_data(data)
     filename = f"portfolio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     response = StreamingResponse(io.StringIO(csv_data), media_type="text/csv")
@@ -291,65 +317,52 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
     global last_full_update_time
     all_assets = await _get_processed_asset_data()
     
+    # 為替レートを取得
+    exchange_rates = {}
+    usd_jpy_rate = await asyncio.to_thread(scraper.get_exchange_rate, 'USDJPY=X')
+    if usd_jpy_rate:
+        exchange_rates["USD"] = usd_jpy_rate
+    exchange_rates["JPY"] = 1.0 # 円は常に1.0
+
     holdings_list = []
     industry_breakdown = {}
     account_type_breakdown = {}
+    country_breakdown = {} # 国別ポートフォリオの内訳を追加
 
     for asset in all_assets:
         if "error" in asset or not asset.get("holdings"):
             continue
 
         for holding in asset["holdings"]:
-            # Initialize detail dict with base data and None for calculated values
-            holding_detail = {
-                **asset,
-                **holding,
-                "investment_amount": None,
-                "market_value": None,
-                "profit_loss": None,
-                "profit_loss_rate": None,
-                "estimated_annual_dividend": None,
-            }
-
-            try:
-                # Safely calculate investment amount first
-                purchase_price = float(holding["purchase_price"])
-                quantity = float(holding["quantity"])
-                investment_amount = purchase_price * quantity
-                holding_detail["investment_amount"] = investment_amount
-
-                # Safely calculate market value and profit/loss
-                price_str = str(asset.get("price", "")).replace(',', '')
-                if price_str and price_str not in ['N/A', '---', '']:
-                    price = float(price_str)
-                    market_value = price * quantity
-                    profit_loss = market_value - investment_amount
-                    profit_loss_rate = (profit_loss / investment_amount) * 100 if investment_amount != 0 else 0
-                    
-                    holding_detail["price"] = price
-                    holding_detail["market_value"] = market_value
-                    holding_detail["profit_loss"] = profit_loss
-                    holding_detail["profit_loss_rate"] = profit_loss_rate
-
-                    # Aggregation for charts
-                    industry = "投資信託" if asset.get("asset_type") == "investment_trust" else asset.get("industry", "その他")
-                    industry_breakdown[industry] = industry_breakdown.get(industry, 0) + market_value
-                    
-                    account_type = holding.get("account_type", "不明")
-                    account_type_breakdown[account_type] = account_type_breakdown.get(account_type, 0) + market_value
-
-                # Safely calculate dividend
-                if asset.get("asset_type") == "jp_stock":
-                    try:
-                        annual_dividend = float(str(asset.get("annual_dividend", "")).replace(',', ''))
-                        holding_detail["estimated_annual_dividend"] = annual_dividend * quantity
-                    except (ValueError, TypeError):
-                        pass
-
-            except (ValueError, TypeError, KeyError, ZeroDivisionError) as e:
-                logger.warning(f"Analysis calculation error for code {asset.get('code')}, holding {holding.get('id')}: {e}")
+            # portfolio_managerのヘルパー関数で計算
+            calculated_holding_data = portfolio_manager.calculate_holding_values(
+                asset, holding, exchange_rates
+            )
             
-            del holding_detail["holdings"]
+            # 計算結果をholding_detailにマージ
+            holding_detail = {**asset, **calculated_holding_data}
+
+            # 集計
+            if calculated_holding_data["market_value"] is not None:
+                market_value_jpy = calculated_holding_data["market_value"]
+
+                # 業種別内訳
+                industry = "投資信託" if asset.get("asset_type") == "investment_trust" else asset.get("industry", "その他")
+                industry_breakdown[industry] = industry_breakdown.get(industry, 0) + market_value_jpy
+                
+                # 口座種別内訳
+                account_type = holding.get("account_type", "不明")
+                account_type_breakdown[account_type] = account_type_breakdown.get(account_type, 0) + market_value_jpy
+
+                # 国別内訳 (asset_typeから判定)
+                country = "日本"
+                if asset.get("asset_type") == "us_stock":
+                    country = "米国"
+                elif asset.get("asset_type") == "investment_trust":
+                    country = "投資信託" # 投資信託は国別ではなく別途分類
+                country_breakdown[country] = country_breakdown.get(country, 0) + market_value_jpy
+
+            if "holdings" in holding_detail: del holding_detail["holdings"]
             holdings_list.append(holding_detail)
 
     last_full_update_time = datetime.now()
@@ -357,6 +370,7 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
         "holdings_list": holdings_list,
         "industry_breakdown": industry_breakdown,
         "account_type_breakdown": account_type_breakdown,
+        "country_breakdown": country_breakdown, # 新しい内訳を追加
     }
 
 @app.get("/api/portfolio/analysis/csv")

@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let highlightRules = {};
     let currentSort = { key: 'code', order: 'asc' };
     let currentManagingCode = null;
-    let activeTab = 'jp_stock';
+    let activeTab = 'jp_stock'; // 初期アクティブタブ
     const COOLDOWN_MINUTES = 10;
     const COOLDOWN_STORAGE_KEY = 'fullUpdateCooldownEnd';
     const ASSETS_STORAGE_KEY = 'jpStockPortfolioAssets';
@@ -153,8 +153,10 @@ document.addEventListener('DOMContentLoaded', () => {
         sortAssets(filteredAssets);
         if (activeTab === 'jp_stock') {
             renderStockTable(filteredAssets);
-        } else {
+        } else if (activeTab === 'investment_trust') {
             renderFundTable(filteredAssets);
+        } else if (activeTab === 'us_stock') {
+            renderUSTable(filteredAssets);
         }
         updateSortHeaders();
         updateDeleteSelectedButtonState();
@@ -164,7 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tableBody = document.querySelector('#portfolio-table-jp_stock tbody');
         tableBody.innerHTML = '';
         if (!stocks || stocks.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="14" style="text-align:center;">登録されている銘柄はありません。</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="15" style="text-align:center;">登録されている銘柄はありません。</td></tr>`;
             return;
         }
         stocks.forEach(stock => {
@@ -182,22 +184,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 createCell(`<input type="checkbox" class="asset-checkbox" data-code="${stock.code}" disabled>`);
                 createCell(stock.code);
                 const errorCell = createCell(stock.error, 'error-message');
-                errorCell.colSpan = 11;
+                errorCell.colSpan = 12; // colspanを調整
                 createCell(`<button class="manage-btn" data-code="${stock.code}" disabled>管理</button>`);
                 return;
             }
             createCell(`<input type="checkbox" class="asset-checkbox" data-code="${stock.code}">`);
             createCell(stock.code);
             createCell(`<a href="https://finance.yahoo.co.jp/quote/${stock.code}.T" target="_blank">${stock.name}</a>`);
+            createCell(stock.market || 'N/A'); // 市場列
             createCell(stock.industry || 'N/A');
-            createCell(renderScoreAsStars(stock.score, stock.score_details));
+            createCell(renderScoreAsStars(stock.score, stock.score_details, stock.asset_type));
             createCell(stock.price);
             createCell(`${stock.change} (${stock.change_percent || 'N/A'})`);
             createCell(formatMarketCap(stock.market_cap));
-            createCell(stock.per, getHighlightClass('per', stock.per));
-            createCell(stock.pbr, getHighlightClass('pbr', stock.pbr));
-            createCell(stock.roe, getHighlightClass('roe', stock.roe));
-            createCell(stock.yield, getHighlightClass('yield', stock.yield));
+            createCell(stock.per, getHighlightClass('per', stock.per, stock.asset_type));
+            createCell(stock.pbr, getHighlightClass('pbr', stock.pbr, stock.asset_type));
+            createCell(stock.roe, getHighlightClass('roe', stock.roe, stock.asset_type));
+            createCell(stock.yield, getHighlightClass('yield', stock.yield, stock.asset_type));
             const dividendCell = createCell('');
             dividendCell.title = formatDividendHistory(stock.dividend_history);
             dividendCell.innerHTML = `<a href="https://finance.yahoo.co.jp/quote/${stock.code}.T/dividend" target="_blank" class="dividend-link">
@@ -244,8 +247,50 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function renderUSTable(usStocks) {
+        const tableBody = document.querySelector('#portfolio-table-us_stock tbody');
+        tableBody.innerHTML = '';
+        if (!usStocks || usStocks.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;">登録されている米国株式はありません。</td></tr>`;
+            return;
+        }
+        usStocks.forEach(usStock => {
+            const row = tableBody.insertRow();
+            row.dataset.code = usStock.code;
+            const createCell = (html, className = '') => {
+                const cell = row.insertCell();
+                cell.innerHTML = html;
+                if (className) cell.className = className;
+                return cell;
+            };
+            if (usStock.error) {
+                row.className = 'error-row';
+                row.title = usStock.error;
+                createCell(`<input type="checkbox" class="asset-checkbox" data-code="${usStock.code}" disabled>`);
+                createCell(usStock.code);
+                const errorCell = createCell(usStock.error, 'error-message');
+                errorCell.colSpan = 7; // colspanを調整
+                createCell(`<button class="manage-btn" data-code="${usStock.code}" disabled>管理</button>`);
+                return;
+            }
+            createCell(`<input type="checkbox" class="asset-checkbox" data-code="${usStock.code}">`);
+            createCell(usStock.code);
+            createCell(`<a href="https://finance.yahoo.com/quote/${usStock.code}" target="_blank">${usStock.name}</a>`);
+            createCell(usStock.market || 'NASDAQ'); // 米国株の市場はデフォルトでNASDAQとするか、取得した値
+            createCell(formatNumber(usStock.price, 2)); // 円換算された株価
+            createCell(`${usStock.change} (${usStock.change_percent || 'N/A'})`);
+            createCell(formatMarketCap(usStock.market_cap));
+            createCell(usStock.per, getHighlightClass('per', usStock.per, usStock.asset_type));
+            createCell(usStock.yield, getHighlightClass('yield', usStock.yield, usStock.asset_type));
+            createCell(`<button class="manage-btn" data-code="${usStock.code}">管理</button>`);
+        });
+    }
+
     // --- ヘルパー関数 ---
-    const formatNumber = (num, fractionDigits = 0) => (num === null || num === undefined) ? 'N/A' : num.toLocaleString(undefined, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
+    const formatNumber = (num, fractionDigits = 0) => {
+        if (num === null || num === undefined || isNaN(num)) return 'N/A';
+        return num.toLocaleString(undefined, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
+    };
     function showAlert(message, type = 'danger') {
         const alert = document.createElement('div');
         alert.className = `alert alert-${type}`;
@@ -275,7 +320,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     function updateSortHeaders() {
-        document.querySelectorAll(`#${activeTab} .sortable`).forEach(header => {
+        document.querySelectorAll(`.tab-content.active .sortable`).forEach(header => {
             header.classList.remove('sort-active', 'sort-asc', 'sort-desc');
             if (header.dataset.key === currentSort.key) {
                 header.classList.add('sort-active', `sort-${currentSort.order}`);
@@ -294,16 +339,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (value === 'N/A' || value === null || value === undefined || value === '--') return 'N/A';
         const num = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
         if (isNaN(num)) return 'N/A';
+        // バックエンドで円換算されていることを想定し、単位は円で表示
         const trillion = 1e12, oku = 1e8;
         if (num >= trillion) return `${(num / trillion).toFixed(2)}兆円`;
         if (num >= oku) return `${(num / oku).toFixed(2)}億円`;
-        return `${(num / 1e6).toLocaleString()}百万円`;
+        return `${num.toLocaleString()}円`; // 億円未満はそのまま表示
     }
     function formatDividendHistory(history) {
         if (!history || Object.keys(history).length === 0) return 'N/A';
         return Object.keys(history).sort((a, b) => b - a).map(year => `${year}年: ${history[year]}円`).join(' | ');
     }
-    function renderScoreAsStars(score, details) {
+    function renderScoreAsStars(score, details, assetType) {
+        if (assetType !== 'jp_stock') return 'N/A'; // 国内株式以外はスコアを表示しない
         if (score === -1) return `<span class="score-na" title="評価指標なし">N/A</span>`;
         if (score === undefined || score === null) return 'N/A';
         let stars = '★'.repeat(Math.min(score, 5)) + '☆'.repeat(5 - Math.min(score, 5));
@@ -311,7 +358,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const tooltip = `合計: ${score}/10 (PER: ${details.per||0}/2, PBR: ${details.pbr||0}/2, ROE: ${details.roe||0}/2, 利回り: ${details.yield||0}/2, 連続増配: ${details.consecutive_increase||0}/2)`;
         return `<span class="score" title="${tooltip}">${stars}</span>`;
     }
-    function getHighlightClass(key, value) {
+    function getHighlightClass(key, value, assetType) {
+        if (assetType !== 'jp_stock') return ''; // 国内株式以外はハイライトしない
         const rules = highlightRules[key];
         if (!rules || value === 'N/A' || value === null || value === undefined || value === '--') return '';
         const numericValue = parseFloat(String(value).replace(/[^0-9.-]/g, ''));
@@ -342,13 +390,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const asset = allAssetsData.find(s => s.code === code);
         if (!asset) return;
         modalTitle.textContent = `保有情報管理 (${asset.code} ${asset.name})`;
-        renderHoldingsList(asset.holdings);
+        renderHoldingsList(asset.holdings, asset.asset_type);
         hideHoldingForm();
         modalOverlay.classList.remove('hidden');
     }
-    function renderHoldingsList(holdings) {
-        const asset = allAssetsData.find(a => a.code === currentManagingCode);
-        const isFund = asset && asset.asset_type === 'investment_trust';
+    function renderHoldingsList(holdings, assetType) {
+        const isFund = assetType === 'investment_trust';
         const quantityDigits = isFund ? 6 : 0; // 投資信託なら小数点以下6桁、それ以外は0桁
 
         holdingsListContainer.innerHTML = '';
@@ -407,7 +454,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const index = allAssetsData.findIndex(a => a.code === currentManagingCode);
             if (index !== -1) allAssetsData[index] = updatedAsset;
             saveAssetsToStorage();
-            renderHoldingsList(updatedAsset.holdings);
+            renderHoldingsList(updatedAsset.holdings, updatedAsset.asset_type); // asset_typeを渡す
             filterAndRender();
             hideHoldingForm();
         } catch (error) { showAlert(error.message, 'danger'); }
@@ -422,7 +469,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const index = allAssetsData.findIndex(a => a.code === currentManagingCode);
             if (index !== -1) allAssetsData[index] = updatedAsset;
             saveAssetsToStorage();
-            renderHoldingsList(updatedAsset.holdings);
+            renderHoldingsList(updatedAsset.holdings, updatedAsset.asset_type); // asset_typeを渡す
             filterAndRender();
         } catch (error) { showAlert(error.message, 'danger'); }
     }
@@ -432,19 +479,20 @@ document.addEventListener('DOMContentLoaded', () => {
     addAssetForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         const code = assetCodeInput.value.trim();
-        const assetType = addAssetForm.querySelector('input[name="asset_type"]:checked').value;
+        // asset_type はバックエンドで自動判定するため、フロントからは送信しない
         if (!code) return;
         try {
             const response = await fetch('/api/stocks', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code, asset_type: assetType }),
+                body: JSON.stringify({ code }), // asset_type を削除
             });
             const data = await response.json();
             showAlert(data.message, data.status === 'success' ? 'success' : (data.status === 'exists' ? 'warning' : 'danger'));
             
             if (data.status === 'success') {
-                const newAsset = await fetch(`/api/stocks/${code}`).then(res => res.json());
+                // APIから返されたstockデータにはasset_typeが含まれている
+                const newAsset = data.stock; // APIから返されたstockデータを使用
                 allAssetsData.push(newAsset);
                 saveAssetsToStorage();
 

@@ -1,296 +1,320 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('analysis.js loaded');
-
     // --- DOM要素の取得 ---
-    const summarySection = document.querySelector('.portfolio-summary');
-    const chartContainer = document.querySelector('.chart-container');
-    const industryChartCanvas = document.getElementById('industry-chart');
-    const accountTypeChartCanvas = document.getElementById('account-type-chart');
-    const chartToggleButtons = document.querySelectorAll('.chart-toggle-btn');
-    const downloadCsvButton = document.getElementById('download-analysis-csv-button');
-    const analysisTable = document.getElementById('analysis-table');
-    const filterInput = document.getElementById('analysis-filter-input');
-    const industryFilter = document.getElementById('industry-filter');
-    const accountTypeFilter = document.getElementById('account-type-filter');
-    const visibilityToggle = document.getElementById('toggle-visibility');
+    const alertContainer = document.getElementById('alert-container');
+    const portfolioSummary = document.querySelector('.portfolio-summary');
+    const analysisTableBody = document.querySelector('#analysis-table tbody');
+    const toggleVisibilityCheckbox = document.getElementById('toggle-visibility');
+    const analysisFilterInput = document.getElementById('analysis-filter-input');
+    const industryFilterSelect = document.getElementById('industry-filter');
+    const accountTypeFilterSelect = document.getElementById('account-type-filter');
+    const downloadAnalysisCsvButton = document.getElementById('download-analysis-csv-button');
+    const chartToggleBtns = document.querySelectorAll('.chart-toggle-btn');
+
+    // --- Chart.jsインスタンス ---
+    let industryChart;
+    let accountTypeChart;
+    let countryChart; // 国別ポートフォリオグラフ用
 
     // --- グローバル変数 ---
-    let industryChartInstance = null;
-    let accountTypeChartInstance = null;
-    let allHoldingsData = []; // 全ての保有口座情報
-    let industryBreakdownData = {};
-    let accountTypeBreakdownData = {};
-    let currentSort = { key: 'market_value', order: 'desc' }; // デフォルトソート
+    let allHoldingsData = []; // 全保有銘柄データ
+    let filteredHoldingsData = []; // フィルタリング後の保有銘柄データ
+    let analysisData = {
+        holdings_list: [],
+        industry_breakdown: {},
+        account_type_breakdown: {},
+        country_breakdown: {} // 国別内訳を追加
+    };
+    let currentSort = { key: 'code', order: 'asc' };
+    let isAmountVisible = true; // 金額表示のON/OFF
+    const COOLDOWN_MINUTES = 10;
+    const COOLDOWN_STORAGE_KEY = 'fullUpdateCooldownEnd'; // main.jsと共有
+
+    // --- 初期化処理 ---
+    async function initialize() {
+        try {
+            const response = await fetch('/api/portfolio/analysis');
+            if (!response.ok) {
+                let errorDetail = 'Failed to fetch analysis data';
+                try {
+                    const errorData = await response.json();
+                    errorDetail = errorData.detail || errorDetail;
+                } catch (e) {
+                    errorDetail = response.statusText;
+                }
+                const error = new Error(errorDetail);
+                error.status = response.status;
+                throw error;
+            }
+            analysisData = await response.json();
+            allHoldingsData = analysisData.holdings_list;
+
+            populateFilters();
+            filterAndRender();
+            renderSummary();
+            renderCharts();
+        } catch (error) {
+            console.error('Analysis initialization error:', error);
+            if (error.status === 429) {
+                showAlert('クールダウン中です。表示されているのは前回のデータです。', 'info');
+            } else {
+                showAlert(`分析データの取得に失敗しました。(${error.message})`, 'danger');
+            }
+        }
+    }
+
+    // --- レンダリング関連 ---
+    function filterAndRender() {
+        const filterText = analysisFilterInput.value.toLowerCase();
+        const selectedIndustry = industryFilterSelect.value;
+        const selectedAccountType = accountTypeFilterSelect.value;
+
+        filteredHoldingsData = allHoldingsData.filter(item => {
+            const matchesText = String(item.code).toLowerCase().includes(filterText) ||
+                                String(item.name || '').toLowerCase().includes(filterText);
+            const matchesIndustry = !selectedIndustry || item.industry === selectedIndustry;
+            const matchesAccountType = !selectedAccountType || item.account_type === selectedAccountType;
+            return matchesText && matchesIndustry && matchesAccountType;
+        });
+
+        sortHoldings(filteredHoldingsData);
+        renderAnalysisTable(filteredHoldingsData);
+        updateSortHeaders();
+    }
+
+    function renderAnalysisTable(holdings) {
+        analysisTableBody.innerHTML = '';
+        if (!holdings || holdings.length === 0) {
+            analysisTableBody.innerHTML = `<tr><td colspan="12" style="text-align:center;">該当する保有銘柄はありません。</td></tr>`;
+            return;
+        }
+
+        holdings.forEach(item => {
+            const row = analysisTableBody.insertRow();
+            const createCell = (html, className = '') => {
+                const cell = row.insertCell();
+                cell.innerHTML = html;
+                if (className) cell.className = className;
+                return cell;
+            };
+
+            createCell(item.code);
+            createCell(item.name);
+            createCell(item.market || 'N/A'); // 市場列
+            createCell(item.industry || 'N/A');
+            createCell(item.asset_type === 'jp_stock' ? '国内株式' : (item.asset_type === 'investment_trust' ? '投資信託' : (item.asset_type === 'us_stock' ? '米国株式' : 'N/A')));
+            createCell(item.account_type);
+            createCell(formatNumber(item.quantity, item.asset_type === 'investment_trust' ? 6 : 0));
+            createCell(formatNumber(item.purchase_price, 2));
+            createCell(formatNumber(item.price, 2));
+            createCell(formatNumber(item.market_value, 0), isAmountVisible ? '' : 'masked-amount');
+            createCell(formatNumber(item.profit_loss, 0), isAmountVisible ? (item.profit_loss >= 0 ? 'profit' : 'loss') : 'masked-amount');
+            createCell(formatNumber(item.profit_loss_rate, 2), isAmountVisible ? (item.profit_loss_rate >= 0 ? 'profit' : 'loss') : 'masked-amount');
+        });
+        applyVisibilityToggle();
+    }
+
+    function renderSummary() {
+        const totalMarketValue = allHoldingsData.reduce((sum, item) => sum + (item.market_value || 0), 0);
+        const totalProfitLoss = allHoldingsData.reduce((sum, item) => sum + (item.profit_loss || 0), 0);
+        const totalInvestment = allHoldingsData.reduce((sum, item) => sum + (item.investment_amount || 0), 0);
+        const totalProfitLossRate = totalInvestment !== 0 ? (totalProfitLoss / totalInvestment) * 100 : 0;
+
+        portfolioSummary.innerHTML = `
+            <p>総評価額: <span class="${isAmountVisible ? '' : 'masked-amount'}">${formatNumber(totalMarketValue, 0)}円</span></p>
+            <p>総損益: <span class="${isAmountVisible ? (totalProfitLoss >= 0 ? 'profit' : 'loss') : 'masked-amount'}">${formatNumber(totalProfitLoss, 0)}円</span></p>
+            <p>総損益率: <span class="${isAmountVisible ? (totalProfitLossRate >= 0 ? 'profit' : 'loss') : 'masked-amount'}">${formatNumber(totalProfitLossRate, 2)}%</span></p>
+        `;
+        applyVisibilityToggle();
+    }
+
+    function renderCharts() {
+        const chartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'right' },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed !== null) {
+                                label += formatNumber(context.parsed, 0) + '円 (' + context.dataset.data[context.dataIndex].toFixed(2) + '%)';
+                            }
+                            return label;
+                        }
+                    }
+                }
+            }
+        };
+
+        const getChartData = (breakdown) => {
+            const labels = Object.keys(breakdown);
+            const values = Object.values(breakdown);
+            const total = values.reduce((sum, val) => sum + val, 0);
+            const percentages = values.map(val => total > 0 ? (val / total * 100) : 0);
+
+            return {
+                labels: labels,
+                datasets: [{
+                    data: percentages,
+                    backgroundColor: generateColors(labels.length),
+                    hoverOffset: 4
+                }]
+            };
+        };
+
+        // 業種別グラフ
+        if (industryChart) industryChart.destroy();
+        industryChart = new Chart(document.getElementById('industry-chart'), {
+            type: 'pie',
+            data: getChartData(analysisData.industry_breakdown),
+            options: chartOptions
+        });
+
+        // 口座種別グラフ
+        if (accountTypeChart) accountTypeChart.destroy();
+        accountTypeChart = new Chart(document.getElementById('account-type-chart'), {
+            type: 'pie',
+            data: getChartData(analysisData.account_type_breakdown),
+            options: chartOptions
+        });
+
+        // 国別グラフ
+        if (countryChart) countryChart.destroy();
+        countryChart = new Chart(document.getElementById('country-chart'), {
+            type: 'pie',
+            data: getChartData(analysisData.country_breakdown),
+            options: chartOptions
+        });
+
+        // 初期表示は業種別
+        document.getElementById('industry-chart').classList.remove('hidden');
+        document.getElementById('account-type-chart').classList.add('hidden');
+        document.getElementById('country-chart').classList.add('hidden');
+    }
+
+    function updateChart(chartType) {
+        document.querySelectorAll('.chart-container canvas').forEach(canvas => canvas.classList.add('hidden'));
+        document.querySelectorAll('.chart-toggle-btn').forEach(btn => btn.classList.remove('active'));
+
+        document.querySelector(`.chart-toggle-btn[data-chart-type="${chartType}"]`).classList.add('active');
+
+        if (chartType === 'industry') {
+            document.getElementById('industry-chart').classList.remove('hidden');
+            industryChart.update();
+        } else if (chartType === 'account-type') {
+            document.getElementById('account-type-chart').classList.remove('hidden');
+            accountTypeChart.update();
+        } else if (chartType === 'country') { // 国別グラフの表示
+            document.getElementById('country-chart').classList.remove('hidden');
+            countryChart.update();
+        }
+    }
 
     // --- ヘルパー関数 ---
     const formatNumber = (num, fractionDigits = 0) => {
         if (num === null || num === undefined || isNaN(num)) return 'N/A';
-        if (visibilityToggle.checked) return '***';
         return num.toLocaleString(undefined, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
     };
-
-    const formatProfit = (num) => {
-        if (num === null || num === undefined || isNaN(num)) return 'N/A';
-        if (visibilityToggle.checked) return '***';
-        const sign = num > 0 ? '+' : '';
-        return sign + num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-    };
-
-    const getProfitClass = (num) => {
-        if (visibilityToggle.checked || num === null || num === undefined || isNaN(num)) return '';
-        if (num > 0) return 'text-plus';
-        if (num < 0) return 'text-minus';
-        return '';
-    };
-
-    // --- ソートとフィルタリング関連 ---
-    function sortData(data) {
+    function showAlert(message, type = 'danger') {
+        const alert = document.createElement('div');
+        alert.className = `alert alert-${type}`;
+        alert.textContent = message;
+        alertContainer.appendChild(alert);
+        requestAnimationFrame(() => alert.classList.add('show'));
+        setTimeout(() => {
+            alert.classList.remove('show');
+            alert.classList.add('hide');
+            alert.addEventListener('transitionend', () => alert.remove());
+        }, 5000);
+    }
+    function sortHoldings(data) {
         data.sort((a, b) => {
             let valA = a[currentSort.key], valB = b[currentSort.key];
             const parseValue = (v) => {
-                if (v === undefined || v === null || v === 'N/A' || v === '--' || v === '' || v === '投資信託') return -Infinity; // 投資信託はソート対象外
+                if (v === undefined || v === null || v === 'N/A' || v === '--' || v === '') return -Infinity;
                 if (typeof v === 'string') {
-                    const num = parseFloat(v.replace(/,/g, '').replace(/%|倍|円/g, ''));
+                    const num = parseFloat(v.replace(/,/g, '').replace(/%|円/g, ''));
                     return isNaN(num) ? v : num;
                 }
                 return v;
             };
             const parsedA = parseValue(valA), parsedB = parseValue(valB);
-            if (typeof parsedA === 'number' && typeof parsedB === 'number') {
-                return currentSort.order === 'asc' ? parsedA - parsedB : parsedB - parsedA;
-            }
+            if (typeof parsedA === 'number' && typeof parsedB === 'number') return currentSort.order === 'asc' ? parsedA - parsedB : parsedB - parsedA;
             return currentSort.order === 'asc' ? String(parsedA).localeCompare(String(parsedB)) : String(parsedB).localeCompare(String(parsedA));
         });
     }
-
     function updateSortHeaders() {
-        const tableHeaders = document.querySelectorAll('#analysis-table .sortable');
-        tableHeaders.forEach(header => {
+        document.querySelectorAll('#analysis-table .sortable').forEach(header => {
             header.classList.remove('sort-active', 'sort-asc', 'sort-desc');
             if (header.dataset.key === currentSort.key) {
                 header.classList.add('sort-active', `sort-${currentSort.order}`);
             }
         });
     }
+    function populateFilters() {
+        const industries = [...new Set(allHoldingsData.map(item => item.industry || 'N/A'))].sort();
+        industryFilterSelect.innerHTML = '<option value="">すべての業種</option>' + industries.map(ind => `<option value="${ind}">${ind}</option>`).join('');
 
-    // --- データ取得と描画 ---
-    async function initialize() {
-        try {
-            visibilityToggle.checked = true;
-
-            const response = await fetch('/api/portfolio/analysis');
-            if (!response.ok) throw new Error('分析データの取得に失敗しました。');
-            
-            const data = await response.json();
-            allHoldingsData = data.holdings_list;
-            industryBreakdownData = data.industry_breakdown;
-            accountTypeBreakdownData = data.account_type_breakdown;
-
-            populateFilterDropdowns();
-            renderSummary(allHoldingsData);
-            renderChart('industry');
-            filterAndRenderTable();
-
-        } catch (error) {
-            console.error('Error initializing analysis page:', error);
-            summarySection.innerHTML = `<p style="color: red;">${error.message}</p>`;
-        }
+        const accountTypes = [...new Set(allHoldingsData.map(item => item.account_type || 'N/A'))].sort();
+        accountTypeFilterSelect.innerHTML = '<option value="">すべての口座種別</option>' + accountTypes.map(acc => `<option value="${acc}">${acc}</option>`).join('');
     }
-    
-    function populateFilterDropdowns() {
-        // 既存のオプションをクリア
-        industryFilter.innerHTML = '<option value="">すべての業種</option>';
-        accountTypeFilter.innerHTML = '<option value="">すべての口座種別</option>';
-
-        const industries = [...new Set(allHoldingsData.map(h => h.industry))].sort();
-        const accountTypes = [...new Set(allHoldingsData.map(h => h.account_type))].sort();
-
-        industries.forEach(industry => {
-            const option = document.createElement('option');
-            option.value = industry;
-            option.textContent = industry;
-            industryFilter.appendChild(option);
-        });
-
-        accountTypes.forEach(type => {
-            const option = document.createElement('option');
-            option.value = type;
-            option.textContent = type;
-            accountTypeFilter.appendChild(option);
-        });
-    }
-
-    function filterAndRenderTable() {
-        const filterText = filterInput.value.toLowerCase();
-        const selectedIndustry = industryFilter.value;
-        const selectedAccountType = accountTypeFilter.value;
-
-        let filteredData = allHoldingsData.filter(holding => {
-            const textMatch = filterText === '' ||
-                String(holding.code).toLowerCase().includes(filterText) ||
-                String(holding.name || '').toLowerCase().includes(filterText);
-            
-            const industryMatch = selectedIndustry === '' || holding.industry === selectedIndustry;
-            const accountTypeMatch = selectedAccountType === '' || holding.account_type === selectedAccountType;
-
-            return textMatch && industryMatch && accountTypeMatch;
-        });
-        
-        sortData(filteredData);
-        renderTable(filteredData);
-        updateSortHeaders();
-    }
-
-    function renderSummary(holdings) {
-        if (!holdings || holdings.length === 0) {
-            summarySection.innerHTML = '<p>分析対象の保有資産がありません。</p>';
-            return;
+    function generateColors(numColors) {
+        const colors = [];
+        const hueStep = 360 / numColors;
+        for (let i = 0; i < numColors; i++) {
+            const hue = i * hueStep;
+            colors.push(`hsl(${hue}, 70%, 60%)`);
         }
-
-        const totalInvestment = holdings.reduce((sum, h) => sum + (h.investment_amount || 0), 0);
-        const totalMarketValue = holdings.reduce((sum, h) => sum + (h.market_value || 0), 0);
-        const totalProfitLoss = totalMarketValue - totalInvestment;
-        const totalProfitLossRate = totalInvestment !== 0 ? (totalProfitLoss / totalInvestment) * 100 : 0;
-        const totalAnnualDividend = holdings.reduce((sum, h) => sum + (h.estimated_annual_dividend || 0), 0);
-
-        const profitLossRateText = visibilityToggle.checked ? '***' : `(${totalProfitLossRate.toFixed(2)}%)`;
-
-        summarySection.innerHTML = `
-            <ul>
-                <li><strong>保有資産件数:</strong> ${holdings.length}</li>
-                <li><strong>総投資額:</strong> ${formatNumber(totalInvestment)}円</li>
-                <li><strong>総評価額:</strong> ${formatNumber(totalMarketValue)}円</li>
-                <li class="${getProfitClass(totalProfitLoss)}">
-                    <strong>総損益:</strong> ${formatProfit(totalProfitLoss)}円
-                    ${profitLossRateText}
-                </li>
-                <li><strong>年間配当金（予想）:</strong> ${formatNumber(totalAnnualDividend)}円</li>
-            </ul>
-        `;
+        return colors;
     }
-
-    function renderChart(chartType) {
-        if (industryChartInstance) industryChartInstance.destroy();
-        if (accountTypeChartInstance) accountTypeChartInstance.destroy();
-
-        industryChartCanvas.classList.toggle('hidden', chartType !== 'industry');
-        accountTypeChartCanvas.classList.toggle('hidden', chartType !== 'account-type');
-
-        let labels, data, title, ctx;
-        if (chartType === 'industry') {
-            labels = Object.keys(industryBreakdownData);
-            data = Object.values(industryBreakdownData);
-            title = '業種別ポートフォリオ構成';
-            ctx = industryChartCanvas.getContext('2d');
-        } else {
-            labels = Object.keys(accountTypeBreakdownData);
-            data = Object.values(accountTypeBreakdownData);
-            title = '口座種別ポートフォリオ構成';
-            ctx = accountTypeChartCanvas.getContext('2d');
-        }
-
-        if (!data || data.length === 0) {
-            chartContainer.innerHTML = '<p>グラフを表示するデータがありません。</p>';
-            return;
-        }
-
-        const backgroundColors = ['#332288', '#117733', '#44AA99', '#88CCEE', '#DDCC77', '#CC6677', '#AA4499', '#882255', '#E51E1E', '#6699CC', '#F77F00', '#994F00', '#33FF00', '#00FFCC', '#0099FF', '#6600FF', '#CC00FF', '#FF00CC', '#FF0066', '#FF3300', '#FF9900', '#FFFF00', '#99FF00', '#00FF00', '#00FF99', '#00FFFF', '#0066FF', '#3300FF', '#9900FF', '#FF00FF'];
-
-        const chartInstance = new Chart(ctx, {
-            type: 'pie',
-            data: { labels, datasets: [{ label: '評価額', data, backgroundColor: backgroundColors.slice(0, labels.length), borderColor: '#fff', borderWidth: 1 }] },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: {
-                    title: { display: true, text: title, font: { size: 16 } },
-                    legend: { position: 'top' },
-                    tooltip: {
-                        callbacks: {
-                            label: (context) => {
-                                if (visibilityToggle.checked) return `${context.label}: ***`;
-                                let label = context.label || '';
-                                if (label) label += ': ';
-                                if (context.parsed !== null) label += formatNumber(context.parsed) + '円';
-                                return label;
-                            }
-                        }
-                    }
-                }
+    function applyVisibilityToggle() {
+        document.querySelectorAll('.masked-amount').forEach(el => {
+            if (isAmountVisible) {
+                el.classList.remove('masked-amount');
+            } else {
+                el.classList.add('masked-amount');
             }
         });
-
-        if (chartType === 'industry') industryChartInstance = chartInstance;
-        else accountTypeChartInstance = chartInstance;
-    }
-
-    function renderTable(holdings) {
-        const tableBody = document.querySelector('#analysis-table tbody');
-        tableBody.innerHTML = ''; // 既存のtbodyをクリア
-
-        if (!holdings || holdings.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="10" style="text-align: center;">データがありません。</td></tr>`;
-            return;
-        }
-
-        const rowsHtml = holdings.map(holding => {
-            const profitLossRateText = visibilityToggle.checked ? '***' : (holding.profit_loss_rate !== null && !isNaN(holding.profit_loss_rate) ? `${holding.profit_loss_rate.toFixed(2)}%` : 'N/A');
-            const assetTypeName = holding.asset_type === 'jp_stock' ? '国内株式' : (holding.asset_type === 'investment_trust' ? '投資信託' : 'N/A');
-            
-            const isFund = holding.asset_type === 'investment_trust';
-            const quantityDigits = isFund ? 6 : 0;
-
-            return `
-                <tr>
-                    <td>${holding.code || 'N/A'}</td>
-                    <td>${holding.name || 'N/A'}</td>
-                    <td>${holding.asset_type === 'investment_trust' ? '-' : (holding.industry || 'N/A')}</td>
-                    <td>${assetTypeName}</td>
-                    <td>${holding.account_type || 'N/A'}</td>
-                    <td>${formatNumber(holding.quantity, quantityDigits)}</td>
-                    <td>${formatNumber(holding.purchase_price, 2)}</td>
-                    <td>${formatNumber(holding.price)}</td>
-                    <td>${formatNumber(holding.market_value)}</td>
-                    <td class="${getProfitClass(holding.profit_loss)}">${formatProfit(holding.profit_loss)}</td>
-                    <td class="${getProfitClass(holding.profit_loss_rate)}">${profitLossRateText}</td>
-                </tr>
-            `;
-        }).join('');
-        tableBody.innerHTML = rowsHtml;
+        // サマリーの金額表示も更新
+        renderSummary();
     }
 
     // --- イベントリスナー ---
-    downloadCsvButton.addEventListener('click', () => { window.location.href = '/api/portfolio/analysis/csv'; });
+    analysisFilterInput.addEventListener('input', filterAndRender);
+    industryFilterSelect.addEventListener('change', filterAndRender);
+    accountTypeFilterSelect.addEventListener('change', filterAndRender);
 
-    chartToggleButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            chartToggleButtons.forEach(btn => btn.classList.remove('active'));
-            button.classList.add('active');
-            renderChart(button.dataset.chartType);
-        });
-    });
-
-    analysisTable.addEventListener('click', (event) => {
+    document.querySelector('#analysis-table thead').addEventListener('click', (event) => {
         const header = event.target.closest('.sortable');
-        if (header) {
-            const key = header.dataset.key;
-            if (currentSort.key === key) {
-                currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
-            } else {
-                currentSort.key = key;
-                currentSort.order = 'asc';
-            }
-            filterAndRenderTable();
+        if (!header) return;
+        const key = header.dataset.key;
+        if (currentSort.key === key) {
+            currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+        } else {
+            currentSort.key = key;
+            currentSort.order = 'asc';
         }
+        filterAndRender();
     });
 
-    filterInput.addEventListener('input', filterAndRenderTable);
-    industryFilter.addEventListener('change', filterAndRenderTable);
-    accountTypeFilter.addEventListener('change', filterAndRenderTable);
+    toggleVisibilityCheckbox.addEventListener('change', (event) => {
+        isAmountVisible = !event.target.checked;
+        applyVisibilityToggle();
+        renderAnalysisTable(filteredHoldingsData); // テーブルも再描画してクラスを適用
+    });
 
-    visibilityToggle.addEventListener('change', () => {
-        renderSummary(allHoldingsData);
-        renderChart(document.querySelector('.chart-toggle-btn.active').dataset.chartType);
-        filterAndRenderTable();
+    downloadAnalysisCsvButton.addEventListener('click', () => {
+        window.location.href = '/api/portfolio/analysis/csv';
+    });
+
+    chartToggleBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            updateChart(btn.dataset.chartType);
+        });
     });
 
     // --- 初期実行 ---

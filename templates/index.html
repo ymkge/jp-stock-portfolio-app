@@ -15,11 +15,7 @@
             <section class="portfolio-controls">
                 <h2>資産管理</h2>
                 <form id="add-asset-form">
-                    <div class="asset-type-selector">
-                        <label><input type="radio" name="asset_type" value="jp_stock" checked> 国内株式</label>
-                        <label><input type="radio" name="asset_type" value="investment_trust"> 投資信託</label>
-                    </div>
-                    <input type="text" id="asset-code-input" placeholder="銘柄コードまたはファンドコード" required>
+                    <input type="text" id="asset-code-input" placeholder="銘柄コード、ティッカー、ファンドコード" required>
                     <button type="submit">追加</button>
                 </form>
                 <div class="recent-stocks-section">
@@ -35,7 +31,7 @@
                 <h2>ポートフォリオ操作</h2>
                 <a href="/analysis" class="nav-link">ポートフォリオ分析ページへ</a>
                 <button id="download-csv-button">CSVをダウンロード</button>
-                <button id="refresh-all-button">全件更新</button> <!-- 追加 -->
+                <button id="refresh-all-button">全件更新</button>
                 <button id="delete-selected-stocks-button" class="delete-btn" disabled>選択した銘柄を削除</button>
             </section>
             <footer>
@@ -50,6 +46,7 @@
                 <div class="tab-nav">
                     <button class="tab-link active" data-tab="jp_stock">国内株式</button>
                     <button class="tab-link" data-tab="investment_trust">投資信託</button>
+                    <button class="tab-link" data-tab="us_stock">米国株式</button> <!-- 米国株式タブを追加 -->
                 </div>
             </header>
             <section id="jp_stock" class="tab-content active">
@@ -60,6 +57,7 @@
                                 <th><input type="checkbox" class="select-all-assets" data-asset-type="jp_stock"></th>
                                 <th class="sortable" data-key="code">銘柄コード</th>
                                 <th class="sortable" data-key="name">銘柄名</th>
+                                <th class="sortable" data-key="market">市場</th> <!-- 市場列を追加 -->
                                 <th class="sortable" data-key="industry">業種</th>
                                 <th class="sortable" data-key="score">総合評価スコア</th>
                                 <th class="sortable" data-key="price">現在株価</th>
@@ -89,6 +87,27 @@
                                 <th class="sortable" data-key="change">前日比</th>
                                 <th class="sortable" data-key="net_assets">純資産総額</th>
                                 <th class="sortable" data-key="trust_fee">信託報酬</th>
+                                <th>保有管理</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+            <section id="us_stock" class="tab-content"> <!-- 米国株式用のタブコンテンツを追加 -->
+                <div class="table-container">
+                    <table id="portfolio-table-us_stock" class="portfolio-table">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" class="select-all-assets" data-asset-type="us_stock"></th>
+                                <th class="sortable" data-key="code">ティッカー</th>
+                                <th class="sortable" data-key="name">銘柄名</th>
+                                <th class="sortable" data-key="market">市場</th> <!-- 市場列を追加 -->
+                                <th class="sortable" data-key="price">現在株価 (円換算)</th>
+                                <th class="sortable" data-key="change_percent">前日比</th>
+                                <th class="sortable" data-key="market_cap">時価総額</th>
+                                <th class="sortable" data-key="per">PER</th>
+                                <th class="sortable" data-key="yield">配当利回り</th>
                                 <th>保有管理</th>
                             </tr>
                         </thead>
@@ -143,6 +162,6 @@
         </div>
     </div>
 
-    <script src="/static/js/main.js?v=1.5"></script>
+    <script src="/static/js/main.js?v=1.6"></script>
 </body>
 </html>

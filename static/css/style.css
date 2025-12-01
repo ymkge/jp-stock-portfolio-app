@@ -219,6 +219,13 @@ button {
     white-space: nowrap; /* セルの内容が改行されないように */
 }
 
+/* 市場カラムのスタイル */
+.portfolio-table th[data-key="market"],
+.portfolio-table td:nth-child(4) { /* jp_stockテーブルの市場列 */
+    min-width: 60px;
+    max-width: 80px;
+}
+
 .portfolio-table thead th {
     background-color: var(--header-bg-color);
     font-weight: bold;
@@ -757,6 +764,13 @@ button {
     border-bottom: 1px solid var(--border-color);
     text-align: left;
     white-space: nowrap;
+}
+
+/* analysis-table の市場カラムのスタイル */
+#analysis-table th[data-key="market"],
+#analysis-table td:nth-child(3) { /* analysis-tableの市場列 */
+    min-width: 60px;
+    max-width: 80px;
 }
 
 /* テーブルの左右のセルにだけpaddingを追加 */

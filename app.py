@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # --- クールダウン設定 ---
 last_full_update_time: Optional[datetime] = None
-UPDATE_COOLDOWN = timedelta(minutes=10)
+UPDATE_COOLDOWN = timedelta(seconds=10)
 
 async def check_update_cooldown():
     """全件更新APIのクールダウンをチェックする依存関係"""

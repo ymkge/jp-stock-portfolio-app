@@ -11,6 +11,7 @@ from cachetools import cached, TTLCache, cachedmethod
 
 # --- ロガー設定 ---
 logger = logging.getLogger(__name__)
+# --------------------
 
 # --- 定数 ---
 MAX_RETRIES = 3
@@ -81,14 +82,21 @@ class JPStockScraper(BaseScraper):
             if not match: return {}
             preloaded_state = json.loads(match.group(1))
             dividend_data = preloaded_state.get("mainStocksDividend", {}).get("dps", [])
-            if not dividend_data: return {}
-            
-            yearly_dividends = {
-                re.search(r"(\d{4})", item.get("settlementDate", "")).group(1): item["annualCorrectedActualValue"]
-                for item in dividend_data
-                if item.get("valueType") == "actual" and "annualCorrectedActualValue" in item and re.search(r"(\d{4})", item.get("settlementDate", ""))
-            }
-            return {year: yearly_dividends[year] for year in sorted(yearly_dividends.keys(), reverse=True)[:num_years]}
+            yearly_dividends = {}
+            for item in dividend_data:
+                settlement_date_match = re.search(r"(\d{4})", item.get("settlementDate", ""))
+                if not settlement_date_match:
+                    continue
+                year = settlement_date_match.group(1)
+
+                # 会社予想 (forecast) を優先的に取得
+                if item.get("valueType") == "forecast" and "annualForecastValue" in item:
+                    yearly_dividends[year] = item["annualForecastValue"]
+                # 実績 (actual) があれば、forecastがない場合にのみ使用
+                elif item.get("valueType") == "actual" and "annualCorrectedActualValue" in item and year not in yearly_dividends:
+                    yearly_dividends[year] = item["annualCorrectedActualValue"]
+
+            return {year: yearly_dividends[year] for year in sorted(yearly_dividends.keys(), key=int, reverse=True)[:num_years]}
         except (json.JSONDecodeError, KeyError, AttributeError) as e:
             logger.error(f"銘柄 {stock_code} の配当データ解析中にエラー: {e}", exc_info=True)
             return {}
@@ -123,6 +131,13 @@ class JPStockScraper(BaseScraper):
 
             dividend_history = self._fetch_dividend_history(code, num_years_dividend)
             
+            # annual_dividend を dividend_history から取得するように変更
+            latest_annual_dividend = "N/A"
+            if dividend_history:
+                # dividend_historyのキーは文字列の年なので、数値に変換して最大値を取得
+                latest_year = max(dividend_history.keys(), key=int) 
+                latest_annual_dividend = dividend_history[latest_year]
+
             return {
                 "code": code, "name": price_board.get("name", "N/A"),
                 "industry": price_board.get("industry", {}).get("industryName", "N/A"),
@@ -131,7 +146,7 @@ class JPStockScraper(BaseScraper):
                 "per": ref_index.get("per", "N/A"), "pbr": ref_index.get("pbr", "N/A"),
                 "roe": ref_index.get("roe", "N/A"), "eps": ref_index.get("eps", "N/A"),
                 "yield": price_board.get("shareDividendYield") or ref_index.get("shareDividendYield", "N/A"),
-                "annual_dividend": ref_index.get("shareAnnualDividend", "N/A"),
+                "annual_dividend": latest_annual_dividend, # ここを修正
                 "dividend_history": dividend_history, "asset_type": "jp_stock", "currency": "JPY"
             }
         except (json.JSONDecodeError, KeyError) as e:
@@ -261,24 +276,34 @@ def get_exchange_rate(pair: str = 'USDJPY=X') -> Optional[float]:
         return None
 
 # --- ファクトリ関数 ---
+# --- グローバルなスクレイパーインスタンスを保持する辞書 ---
+_scraper_instances: Dict[str, BaseScraper] = {}
+
 def get_scraper(asset_type: str) -> BaseScraper:
     """資産種別に応じて適切なScraperインスタンスを返す"""
-    if asset_type == 'jp_stock':
-        return JPStockScraper()
-    if asset_type == 'investment_trust':
-        return InvestTrustScraper()
-    if asset_type == 'us_stock':
-        return USStockScraper()
-    raise ValueError(f"Unsupported asset type: {asset_type}")
+    if asset_type not in _scraper_instances:
+        if asset_type == 'jp_stock':
+            _scraper_instances[asset_type] = JPStockScraper()
+        elif asset_type == 'investment_trust':
+            _scraper_instances[asset_type] = InvestTrustScraper()
+        elif asset_type == 'us_stock':
+            _scraper_instances[asset_type] = USStockScraper()
+        else:
+            raise ValueError(f"Unsupported asset type: {asset_type}")
+    return _scraper_instances[asset_type]
 
 # --- テスト用 ---
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-    def test_scraper(scraper: BaseScraper, code: str, title: str):
+    def test_scraper(scraper_instance: BaseScraper, code: str, title: str):
         print(f"\n--- {title}: {code} ---")
-        data = scraper.fetch_data(code)
+        data = scraper_instance.fetch_data(code)
         print(json.dumps(data, indent=2, ensure_ascii=False))
+        if isinstance(scraper_instance, JPStockScraper):
+            print(f"  年間配当 (annual_dividend): {data.get('annual_dividend')}")
+            print(f"  配当利回り (yield): {data.get('yield')}")
+            print(f"  配当履歴 (dividend_history): {data.get('dividend_history')}")
 
     # 国内株
     jp_scraper = get_scraper('jp_stock')

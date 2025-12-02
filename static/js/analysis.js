@@ -101,6 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(formatNumber(item.quantity, item.asset_type === 'investment_trust' ? 6 : 0));
             createCell(formatNumber(item.purchase_price, 2));
             createCell(formatNumber(item.price, 2));
+            createCell(formatNumber(item.estimated_annual_dividend, 0));
             createCell(formatNumber(item.market_value, 0), !isAmountVisible ? 'masked-amount' : '');
             createCell(formatNumber(item.profit_loss, 0), `${!isAmountVisible ? 'masked-amount' : ''} ${profitLossClass}`);
             createCell(formatNumber(item.profit_loss_rate, 2), `${!isAmountVisible ? 'masked-amount' : ''} ${profitLossRateClass}`);
@@ -112,6 +113,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalProfitLoss = holdings.reduce((sum, item) => sum + (parseFloat(item.profit_loss) || 0), 0);
         const totalInvestment = totalMarketValue - totalProfitLoss;
         const totalProfitLossRate = totalInvestment !== 0 ? (totalProfitLoss / totalInvestment) * 100 : 0;
+        // 年間配当金の合計を計算
+        const totalEstimatedAnnualDividend = holdings.reduce((sum, item) => sum + (parseFloat(item.estimated_annual_dividend) || 0), 0);
+
 
         const summaryProfitLossClass = totalProfitLoss >= 0 ? 'profit' : 'loss';
         const summaryProfitLossRateClass = totalProfitLossRate >= 0 ? 'profit' : 'loss';
@@ -120,6 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <p>総評価額: <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalMarketValue, 0)}円</span></p>
             <p>総損益: <span class="${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossClass}">${formatNumber(totalProfitLoss, 0)}円</span></p>
             <p>総損益率: <span class="${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossRateClass}">${formatNumber(totalProfitLossRate, 2)}%</span></p>
+            <p>年間配当合計: <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalEstimatedAnnualDividend, 0)}円</span></p>
         `;
     }
 

@@ -371,7 +371,7 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
             holdings_list.append(holding_detail)
 
     # フロントエンド表示用に、Noneを"N/A"に変換
-    display_keys_to_convert = ["price", "market_value", "profit_loss", "profit_loss_rate"]
+    display_keys_to_convert = ["price", "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend"]
     for item in holdings_list:
         for key in display_keys_to_convert:
             if item.get(key) is None:

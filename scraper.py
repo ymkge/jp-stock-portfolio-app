@@ -231,21 +231,34 @@ class USStockScraper(BaseScraper):
 # --- 為替レート取得 ---
 @cached(TTLCache(maxsize=10, ttl=CACHE_TTL))
 def get_exchange_rate(pair: str = 'USDJPY=X') -> Optional[float]:
-    """Yahoo! Financeから為替レートを取得する"""
-    url = f"https://finance.yahoo.com/quote/{pair}"
-    # BaseScraperのインスタンスを作成して_make_requestメソッドを利用
-    scraper_instance = JPStockScraper()
+    """Yahoo!ファイナンス (JP) から為替レートを取得する"""
+    url = f"https://finance.yahoo.co.jp/quote/{pair}"
+    
+    # _make_requestを呼び出すためだけにインスタンスを作成
+    scraper_instance = JPStockScraper() 
     response = scraper_instance._make_request(url, headers=FX_HEADERS)
+    
     if not response:
         return None
+    
     try:
-        soup = BeautifulSoup(response.content, "lxml")
-        price_tag = soup.find("fin-streamer", {"data-field": "regularMarketPrice", "data-symbol": pair})
-        if price_tag and price_tag.text:
-            return float(price_tag.text.replace(',', ''))
-    except (ValueError, AttributeError) as e:
+        match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", response.text)
+        if not match:
+            logger.warning(f"為替レート ({pair}) の __PRELOADED_STATE__ が見つかりません。")
+            return None
+
+        data = json.loads(match.group(1))
+        rate = data.get("mainCurrencyDetail", {}).get("counterCurrencyPrice")
+        
+        if rate and isinstance(rate, (int, float)):
+            return float(rate)
+        else:
+            logger.warning(f"為替レート ({pair}) の値がJSON内に見つからないか、無効な形式です。")
+            return None
+            
+    except (json.JSONDecodeError, KeyError, AttributeError) as e:
         logger.error(f"為替レート ({pair}) の解析中にエラー: {e}", exc_info=True)
-    return None
+        return None
 
 # --- ファクトリ関数 ---
 def get_scraper(asset_type: str) -> BaseScraper:

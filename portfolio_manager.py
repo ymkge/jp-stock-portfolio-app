@@ -224,69 +224,51 @@ def calculate_holding_values(
 ) -> Dict[str, Any]:
     """
     個別の保有情報に対して、評価額、損益、年間配当などを計算し、円換算する。
+    データが取得できない場合もエラーを出さずに 'N/A' を返すように堅牢化。
     """
-    calculated_holding = {**holding} # 元のholdingデータを変更しないようにコピー
-
+    market_value, profit_loss, profit_loss_rate = "N/A", "N/A", "N/A"
+    total_annual_dividend = 0
+    
     try:
-        purchase_price = float(holding["purchase_price"])
-        quantity = float(holding["quantity"])
-        
-        # 投資額
-        investment_amount_foreign = purchase_price * quantity
-        
-        # 現在値
+        purchase_price = float(holding.get("purchase_price", 0))
+        quantity = float(holding.get("quantity", 0))
         price_str = str(asset_data.get("price", "")).replace(',', '')
-        # N/A の場合は計算をスキップ
-        if not price_str or price_str in ['N/A', '---', '']:
-            raise ValueError("現在値が取得できません。") # エラーを発生させて計算を中断
-
-        current_price_foreign = float(price_str)
         
-        # 評価額 (外貨建て)
-        market_value_foreign = current_price_foreign * quantity
-        
-        # 損益 (外貨建て)
-        profit_loss_foreign = market_value_foreign - investment_amount_foreign
-        
-        # 損益率
-        profit_loss_rate = (profit_loss_foreign / investment_amount_foreign) * 100 if investment_amount_foreign != 0 else 0
+        # 現在値が有効な数値の場合のみ計算
+        if price_str and price_str not in ['N/A', '---', '']:
+            current_price_foreign = float(price_str)
+            currency = asset_data.get("currency", "JPY")
+            exchange_rate = exchange_rates.get(currency, 1.0)
 
-        # 通貨換算
-        currency = asset_data.get("currency", "JPY")
-        exchange_rate = exchange_rates.get(currency, 1.0) # JPYの場合は1.0
+            market_value = current_price_foreign * quantity * exchange_rate
+            # 投資額は購入時のレートを考慮しないため、現在のレートで円換算
+            investment_value = purchase_price * quantity * exchange_rate
+            profit_loss = market_value - investment_value
+            profit_loss_rate = (profit_loss / investment_value) * 100 if investment_value != 0 else 0
 
-        calculated_holding["investment_amount"] = investment_amount_foreign * exchange_rate
-        calculated_holding["market_value"] = market_value_foreign * exchange_rate
-        calculated_holding["profit_loss"] = profit_loss_foreign * exchange_rate
-        calculated_holding["profit_loss_rate"] = profit_loss_rate # 損益率は通貨に依存しない
-        calculated_holding["price"] = current_price_foreign * exchange_rate # 現在値も円換算で返す
+        # 年間配当の計算 (有効な数値の場合のみ)
+        annual_dividend_str = str(asset_data.get("annual_dividend", "0")).replace(',', '')
+        if annual_dividend_str and annual_dividend_str not in ['N/A', '---', '']:
+            annual_dividend_foreign = float(annual_dividend_str)
+            currency = asset_data.get("currency", "JPY")
+            exchange_rate = exchange_rates.get(currency, 1.0)
+            total_annual_dividend = annual_dividend_foreign * quantity * exchange_rate
+    
+    except (ValueError, TypeError, KeyError, ZeroDivisionError):
+        # エラーが発生した場合は、計算値を "N/A" に設定する
+        market_value, profit_loss, profit_loss_rate = "N/A", "N/A", "N/A"
 
-        # 年間配当 (円換算)
-        if asset_data.get("asset_type") == "jp_stock":
-            annual_dividend_foreign = float(str(asset_data.get("annual_dividend", "0")).replace(',', ''))
-            calculated_holding["estimated_annual_dividend"] = annual_dividend_foreign * quantity
-        elif asset_data.get("asset_type") == "us_stock":
-            # 米国株の年間配当はUSD建てで取得されると仮定
-            annual_dividend_foreign_str = str(asset_data.get("annual_dividend", "0")).replace(',', '')
-            if annual_dividend_foreign_str not in ['N/A', '---', '']: # N/Aチェックを追加
-                annual_dividend_foreign = float(annual_dividend_foreign_str)
-                calculated_holding["estimated_annual_dividend"] = annual_dividend_foreign * quantity * exchange_rate
-            else:
-                calculated_holding["estimated_annual_dividend"] = 0
-        else:
-            calculated_holding["estimated_annual_dividend"] = 0 # 投資信託など
-
-    except (ValueError, TypeError, KeyError, ZeroDivisionError) as e:
-        # logger.warning(f"Calculation error for code {asset_data.get('code')}, holding {holding.get('id')}: {e}")
-        # エラー時は計算値をN/Aまたは0とする
-        calculated_holding["investment_amount"] = 0
-        calculated_holding["market_value"] = 0
-        calculated_holding["profit_loss"] = 0
-        calculated_holding["profit_loss_rate"] = 0
-        calculated_holding["price"] = 0
-        calculated_holding["estimated_annual_dividend"] = 0
-
-    return calculated_holding
+    # 取得単価や数量など、計算に依存しない項目は常に返す
+    return {
+        "holding_id": holding.get("id"),
+        "account_type": holding.get("account_type"),
+        "purchase_price": holding.get("purchase_price"),
+        "quantity": holding.get("quantity"),
+        "market_value": market_value,
+        "profit_loss": profit_loss,
+        "profit_loss_rate": profit_loss_rate,
+        "estimated_annual_dividend": total_annual_dividend,
+    }
 
 def create_csv_data(data: list[dict]) -> str:
     """

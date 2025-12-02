@@ -224,9 +224,9 @@ def calculate_holding_values(
 ) -> Dict[str, Any]:
     """
     個別の保有情報に対して、評価額、損益、年間配当などを計算し、円換算する。
-    データが取得できない場合もエラーを出さずに 'N/A' を返すように堅牢化。
+    データが取得できない場合はエラーを出さずに 'None' を返すように堅牢化。
     """
-    market_value, profit_loss, profit_loss_rate = "N/A", "N/A", "N/A"
+    market_value, profit_loss, profit_loss_rate, price_in_jpy = None, None, None, None
     total_annual_dividend = 0
     
     try:
@@ -234,19 +234,18 @@ def calculate_holding_values(
         quantity = float(holding.get("quantity", 0))
         price_str = str(asset_data.get("price", "")).replace(',', '')
         
-        # 現在値が有効な数値の場合のみ計算
         if price_str and price_str not in ['N/A', '---', '']:
             current_price_foreign = float(price_str)
             currency = asset_data.get("currency", "JPY")
             exchange_rate = exchange_rates.get(currency, 1.0)
 
-            market_value = current_price_foreign * quantity * exchange_rate
-            # 投資額は購入時のレートを考慮しないため、現在のレートで円換算
+            price_in_jpy = current_price_foreign * exchange_rate
+            market_value = price_in_jpy * quantity
+            # 投資額は購入時の為替レートを考慮すべきだが、簡単のため現在のレートで円換算
             investment_value = purchase_price * quantity * exchange_rate
             profit_loss = market_value - investment_value
             profit_loss_rate = (profit_loss / investment_value) * 100 if investment_value != 0 else 0
 
-        # 年間配当の計算 (有効な数値の場合のみ)
         annual_dividend_str = str(asset_data.get("annual_dividend", "0")).replace(',', '')
         if annual_dividend_str and annual_dividend_str not in ['N/A', '---', '']:
             annual_dividend_foreign = float(annual_dividend_str)
@@ -255,15 +254,14 @@ def calculate_holding_values(
             total_annual_dividend = annual_dividend_foreign * quantity * exchange_rate
     
     except (ValueError, TypeError, KeyError, ZeroDivisionError):
-        # エラーが発生した場合は、計算値を "N/A" に設定する
-        market_value, profit_loss, profit_loss_rate = "N/A", "N/A", "N/A"
+        pass
 
-    # 取得単価や数量など、計算に依存しない項目は常に返す
     return {
         "holding_id": holding.get("id"),
         "account_type": holding.get("account_type"),
         "purchase_price": holding.get("purchase_price"),
         "quantity": holding.get("quantity"),
+        "price": price_in_jpy, # 円換算後の現在値を返す
         "market_value": market_value,
         "profit_loss": profit_loss,
         "profit_loss_rate": profit_loss_rate,
@@ -386,7 +384,7 @@ def create_analysis_csv_data(data: list[dict]) -> str:
             if h == "asset_type":
                 value = asset_type_display
             elif h == "market":
-                value = item.get("market", "")
+                value = str(item.keys()) # デバッグ用にキー一覧を出力
             elif h == "currency":
                 value = item.get("currency", "")
             elif h == "industry" and item.get("asset_type") == "investment_trust":

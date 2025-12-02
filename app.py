@@ -342,10 +342,9 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
             # 計算結果をholding_detailにマージ
             holding_detail = {**asset, **calculated_holding_data}
 
-            # 集計
-            if calculated_holding_data["market_value"] is not None:
-                market_value_jpy = calculated_holding_data["market_value"]
-
+            # 集計 (market_valueが計算可能な場合のみ)
+            market_value_jpy = holding_detail.get("market_value")
+            if market_value_jpy is not None:
                 # 業種別内訳
                 industry = "投資信託" if asset.get("asset_type") == "investment_trust" else asset.get("industry", "その他")
                 industry_breakdown[industry] = industry_breakdown.get(industry, 0) + market_value_jpy
@@ -365,12 +364,19 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
             if "holdings" in holding_detail: del holding_detail["holdings"]
             holdings_list.append(holding_detail)
 
+    # フロントエンド表示用に、Noneを"N/A"に変換
+    display_keys_to_convert = ["price", "market_value", "profit_loss", "profit_loss_rate"]
+    for item in holdings_list:
+        for key in display_keys_to_convert:
+            if item.get(key) is None:
+                item[key] = "N/A"
+
     last_full_update_time = datetime.now()
     return {
         "holdings_list": holdings_list,
         "industry_breakdown": industry_breakdown,
         "account_type_breakdown": account_type_breakdown,
-        "country_breakdown": country_breakdown, # 新しい内訳を追加
+        "country_breakdown": country_breakdown,
     }
 
 @app.get("/api/portfolio/analysis/csv")

@@ -342,23 +342,29 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
             # 計算結果をholding_detailにマージ
             holding_detail = {**asset, **calculated_holding_data}
 
+            # データを正規化し、フロントエンドで必要なキーを保証する
+            if holding_detail.get("asset_type") == "investment_trust":
+                holding_detail["industry"] = "投資信託"
+            elif "industry" not in holding_detail:
+                holding_detail["industry"] = "その他"
+
+            if "market" not in holding_detail:
+                holding_detail["market"] = "N/A"
+
             # 集計 (market_valueが計算可能な場合のみ)
             market_value_jpy = holding_detail.get("market_value")
             if market_value_jpy is not None:
-                # 業種別内訳
-                industry = "投資信託" if asset.get("asset_type") == "investment_trust" else asset.get("industry", "その他")
+                industry = holding_detail["industry"]
                 industry_breakdown[industry] = industry_breakdown.get(industry, 0) + market_value_jpy
                 
-                # 口座種別内訳
                 account_type = holding.get("account_type", "不明")
                 account_type_breakdown[account_type] = account_type_breakdown.get(account_type, 0) + market_value_jpy
 
-                # 国別内訳 (asset_typeから判定)
                 country = "日本"
                 if asset.get("asset_type") == "us_stock":
                     country = "米国"
                 elif asset.get("asset_type") == "investment_trust":
-                    country = "投資信託" # 投資信託は国別ではなく別途分類
+                    country = "投資信託"
                 country_breakdown[country] = country_breakdown.get(country, 0) + market_value_jpy
 
             if "holdings" in holding_detail: del holding_detail["holdings"]

@@ -384,6 +384,136 @@ def create_analysis_csv_data(data: list[dict]) -> str:
             if h == "asset_type":
                 value = asset_type_display
             elif h == "market":
+                value = item.get("market", "")
+            elif h == "currency":
+                value = item.get("currency", "")
+            elif h == "industry" and item.get("asset_type") == "investment_trust":
+                value = "投資信託" # 投資信託の業種は「投資信託」とする
+            elif h == "estimated_annual_dividend" and item.get("asset_type") == "investment_trust":
+                value = "" # 投資信託には年間配当は表示しない
+            else:
+                value = item.get(h, "")
+            row.append(value)
+        writer.writerow(row)
+
+    return output.getvalue()
+
+def create_csv_data(data: list[dict]) -> str:
+    """
+    ポートフォリオデータのリストからCSV文字列を生成する。
+    国内株式、投資信託、米国株式に対応する。
+    """
+    if not data:
+        return ""
+    output = io.StringIO()
+    output.write('\ufeff')
+    writer = csv.writer(output)
+
+    # ヘッダー定義
+    headers = [
+        "code", "name", "asset_type", "market", "currency", "industry", "score", "price", "change", "change_percent",
+        "market_cap", "per", "pbr", "roe", "eps", "yield", "annual_dividend", "consecutive_increase_years",
+        "net_assets", "trust_fee"
+    ]
+    display_headers = [
+        "コード", "名称", "資産タイプ", "市場", "通貨", "業種", "スコア", "現在値", "前日比", "前日比(%)",
+        "時価総額", "PER(倍)", "PBR(倍)", "ROE(%)", "EPS(円)", "配当利回り(%)", "年間配当(円)", "連続増配年数",
+        "純資産総額", "信託報酬"
+    ]
+    writer.writerow(display_headers)
+
+    for item in data:
+        row = []
+        asset_type_display = ""
+        if item.get("asset_type") == "jp_stock":
+            asset_type_display = "国内株式"
+        elif item.get("asset_type") == "investment_trust":
+            asset_type_display = "投資信託"
+        elif item.get("asset_type") == "us_stock":
+            asset_type_display = "米国株式"
+
+        for h in headers:
+            value = ""
+            if h == "asset_type":
+                value = asset_type_display
+            elif h == "market":
+                value = item.get("market", "")
+            elif h == "currency":
+                value = item.get("currency", "")
+            elif h == 'market_cap':
+                # market_capは円換算後の値が来ることを想定
+                if item.get(h) not in ["N/A", "", None]:
+                    try:
+                        # 数値としてフォーマットされている可能性があるので、文字列として処理
+                        str_value = str(item.get(h)).replace(',', '')
+                        if str_value.endswith('兆円'):
+                            value = float(str_value.replace('兆円', '')) * 1_000_000_000_000
+                        elif str_value.endswith('億円'):
+                            value = float(str_value.replace('億円', '')) * 100_000_000
+                        else:
+                            value = float(str_value)
+                        value = f"{value:,.0f}円" # 円換算後の値として表示
+                    except (ValueError, TypeError):
+                        value = "N/A"
+                else:
+                    value = "N/A"
+            elif h == 'score' and item.get("asset_type") == "jp_stock":
+                value = item.get(h, "")
+            elif h == 'consecutive_increase_years' and item.get("asset_type") == "jp_stock":
+                value = item.get(h, "")
+            elif h == 'net_assets' and item.get("asset_type") == "investment_trust":
+                value = item.get(h, "")
+            elif h == 'trust_fee' and item.get("asset_type") == "investment_trust":
+                value = item.get(h, "")
+            elif h in ["code", "name", "price", "change", "change_percent"]:
+                value = item.get(h, "")
+            elif item.get("asset_type") == "jp_stock" and h in ["industry", "per", "pbr", "roe", "eps", "yield", "annual_dividend"]:
+                value = item.get(h, "")
+            elif item.get("asset_type") == "us_stock" and h in ["per", "yield"]: # 米国株で取得できる項目
+                value = item.get(h, "")
+            # その他の項目は空欄のまま
+
+            row.append(value)
+        writer.writerow(row)
+    return output.getvalue()
+
+def create_analysis_csv_data(data: list[dict]) -> str:
+    """
+    分析ページ用の保有口座データリストからCSV文字列を生成する。
+    国内株式、投資信託、米国株式に対応する。
+    """
+    if not data:
+        return ""
+    
+    output = io.StringIO()
+    output.write('\ufeff')
+    writer = csv.writer(output)
+
+    headers = [
+        "code", "name", "asset_type", "market", "currency", "account_type", "industry", "quantity", "purchase_price", "price",
+        "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend"
+    ]
+    display_headers = [
+        "コード", "名称", "資産タイプ", "市場", "通貨", "口座種別", "業種", "数量", "取得単価", "現在値",
+        "評価額", "損益", "損益率(%)", "年間配当"
+    ]
+    writer.writerow(display_headers)
+
+    for item in data:
+        row = []
+        asset_type_display = ""
+        if item.get("asset_type") == "jp_stock":
+            asset_type_display = "国内株式"
+        elif item.get("asset_type") == "investment_trust":
+            asset_type_display = "投資信託"
+        elif item.get("asset_type") == "us_stock":
+            asset_type_display = "米国株式"
+
+        for h in headers:
+            value = ""
+            if h == "asset_type":
+                value = asset_type_display
+            elif h == "market":
                 value = str(item.keys()) # デバッグ用にキー一覧を出力
             elif h == "currency":
                 value = item.get("currency", "")

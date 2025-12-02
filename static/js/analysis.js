@@ -13,21 +13,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Chart.jsインスタンス ---
     let industryChart;
     let accountTypeChart;
-    let countryChart; // 国別ポートフォリオグラフ用
+    let countryChart;
 
     // --- グローバル変数 ---
-    let allHoldingsData = []; // 全保有銘柄データ
-    let filteredHoldingsData = []; // フィルタリング後の保有銘柄データ
-    let analysisData = {
-        holdings_list: [],
-        industry_breakdown: {},
-        account_type_breakdown: {},
-        country_breakdown: {} // 国別内訳を追加
-    };
-    let currentSort = { key: 'code', order: 'asc' };
-    let isAmountVisible = true; // 金額表示のON/OFF
-    const COOLDOWN_MINUTES = 10;
-    const COOLDOWN_STORAGE_KEY = 'fullUpdateCooldownEnd'; // main.jsと共有
+    let allHoldingsData = [];
+    let filteredHoldingsData = [];
+    let currentSort = { key: 'market_value', order: 'desc' };
+    let isAmountVisible = true;
 
     // --- 初期化処理 ---
     async function initialize() {
@@ -45,20 +37,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 error.status = response.status;
                 throw error;
             }
-            analysisData = await response.json();
+            const analysisData = await response.json();
             allHoldingsData = analysisData.holdings_list;
+
+            isAmountVisible = !toggleVisibilityCheckbox.checked;
 
             populateFilters();
             filterAndRender();
-            renderSummary();
-            renderCharts();
         } catch (error) {
             console.error('Analysis initialization error:', error);
-            if (error.status === 429) {
-                showAlert('クールダウン中です。表示されているのは前回のデータです。', 'info');
-            } else {
-                showAlert(`分析データの取得に失敗しました。(${error.message})`, 'danger');
-            }
+            showAlert(`分析データの取得に失敗しました。(${error.message})`, 'danger');
         }
     }
 
@@ -71,13 +59,15 @@ document.addEventListener('DOMContentLoaded', () => {
         filteredHoldingsData = allHoldingsData.filter(item => {
             const matchesText = String(item.code).toLowerCase().includes(filterText) ||
                                 String(item.name || '').toLowerCase().includes(filterText);
-            const matchesIndustry = !selectedIndustry || item.industry === selectedIndustry;
+            const matchesIndustry = !selectedIndustry || item.industry === selectedIndustry || (selectedIndustry === 'N/A' && !item.industry);
             const matchesAccountType = !selectedAccountType || item.account_type === selectedAccountType;
             return matchesText && matchesIndustry && matchesAccountType;
         });
 
         sortHoldings(filteredHoldingsData);
         renderAnalysisTable(filteredHoldingsData);
+        renderSummary(filteredHoldingsData);
+        renderCharts(filteredHoldingsData);
         updateSortHeaders();
     }
 
@@ -97,37 +87,64 @@ document.addEventListener('DOMContentLoaded', () => {
                 return cell;
             };
 
+            const profitLoss = parseFloat(item.profit_loss);
+            const profitLossRate = parseFloat(item.profit_loss_rate);
+            const profitLossClass = isNaN(profitLoss) ? '' : (profitLoss >= 0 ? 'profit' : 'loss');
+            const profitLossRateClass = isNaN(profitLossRate) ? '' : (profitLossRate >= 0 ? 'profit' : 'loss');
+
             createCell(item.code);
             createCell(item.name);
-            createCell(item.market || 'N/A'); // 市場列
+            createCell(item.market || 'N/A');
             createCell(item.industry || 'N/A');
             createCell(item.asset_type === 'jp_stock' ? '国内株式' : (item.asset_type === 'investment_trust' ? '投資信託' : (item.asset_type === 'us_stock' ? '米国株式' : 'N/A')));
             createCell(item.account_type);
             createCell(formatNumber(item.quantity, item.asset_type === 'investment_trust' ? 6 : 0));
             createCell(formatNumber(item.purchase_price, 2));
             createCell(formatNumber(item.price, 2));
-            createCell(formatNumber(item.market_value, 0), isAmountVisible ? '' : 'masked-amount');
-            createCell(formatNumber(item.profit_loss, 0), isAmountVisible ? (item.profit_loss >= 0 ? 'profit' : 'loss') : 'masked-amount');
-            createCell(formatNumber(item.profit_loss_rate, 2), isAmountVisible ? (item.profit_loss_rate >= 0 ? 'profit' : 'loss') : 'masked-amount');
+            createCell(formatNumber(item.market_value, 0), !isAmountVisible ? 'masked-amount' : '');
+            createCell(formatNumber(item.profit_loss, 0), `${!isAmountVisible ? 'masked-amount' : ''} ${profitLossClass}`);
+            createCell(formatNumber(item.profit_loss_rate, 2), `${!isAmountVisible ? 'masked-amount' : ''} ${profitLossRateClass}`);
         });
-        applyVisibilityToggle();
     }
 
-    function renderSummary() {
-        const totalMarketValue = allHoldingsData.reduce((sum, item) => sum + (item.market_value || 0), 0);
-        const totalProfitLoss = allHoldingsData.reduce((sum, item) => sum + (item.profit_loss || 0), 0);
-        const totalInvestment = allHoldingsData.reduce((sum, item) => sum + (item.investment_amount || 0), 0);
+    function renderSummary(holdings) {
+        const totalMarketValue = holdings.reduce((sum, item) => sum + (parseFloat(item.market_value) || 0), 0);
+        const totalProfitLoss = holdings.reduce((sum, item) => sum + (parseFloat(item.profit_loss) || 0), 0);
+        const totalInvestment = totalMarketValue - totalProfitLoss;
         const totalProfitLossRate = totalInvestment !== 0 ? (totalProfitLoss / totalInvestment) * 100 : 0;
 
+        const summaryProfitLossClass = totalProfitLoss >= 0 ? 'profit' : 'loss';
+        const summaryProfitLossRateClass = totalProfitLossRate >= 0 ? 'profit' : 'loss';
+
         portfolioSummary.innerHTML = `
-            <p>総評価額: <span class="${isAmountVisible ? '' : 'masked-amount'}">${formatNumber(totalMarketValue, 0)}円</span></p>
-            <p>総損益: <span class="${isAmountVisible ? (totalProfitLoss >= 0 ? 'profit' : 'loss') : 'masked-amount'}">${formatNumber(totalProfitLoss, 0)}円</span></p>
-            <p>総損益率: <span class="${isAmountVisible ? (totalProfitLossRate >= 0 ? 'profit' : 'loss') : 'masked-amount'}">${formatNumber(totalProfitLossRate, 2)}%</span></p>
+            <p>総評価額: <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalMarketValue, 0)}円</span></p>
+            <p>総損益: <span class="${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossClass}">${formatNumber(totalProfitLoss, 0)}円</span></p>
+            <p>総損益率: <span class="${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossRateClass}">${formatNumber(totalProfitLossRate, 2)}%</span></p>
         `;
-        applyVisibilityToggle();
     }
 
-    function renderCharts() {
+    function renderCharts(holdings) {
+        const industryBreakdown = {};
+        const accountTypeBreakdown = {};
+        const countryBreakdown = {};
+
+        holdings.forEach(item => {
+            const marketValue = parseFloat(item.market_value) || 0;
+            if (marketValue > 0) {
+                const industry = item.industry || 'その他';
+                industryBreakdown[industry] = (industryBreakdown[industry] || 0) + marketValue;
+
+                const accountType = item.account_type || '不明';
+                accountTypeBreakdown[accountType] = (accountTypeBreakdown[accountType] || 0) + marketValue;
+                
+                let country = 'その他';
+                if (item.asset_type === 'jp_stock') country = '日本';
+                else if (item.asset_type === 'us_stock') country = '米国';
+                else if (item.asset_type === 'investment_trust') country = '投資信託';
+                countryBreakdown[country] = (countryBreakdown[country] || 0) + marketValue;
+            }
+        });
+
         const chartOptions = {
             responsive: true,
             maintainAspectRatio: false,
@@ -137,12 +154,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     callbacks: {
                         label: function(context) {
                             let label = context.label || '';
-                            if (label) {
-                                label += ': ';
-                            }
-                            if (context.parsed !== null) {
-                                label += formatNumber(context.parsed, 0) + '円 (' + context.dataset.data[context.dataIndex].toFixed(2) + '%)';
-                            }
+                            if (label) label += ': ';
+                            const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
+                            const percentage = total > 0 ? (context.raw / total * 100) : 0;
+                            label += `${formatNumber(context.raw, 0)}円 (${percentage.toFixed(2)}%)`;
                             return label;
                         }
                     }
@@ -150,75 +165,60 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        const getChartData = (breakdown) => {
-            const labels = Object.keys(breakdown);
-            const values = Object.values(breakdown);
-            const total = values.reduce((sum, val) => sum + val, 0);
-            const percentages = values.map(val => total > 0 ? (val / total * 100) : 0);
+        const getChartData = (breakdown) => ({
+            labels: Object.keys(breakdown),
+            datasets: [{
+                data: Object.values(breakdown),
+                backgroundColor: generateColors(Object.keys(breakdown).length),
+                hoverOffset: 4
+            }]
+        });
 
-            return {
-                labels: labels,
-                datasets: [{
-                    data: percentages,
-                    backgroundColor: generateColors(labels.length),
-                    hoverOffset: 4
-                }]
-            };
-        };
-
-        // 業種別グラフ
         if (industryChart) industryChart.destroy();
-        industryChart = new Chart(document.getElementById('industry-chart'), {
-            type: 'pie',
-            data: getChartData(analysisData.industry_breakdown),
-            options: chartOptions
-        });
+        if (Object.keys(industryBreakdown).length > 0) {
+            document.getElementById('industry-chart-container').style.display = 'block';
+            industryChart = new Chart(document.getElementById('industry-chart'), { type: 'pie', data: getChartData(industryBreakdown), options: chartOptions });
+        } else {
+            document.getElementById('industry-chart-container').style.display = 'none';
+        }
 
-        // 口座種別グラフ
         if (accountTypeChart) accountTypeChart.destroy();
-        accountTypeChart = new Chart(document.getElementById('account-type-chart'), {
-            type: 'pie',
-            data: getChartData(analysisData.account_type_breakdown),
-            options: chartOptions
-        });
+        if (Object.keys(accountTypeBreakdown).length > 0) {
+            document.getElementById('account-type-chart-container').style.display = 'block';
+            accountTypeChart = new Chart(document.getElementById('account-type-chart'), { type: 'pie', data: getChartData(accountTypeBreakdown), options: chartOptions });
+        } else {
+            document.getElementById('account-type-chart-container').style.display = 'none';
+        }
 
-        // 国別グラフ
         if (countryChart) countryChart.destroy();
-        countryChart = new Chart(document.getElementById('country-chart'), {
-            type: 'pie',
-            data: getChartData(analysisData.country_breakdown),
-            options: chartOptions
-        });
-
-        // 初期表示は業種別
-        document.getElementById('industry-chart').classList.remove('hidden');
-        document.getElementById('account-type-chart').classList.add('hidden');
-        document.getElementById('country-chart').classList.add('hidden');
+        if (Object.keys(countryBreakdown).length > 0) {
+            document.getElementById('country-chart-container').style.display = 'block';
+            countryChart = new Chart(document.getElementById('country-chart'), { type: 'pie', data: getChartData(countryBreakdown), options: chartOptions });
+        } else {
+            document.getElementById('country-chart-container').style.display = 'none';
+        }
+        
+        updateChart('industry');
     }
 
     function updateChart(chartType) {
-        document.querySelectorAll('.chart-container canvas').forEach(canvas => canvas.classList.add('hidden'));
+        document.querySelectorAll('.chart-wrapper').forEach(wrapper => wrapper.style.display = 'none');
         document.querySelectorAll('.chart-toggle-btn').forEach(btn => btn.classList.remove('active'));
 
-        document.querySelector(`.chart-toggle-btn[data-chart-type="${chartType}"]`).classList.add('active');
+        const activeBtn = document.querySelector(`.chart-toggle-btn[data-chart-type="${chartType}"]`);
+        if (activeBtn) activeBtn.classList.add('active');
 
-        if (chartType === 'industry') {
-            document.getElementById('industry-chart').classList.remove('hidden');
-            industryChart.update();
-        } else if (chartType === 'account-type') {
-            document.getElementById('account-type-chart').classList.remove('hidden');
-            accountTypeChart.update();
-        } else if (chartType === 'country') { // 国別グラフの表示
-            document.getElementById('country-chart').classList.remove('hidden');
-            countryChart.update();
-        }
+        const chartWrapper = document.getElementById(`${chartType}-chart-container`);
+        if (chartWrapper) chartWrapper.style.display = 'block';
     }
 
     // --- ヘルパー関数 ---
     const formatNumber = (num, fractionDigits = 0) => {
-        if (num === null || num === undefined || isNaN(num)) return 'N/A';
-        return num.toLocaleString(undefined, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
+        const parsedNum = parseFloat(num);
+        if (parsedNum === null || parsedNum === undefined || isNaN(parsedNum)) return 'N/A';
+        return parsedNum.toLocaleString(undefined, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
     };
+
     function showAlert(message, type = 'danger') {
         const alert = document.createElement('div');
         alert.className = `alert alert-${type}`;
@@ -231,22 +231,26 @@ document.addEventListener('DOMContentLoaded', () => {
             alert.addEventListener('transitionend', () => alert.remove());
         }, 5000);
     }
+
     function sortHoldings(data) {
         data.sort((a, b) => {
             let valA = a[currentSort.key], valB = b[currentSort.key];
             const parseValue = (v) => {
                 if (v === undefined || v === null || v === 'N/A' || v === '--' || v === '') return -Infinity;
                 if (typeof v === 'string') {
-                    const num = parseFloat(v.replace(/,/g, '').replace(/%|円/g, ''));
+                    const num = parseFloat(v.replace(/,/g, ''));
                     return isNaN(num) ? v : num;
                 }
                 return v;
             };
             const parsedA = parseValue(valA), parsedB = parseValue(valB);
-            if (typeof parsedA === 'number' && typeof parsedB === 'number') return currentSort.order === 'asc' ? parsedA - parsedB : parsedB - parsedA;
+            if (typeof parsedA === 'number' && typeof parsedB === 'number') {
+                return currentSort.order === 'asc' ? parsedA - parsedB : parsedB - parsedA;
+            }
             return currentSort.order === 'asc' ? String(parsedA).localeCompare(String(parsedB)) : String(parsedB).localeCompare(String(parsedA));
         });
     }
+
     function updateSortHeaders() {
         document.querySelectorAll('#analysis-table .sortable').forEach(header => {
             header.classList.remove('sort-active', 'sort-asc', 'sort-desc');
@@ -255,6 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
     function populateFilters() {
         const industries = [...new Set(allHoldingsData.map(item => item.industry || 'N/A'))].sort();
         industryFilterSelect.innerHTML = '<option value="">すべての業種</option>' + industries.map(ind => `<option value="${ind}">${ind}</option>`).join('');
@@ -262,25 +267,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const accountTypes = [...new Set(allHoldingsData.map(item => item.account_type || 'N/A'))].sort();
         accountTypeFilterSelect.innerHTML = '<option value="">すべての口座種別</option>' + accountTypes.map(acc => `<option value="${acc}">${acc}</option>`).join('');
     }
+
     function generateColors(numColors) {
         const colors = [];
-        const hueStep = 360 / numColors;
+        const baseColors = [
+            '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b', 
+            '#858796', '#5a5c69', '#f8f9fc', '#6f42c1', '#fd7e14'
+        ];
         for (let i = 0; i < numColors; i++) {
-            const hue = i * hueStep;
-            colors.push(`hsl(${hue}, 70%, 60%)`);
+            colors.push(baseColors[i % baseColors.length]);
         }
         return colors;
-    }
-    function applyVisibilityToggle() {
-        document.querySelectorAll('.masked-amount').forEach(el => {
-            if (isAmountVisible) {
-                el.classList.remove('masked-amount');
-            } else {
-                el.classList.add('masked-amount');
-            }
-        });
-        // サマリーの金額表示も更新
-        renderSummary();
     }
 
     // --- イベントリスナー ---
@@ -303,8 +300,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     toggleVisibilityCheckbox.addEventListener('change', (event) => {
         isAmountVisible = !event.target.checked;
-        applyVisibilityToggle();
-        renderAnalysisTable(filteredHoldingsData); // テーブルも再描画してクラスを適用
+        renderAnalysisTable(filteredHoldingsData);
+        renderSummary(filteredHoldingsData);
     });
 
     downloadAnalysisCsvButton.addEventListener('click', () => {

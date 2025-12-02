@@ -488,13 +488,31 @@ button {
 }
 
 /* --- Text Colors --- */
-.text-plus {
-    color: #28a745; /* Green */
+.profit {
+    background-color: var(--undervalued-bg); /* 薄い緑 */
+    color: var(--text-color); /* デフォルトの文字色 (黒) */
+    padding: 2px 5px;
+    border-radius: 3px;
 }
 
-.text-minus {
-    color: #dc3545; /* Red */
+.loss {
+    background-color: var(--overvalued-bg); /* 薄い赤 */
+    color: var(--text-color); /* デフォルトの文字色 (黒) */
+    padding: 2px 5px;
+    border-radius: 3px;
 }
+
+.masked-amount {
+    color: transparent !important; /* 文字色を透明に */
+    text-shadow: 0 0 8px #000 !important; /* 黒い影でマスク */
+}
+
+/* analysis-table の市場カラムのスタイル */
+/* #analysis-table th[data-key="market"], */
+/* #analysis-table td:nth-child(3) { /* analysis-tableの市場列 */
+/*     min-width: 60px; */
+/*     max-width: 80px; */
+/* } */
 
 /* --- Navigation Link --- */
 .nav-link {

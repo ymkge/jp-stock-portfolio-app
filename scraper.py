@@ -211,13 +211,17 @@ class USStockScraper(BaseScraper):
             # 時価総額の整形
             market_cap_data = ref_index.get("totalPrice", {})
             market_cap = "N/A"
+            logger.debug(f"米国株 {code} の market_cap_data: {market_cap_data}") # 追加
             if market_cap_data and market_cap_data.get("value"):
                 # 整形済み文字列をそのまま利用
                 market_cap_str = market_cap_data["value"]
+                logger.debug(f"米国株 {code} の market_cap_str (before .00 removal): {market_cap_str}") # 追加
                 # 不要な ".00" を削除
                 if market_cap_str.endswith(".00"):
                     market_cap_str = market_cap_str[:-3]
+                logger.debug(f"米国株 {code} の market_cap_str (after .00 removal): {market_cap_str}") # 追加
                 market_cap = f"{market_cap_str} {market_cap_data.get('suffix', '')}".strip()
+                logger.debug(f"米国株 {code} の最終的な market_cap: {market_cap}") # 追加
 
             # PER, PBRなどの指標値を取得
             def get_ref_value(key):
@@ -300,10 +304,6 @@ if __name__ == '__main__':
         print(f"\n--- {title}: {code} ---")
         data = scraper_instance.fetch_data(code)
         print(json.dumps(data, indent=2, ensure_ascii=False))
-        if isinstance(scraper_instance, JPStockScraper):
-            print(f"  年間配当 (annual_dividend): {data.get('annual_dividend')}")
-            print(f"  配当利回り (yield): {data.get('yield')}")
-            print(f"  配当履歴 (dividend_history): {data.get('dividend_history')}")
 
     # 国内株
     jp_scraper = get_scraper('jp_stock')
@@ -316,6 +316,7 @@ if __name__ == '__main__':
     # 米国株
     us_scraper = get_scraper('us_stock')
     test_scraper(us_scraper, "AAPL", "米国株式")
+    test_scraper(us_scraper, "NVDA", "米国株式 (NVDA)") # NVDAのテストを追加
 
     # 為替レート
     print("\n--- 為替レート ---")

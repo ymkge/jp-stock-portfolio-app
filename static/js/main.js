@@ -278,10 +278,15 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(`<a href="https://finance.yahoo.com/quote/${usStock.code}" target="_blank">${usStock.name}</a>`);
             createCell(usStock.market || 'NASDAQ'); // 米国株の市場はデフォルトでNASDAQとするか、取得した値
             createCell(formatNumber(usStock.price, 2)); // 円換算された株価
-            createCell(`${usStock.change} (${usStock.change_percent || 'N/A'})`);
-            createCell(formatMarketCap(usStock.market_cap));
-            createCell(usStock.per, getHighlightClass('per', usStock.per, usStock.asset_type));
-            createCell(usStock.yield, getHighlightClass('yield', usStock.yield, usStock.asset_type));
+            
+            // changePercentClass を定義
+            const changePercentClass = parseFloat(usStock.change_percent) >= 0 ? 'text-plus' : 'text-minus'; // 追加
+
+            createCell(`${usStock.change_percent !== 'N/A' ? formatNumber(usStock.change_percent, 2) + '%' : 'N/A'}`, changePercentClass); // item を usStock に修正
+            console.log('US Stock Market Cap:', usStock.market_cap); // item を usStock に修正
+            createCell(usStock.market_cap || 'N/A');
+            createCell(usStock.per || 'N/A');
+            createCell(usStock.yield, getHighlightClass('yield', usStock.yield, usStock.asset_type)); // usStock.yield に修正
             createCell(`<button class="manage-btn" data-code="${usStock.code}">管理</button>`);
         });
     }

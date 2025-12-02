@@ -89,19 +89,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const profitLoss = parseFloat(item.profit_loss);
             const profitLossRate = parseFloat(item.profit_loss_rate);
+            // 'text-plus'と'text-minus'を元の'profit'と'loss'に戻す
             const profitLossClass = isNaN(profitLoss) ? '' : (profitLoss >= 0 ? 'profit' : 'loss');
             const profitLossRateClass = isNaN(profitLossRate) ? '' : (profitLossRate >= 0 ? 'profit' : 'loss');
 
             createCell(item.code);
             createCell(item.name);
-            createCell(item.market || 'N/A');
             createCell(item.industry || 'N/A');
             createCell(item.asset_type === 'jp_stock' ? '国内株式' : (item.asset_type === 'investment_trust' ? '投資信託' : (item.asset_type === 'us_stock' ? '米国株式' : 'N/A')));
             createCell(item.account_type);
-            createCell(formatNumber(item.quantity, item.asset_type === 'investment_trust' ? 6 : 0));
-            createCell(formatNumber(item.purchase_price, 2));
+            // 数量、取得単価、年間配当にも masked-amount クラスを適用
+            createCell(formatNumber(item.quantity, item.asset_type === 'investment_trust' ? 6 : 0), !isAmountVisible ? 'masked-amount' : '');
+            createCell(formatNumber(item.purchase_price, 2), !isAmountVisible ? 'masked-amount' : '');
             createCell(formatNumber(item.price, 2));
-            createCell(formatNumber(item.estimated_annual_dividend, 0));
+            createCell(formatNumber(item.estimated_annual_dividend, 0), !isAmountVisible ? 'masked-amount' : '');
             createCell(formatNumber(item.market_value, 0), !isAmountVisible ? 'masked-amount' : '');
             createCell(formatNumber(item.profit_loss, 0), `${!isAmountVisible ? 'masked-amount' : ''} ${profitLossClass}`);
             createCell(formatNumber(item.profit_loss_rate, 2), `${!isAmountVisible ? 'masked-amount' : ''} ${profitLossRateClass}`);
@@ -162,7 +163,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (label) label += ': ';
                             const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
                             const percentage = total > 0 ? (context.raw / total * 100) : 0;
-                            label += `${formatNumber(context.raw, 0)}円 (${percentage.toFixed(2)}%)`;
+                            
+                            // 金額を隠す機能に対応
+                            const formattedAmount = isAmountVisible ? `${formatNumber(context.raw, 0)}円` : '***円';
+                            label += `${formattedAmount} (${percentage.toFixed(2)}%)`;
                             return label;
                         }
                     }
@@ -181,40 +185,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (industryChart) industryChart.destroy();
         if (Object.keys(industryBreakdown).length > 0) {
-            document.getElementById('industry-chart-container').style.display = 'block';
+            document.getElementById('industry-chart').classList.remove('hidden');
             industryChart = new Chart(document.getElementById('industry-chart'), { type: 'pie', data: getChartData(industryBreakdown), options: chartOptions });
         } else {
-            document.getElementById('industry-chart-container').style.display = 'none';
+            document.getElementById('industry-chart').classList.add('hidden');
         }
 
         if (accountTypeChart) accountTypeChart.destroy();
         if (Object.keys(accountTypeBreakdown).length > 0) {
-            document.getElementById('account-type-chart-container').style.display = 'block';
+            document.getElementById('account-type-chart').classList.remove('hidden');
             accountTypeChart = new Chart(document.getElementById('account-type-chart'), { type: 'pie', data: getChartData(accountTypeBreakdown), options: chartOptions });
         } else {
-            document.getElementById('account-type-chart-container').style.display = 'none';
+            document.getElementById('account-type-chart').classList.add('hidden');
         }
 
         if (countryChart) countryChart.destroy();
         if (Object.keys(countryBreakdown).length > 0) {
-            document.getElementById('country-chart-container').style.display = 'block';
+            document.getElementById('country-chart').classList.remove('hidden');
             countryChart = new Chart(document.getElementById('country-chart'), { type: 'pie', data: getChartData(countryBreakdown), options: chartOptions });
         } else {
-            document.getElementById('country-chart-container').style.display = 'none';
+            document.getElementById('country-chart').classList.add('hidden');
         }
         
         updateChart('industry');
     }
 
     function updateChart(chartType) {
-        document.querySelectorAll('.chart-wrapper').forEach(wrapper => wrapper.style.display = 'none');
+        document.querySelectorAll('.chart-container canvas').forEach(canvas => canvas.classList.add('hidden'));
         document.querySelectorAll('.chart-toggle-btn').forEach(btn => btn.classList.remove('active'));
 
         const activeBtn = document.querySelector(`.chart-toggle-btn[data-chart-type="${chartType}"]`);
         if (activeBtn) activeBtn.classList.add('active');
 
-        const chartWrapper = document.getElementById(`${chartType}-chart-container`);
-        if (chartWrapper) chartWrapper.style.display = 'block';
+        const chartCanvas = document.getElementById(`${chartType}-chart`);
+        if (chartCanvas) chartCanvas.classList.remove('hidden');
     }
 
     // --- ヘルパー関数 ---

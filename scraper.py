@@ -175,88 +175,56 @@ class InvestTrustScraper(BaseScraper):
 
 # --- 米国株式スクレイパー ---
 class USStockScraper(BaseScraper):
-    """米国株式のデータをYahoo! Finance (US) から取得する"""
+    """米国株式のデータをYahoo!ファイナンス (JP) から取得する"""
     @cachedmethod(lambda self: self.cache)
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
-        url = f"https://finance.yahoo.com/quote/{code}"
+        url = f"https://finance.yahoo.co.jp/quote/{code}"
         response = self._make_request(url)
         if not response:
             logger.error(f"米国株 {code}: ネットワークエラーにより情報を取得できませんでした。")
             return {"code": code, "name": f"{code}", "error": "ネットワークエラー"}
 
         try:
-            soup = BeautifulSoup(response.content, "lxml")
-            
-            # デバッグログ: 取得したHTMLの一部を出力
-            logger.debug(f"米国株 {code}: 取得したHTMLの先頭部分:\n{response.text[:500]}...")
+            match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", response.text)
+            if not match:
+                return {"code": code, "name": f"{code}", "error": "銘柄情報が見つかりません"}
 
-            soup = BeautifulSoup(response.content, "lxml")
-            
-            logger.debug(f"米国株 {code}: 取得したHTMLの先頭部分:\n{response.text[:500]}...")
+            data = json.loads(match.group(1))
+            price_board = data.get("mainUsStocksPriceBoard", {})
+            ref_index = data.get("mainUsStocksReferenceIndex", {})
 
-            # 銘柄名
-            name_tag = soup.find("h1", {"data-test": "quote-header-info"})
-            if not name_tag:
-                name_tag = soup.find("h1", class_="D(ib) Fz(24px) Fw(b) Lh(24px) Mend(0px) D(ib)") # 新しいクラス名
-            name = name_tag.text.replace(f"({code})", "").strip() if name_tag else "N/A"
-            logger.debug(f"米国株 {code}: Name: {name}")
+            # 時価総額の整形
+            market_cap_data = ref_index.get("totalPrice", {})
+            market_cap = "N/A"
+            if market_cap_data and market_cap_data.get("value"):
+                # 整形済み文字列をそのまま利用
+                market_cap_str = market_cap_data["value"]
+                # 不要な ".00" を削除
+                if market_cap_str.endswith(".00"):
+                    market_cap_str = market_cap_str[:-3]
+                market_cap = f"{market_cap_str} {market_cap_data.get('suffix', '')}".strip()
 
-            # 市場情報
-            market_info_div = soup.find("h1", {"data-test": "quote-header-info"})
-            if market_info_div:
-                market_info_div = market_info_div.find_next_sibling("div", class_="D(ib) Fz(12px) C($tertiaryColor) My(0px) Mstart(15px)")
-            
-            market_tag = None
-            if market_info_div:
-                market_span = market_info_div.find("span", class_="C($tertiaryColor) Fz(12px)")
-                if market_span:
-                    market = market_span.text.split(" - ")[0].strip()
-                else:
-                    market = "N/A"
-            else:
-                market = "N/A"
-            logger.debug(f"米国株 {code}: Market: {market}")
-
-            # 株価
-            price_tag = soup.find("fin-streamer", {"data-field": "regularMarketPrice"})
-            price = price_tag.text.strip() if price_tag else "N/A"
-            logger.debug(f"米国株 {code}: Price: {price}")
-
-            # 前日比
-            change_tag = soup.find("fin-streamer", {"data-field": "regularMarketChange"})
-            change = change_tag.text.strip() if change_tag else "N/A"
-            logger.debug(f"米国株 {code}: Change: {change}")
-
-            # 前日比率
-            change_percent_tag = soup.find("fin-streamer", {"data-field": "regularMarketChangePercent"})
-            change_percent_raw = change_percent_tag.text.strip("() ") if change_percent_tag else "N/A"
-            logger.debug(f"米国株 {code}: Change Percent: {change_percent_raw}")
-            
-            # PER, 時価総額などの指標を取得
-            summary_table = soup.find("div", {"data-test": "summary-detail"})
-            market_cap, per, yield_val = "N/A", "N/A", "N/A"
-            if summary_table:
-                mc_tag = summary_table.find("td", {"data-test": "MARKET_CAP-value"})
-                market_cap = mc_tag.text.strip() if mc_tag else "N/A"
-                
-                per_tag = summary_table.find("td", {"data-test": "PE_RATIO-value"})
-                per = per_tag.text.strip() if per_tag else "N/A"
-
-                yield_tag = summary_table.find("td", {"data-test": "DIVIDEND_AND_YIELD-value"})
-                if yield_tag:
-                    yield_text = yield_tag.text.strip()
-                    yield_match = re.search(r'\((\d+\.\d+)%\)', yield_text)
-                    yield_val = yield_match.group(1) if yield_match else "N/A"
-                
-            logger.debug(f"米国株 {code}: Market Cap: {market_cap}, PER: {per}, Yield: {yield_val}")
+            # PER, PBRなどの指標値を取得
+            def get_ref_value(key):
+                return ref_index.get(key, {}).get("value", "N/A")
 
             return {
-                "code": code, "name": name, "market": market, "price": price, "change": change,
-                "change_percent": change_percent_raw, "market_cap": market_cap,
-                "per": per, "pbr": "N/A", "roe": "N/A", "eps": "N/A", "yield": yield_val,
-                "asset_type": "us_stock", "currency": "USD"
+                "code": code,
+                "name": price_board.get("name", "N/A"),
+                "market": price_board.get("label", "N/A"),
+                "price": price_board.get("price", "N/A"),
+                "change": price_board.get("priceChange", "N/A"),
+                "change_percent": price_board.get("priceChangeRate", "N/A"),
+                "market_cap": market_cap,
+                "per": get_ref_value("per"),
+                "pbr": get_ref_value("pbr"),
+                "roe": "N/A",  # データソースに存在しないため
+                "eps": get_ref_value("eps"),
+                "yield": "N/A", # データソースに存在しないため
+                "asset_type": "us_stock",
+                "currency": "USD"
             }
-        except Exception as e:
+        except (json.JSONDecodeError, KeyError, AttributeError) as e:
             logger.error(f"米国株 {code} のデータ解析中にエラー: {e}", exc_info=True)
             return {"code": code, "name": f"{code}", "error": "データ解析失敗"}
 
@@ -266,7 +234,7 @@ def get_exchange_rate(pair: str = 'USDJPY=X') -> Optional[float]:
     """Yahoo! Financeから為替レートを取得する"""
     url = f"https://finance.yahoo.com/quote/{pair}"
     # BaseScraperのインスタンスを作成して_make_requestメソッドを利用
-    scraper_instance = BaseScraper()
+    scraper_instance = JPStockScraper()
     response = scraper_instance._make_request(url, headers=FX_HEADERS)
     if not response:
         return None

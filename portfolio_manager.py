@@ -490,11 +490,11 @@ def create_analysis_csv_data(data: list[dict]) -> str:
     writer = csv.writer(output)
 
     headers = [
-        "code", "name", "asset_type", "market", "currency", "account_type", "industry", "quantity", "purchase_price", "price",
+        "code", "name", "asset_type", "currency", "account_type", "industry", "quantity", "purchase_price", "price",
         "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend"
     ]
     display_headers = [
-        "コード", "名称", "資産タイプ", "市場", "通貨", "口座種別", "業種", "数量", "取得単価", "現在値",
+        "コード", "名称", "資産タイプ", "通貨", "口座種別", "業種", "数量", "取得単価", "現在値",
         "評価額", "損益", "損益率(%)", "年間配当"
     ]
     writer.writerow(display_headers)
@@ -513,8 +513,6 @@ def create_analysis_csv_data(data: list[dict]) -> str:
             value = ""
             if h == "asset_type":
                 value = asset_type_display
-            elif h == "market":
-                value = str(item.keys()) # デバッグ用にキー一覧を出力
             elif h == "currency":
                 value = item.get("currency", "")
             elif h == "industry" and item.get("asset_type") == "investment_trust":

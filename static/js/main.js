@@ -191,7 +191,6 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(`<input type="checkbox" class="asset-checkbox" data-code="${stock.code}">`);
             createCell(stock.code);
             createCell(`<a href="https://finance.yahoo.co.jp/quote/${stock.code}.T" target="_blank">${stock.name}</a>`);
-            createCell(stock.market || 'N/A'); // 市場列
             createCell(stock.industry || 'N/A');
             createCell(renderScoreAsStars(stock.score, stock.score_details, stock.asset_type));
             createCell(stock.price);

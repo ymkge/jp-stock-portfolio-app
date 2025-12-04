@@ -193,6 +193,21 @@ async def get_stocks(cooldown_check: None = Depends(check_update_cooldown)):
     last_full_update_time = datetime.now()
     return processed_data
 
+@app.get("/api/stocks/csv")
+async def download_csv(cooldown_check: None = Depends(check_update_cooldown)):
+    global last_full_update_time
+    data = await _get_processed_asset_data()
+    if not data:
+        return StreamingResponse(io.StringIO(""), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=portfolio.csv"})
+    
+    csv_data = portfolio_manager.create_csv_data(data)
+    filename = f"portfolio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    response = StreamingResponse(io.StringIO(csv_data), media_type="text/csv")
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    
+    last_full_update_time = datetime.now()
+    return response
+
 @app.get("/api/stocks/{code}")
 async def get_single_stock(code: str):
     asset_info = portfolio_manager.get_stock_info(code)
@@ -295,21 +310,6 @@ async def delete_holding_endpoint(holding_id: str):
     if not portfolio_manager.delete_holding(holding_id):
         raise HTTPException(status_code=404, detail="指定された保有情報が見つかりません。")
     return {"status": "success"}
-
-@app.get("/api/stocks/csv")
-async def download_csv(cooldown_check: None = Depends(check_update_cooldown)):
-    global last_full_update_time
-    data = await _get_processed_asset_data()
-    if not data:
-        return StreamingResponse(io.StringIO(""), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=portfolio.csv"})
-    
-    csv_data = portfolio_manager.create_csv_data(data)
-    filename = f"portfolio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-    response = StreamingResponse(io.StringIO(csv_data), media_type="text/csv")
-    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
-    
-    last_full_update_time = datetime.now()
-    return response
 
 @app.get("/api/portfolio/analysis")
 async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_cooldown)):

@@ -591,7 +591,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ codes: codesToDelete }),
             });
             if (!response.ok) throw new Error((await response.json()).detail || '一括削除失敗');
-            showAlert(`${codesToDelete.length} 件の資産を削除しました。`, 'success');
+            showAlert(`${codesToDelete.length} 件の銘柄情報を削除しました。`, 'success');
             allAssetsData = allAssetsData.filter(asset => !codesToDelete.includes(asset.code));
             saveAssetsToStorage();
             filterAndRender();

@@ -270,7 +270,9 @@ async def add_asset_endpoint(asset: Asset):
             score, details = calculate_score(new_asset_data)
             new_asset_data["score"] = score
             new_asset_data["score_details"] = details
-        return {"status": "success", "stock": new_asset_data}
+        
+        asset_name = new_asset_data.get("name", "")
+        return {"status": "success", "message": f"資産 {code} ({asset_name}) を追加しました。", "stock": new_asset_data}
     else:
         portfolio_manager.delete_stocks([code]) # 追加をロールバック
         error_message = new_asset_data.get("error", "不明なエラー") if new_asset_data else "不明なエラー"

@@ -117,6 +117,14 @@ class JPStockScraper(BaseScraper):
             price_board = data.get("mainStocksPriceBoard", {}).get("priceBoard", {})
             ref_index = data.get("mainStocksDetail", {}).get("referenceIndex", {})
 
+            # オブジェクトと文字列の両方に対応できる、より堅牢なヘルパー関数
+            def get_ref_value(key, source_dict=ref_index):
+                item = source_dict.get(key)
+                if isinstance(item, dict):
+                    return item.get("value", "N/A")
+                # 辞書でない場合は、その値自体を返す (Noneの場合は"N/A"にフォールバック)
+                return item if item is not None else "N/A"
+
             market_cap_str = ref_index.get("totalPrice", "N/A")
             market_cap = "N/A"
             if market_cap_str != "N/A":
@@ -143,10 +151,12 @@ class JPStockScraper(BaseScraper):
                 "industry": price_board.get("industry", {}).get("industryName", "N/A"),
                 "price": price_board.get("price", "N/A"), "change": price_board.get("priceChange", "N/A"),
                 "change_percent": price_board.get("priceChangeRate", "N/A"), "market_cap": market_cap,
-                "per": ref_index.get("per", "N/A"), "pbr": ref_index.get("pbr", "N/A"),
-                "roe": ref_index.get("roe", "N/A"), "eps": ref_index.get("eps", "N/A"),
-                "yield": price_board.get("shareDividendYield") or ref_index.get("shareDividendYield", "N/A"),
-                "annual_dividend": latest_annual_dividend, # ここを修正
+                "per": get_ref_value("per"),
+                "pbr": get_ref_value("pbr"),
+                "roe": get_ref_value("roe"),
+                "eps": get_ref_value("eps"),
+                "yield": get_ref_value("shareDividendYield"),
+                "annual_dividend": latest_annual_dividend,
                 "dividend_history": dividend_history, "asset_type": "jp_stock", "currency": "JPY"
             }
         except (json.JSONDecodeError, KeyError) as e:

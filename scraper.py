@@ -103,6 +103,27 @@ class JPStockScraper(BaseScraper):
 
     @cachedmethod(lambda self: self.cache)
     def fetch_data(self, code: str, num_years_dividend: int = 10) -> Optional[Dict[str, Any]]:
+        # --- 決算月を取得 ---
+        settlement_month = "N/A"
+        try:
+            profile_url = f"https://finance.yahoo.co.jp/quote/{code}.T/profile"
+            profile_response = self._make_request(profile_url)
+            if profile_response:
+                match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", profile_response.text)
+                if match:
+                    profile_data = json.loads(match.group(1))
+                    profile_items = profile_data.get("mainStocksProfile", {}).get("items", [])
+                    for item in profile_items:
+                        if item.get("head") == "決算":
+                            date_text = item.get("details", [{}])[0].get("text", "") # "2月末日"
+                            month_match = re.search(r"(\d+)月", date_text)
+                            if month_match:
+                                settlement_month = month_match.group(0)
+                            break
+        except Exception as e:
+            logger.warning(f"銘柄 {code} の決算月取得中にエラー: {e}")
+        # --------------------
+
         url = f"https://finance.yahoo.co.jp/quote/{code}.T"
         response = self._make_request(url)
         if not response:
@@ -128,7 +149,7 @@ class JPStockScraper(BaseScraper):
             market_cap_str = ref_index.get("totalPrice", "N/A")
             market_cap = "N/A"
             if market_cap_str != "N/A":
-                mc_val_str = re.sub(r'[^\d]', '', market_cap_str)
+                mc_val_str = re.sub(r'[^\\d]', '', market_cap_str)
                 if mc_val_str and mc_val_str.isdigit(): # isdigit() を追加
                     try:
                         market_cap = f"{int(mc_val_str) * 1_000_000:,}"
@@ -157,7 +178,9 @@ class JPStockScraper(BaseScraper):
                 "eps": get_ref_value("eps"),
                 "yield": get_ref_value("shareDividendYield"),
                 "annual_dividend": latest_annual_dividend,
-                "dividend_history": dividend_history, "asset_type": "jp_stock", "currency": "JPY"
+                "dividend_history": dividend_history,
+                "settlement_month": settlement_month, # 取得した決算月を追加
+                "asset_type": "jp_stock", "currency": "JPY"
             }
         except (json.JSONDecodeError, KeyError) as e:
             logger.error(f"銘柄 {code} の株価データ解析中にエラー: {e}", exc_info=True)
@@ -203,6 +226,28 @@ class USStockScraper(BaseScraper):
     """米国株式のデータをYahoo!ファイナンス (JP) から取得する"""
     @cachedmethod(lambda self: self.cache)
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
+        # --- 決算月を取得 ---
+        settlement_month = "N/A"
+        try:
+            # 米国株の場合、/performance ページから取得
+            performance_url = f"https://finance.yahoo.co.jp/quote/{code}/performance"
+            performance_response = self._make_request(performance_url)
+            if performance_response:
+                match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", performance_response.text)
+                if match:
+                    performance_data = json.loads(match.group(1))
+                    settlement_items = performance_data.get("mainUsStocksSettlement", {}).get("annualSettlement", {}).get("items", [])
+                    for item in settlement_items:
+                        if item.get("head") == "決算日":
+                            date_text = item.get("details", [""])[0] # "2024年12月31日"
+                            month_match = re.search(r"(\d+)月", date_text)
+                            if month_match:
+                                settlement_month = month_match.group(0)
+                            break
+        except Exception as e:
+            logger.warning(f"銘柄 {code} の決算月取得中にエラー: {e}")
+        # --------------------
+
         url = f"https://finance.yahoo.co.jp/quote/{code}"
         response = self._make_request(url)
         if not response:
@@ -250,6 +295,7 @@ class USStockScraper(BaseScraper):
                 "roe": "N/A",  # データソースに存在しないため
                 "eps": get_ref_value("eps"),
                 "yield": "N/A", # データソースに存在しないため
+                "settlement_month": settlement_month, # 取得した決算月を追加
                 "asset_type": "us_stock",
                 "currency": "USD"
             }

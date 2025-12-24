@@ -382,3 +382,6 @@ if __name__ == '__main__':
     # エラーケース
     test_scraper(jp_scraper, "99999", "存在しない国内株式")
     test_scraper(us_scraper, "INVALID", "存在しない米国株式")
+
+    # 問題の銘柄をテスト
+    test_scraper(jp_scraper, "8130", "国内株式 (問題の銘柄)")

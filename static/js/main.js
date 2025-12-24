@@ -329,6 +329,13 @@ document.addEventListener('DOMContentLoaded', () => {
             alert.addEventListener('transitionend', () => alert.remove());
         }, 5000);
     }
+
+    const formatNumber = (num, fractionDigits = 0) => {
+        const parsedNum = parseFloat(num);
+        if (parsedNum === null || parsedNum === undefined || isNaN(parsedNum)) return 'N/A';
+        return parsedNum.toLocaleString(undefined, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
+    };
+
     function sortAssets(data) {
         data.sort((a, b) => {
             let valA = a[currentSort.key], valB = b[currentSort.key];

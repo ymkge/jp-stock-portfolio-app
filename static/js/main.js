@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const deleteSelectedStocksButton = document.getElementById('delete-selected-stocks-button');
     const recentStocksList = document.getElementById('recent-stocks-list');
     const filterInput = document.getElementById('filter-input');
+    const showOnlyManagedAssetsCheckbox = document.getElementById('show-only-managed-assets-checkbox');
     const tabNav = document.querySelector('.tab-nav');
 
     // --- モーダル関連DOM要素 ---
@@ -142,7 +143,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- レンダリング関連 ---
     function filterAndRender() {
         const filterText = filterInput.value.toLowerCase();
+        const showOnlyManaged = showOnlyManagedAssetsCheckbox.checked;
         let filteredAssets = allAssetsData.filter(asset => asset.asset_type === activeTab);
+
+        if (showOnlyManaged) {
+            filteredAssets = filteredAssets.filter(asset => asset.holdings && asset.holdings.length > 0);
+        }
 
         if (filterText) {
             filteredAssets = filteredAssets.filter(asset =>
@@ -586,6 +592,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     downloadCsvButton.addEventListener('click', () => { window.location.href = '/api/stocks/csv'; });
     filterInput.addEventListener('input', filterAndRender);
+    showOnlyManagedAssetsCheckbox.addEventListener('input', filterAndRender);
     
     document.querySelectorAll('.select-all-assets').forEach(checkbox => {
         checkbox.addEventListener('change', (event) => {

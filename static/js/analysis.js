@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- グローバル変数 ---
     let allHoldingsData = [];
+    let fullAnalysisData = {};
     let filteredHoldingsData = [];
     let currentSort = { key: 'market_value', order: 'desc' };
     let isAmountVisible = true;
@@ -38,6 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw error;
             }
             const analysisData = await response.json();
+            fullAnalysisData = analysisData;
             allHoldingsData = analysisData.holdings_list;
 
             isAmountVisible = !toggleVisibilityCheckbox.checked;
@@ -66,7 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         sortHoldings(filteredHoldingsData);
         renderAnalysisTable(filteredHoldingsData);
-        renderSummary(filteredHoldingsData);
+        renderSummary();
         renderCharts(filteredHoldingsData);
         updateSortHeaders();
     }
@@ -74,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderAnalysisTable(holdings) {
         analysisTableBody.innerHTML = '';
         if (!holdings || holdings.length === 0) {
-            analysisTableBody.innerHTML = `<tr><td colspan="12" style="text-align:center;">該当する保有銘柄はありません。</td></tr>`;
+            analysisTableBody.innerHTML = `<tr><td colspan="13" style="text-align:center;">該当する保有銘柄はありません。</td></tr>`;
             return;
         }
 
@@ -103,20 +105,21 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(formatNumber(item.purchase_price, 2), !isAmountVisible ? 'masked-amount' : '');
             createCell(formatNumber(item.price, 2));
             createCell(formatNumber(item.estimated_annual_dividend, 0), !isAmountVisible ? 'masked-amount' : '');
+            createCell(formatNumber(item.estimated_annual_dividend_after_tax, 0), !isAmountVisible ? 'masked-amount' : '');
             createCell(formatNumber(item.market_value, 0), !isAmountVisible ? 'masked-amount' : '');
             createCell(formatNumber(item.profit_loss, 0), `${!isAmountVisible ? 'masked-amount' : ''} ${profitLossClass}`);
             createCell(formatNumber(item.profit_loss_rate, 2), `${!isAmountVisible ? 'masked-amount' : ''} ${profitLossRateClass}`);
         });
     }
 
-    function renderSummary(holdings) {
-        const totalMarketValue = holdings.reduce((sum, item) => sum + (parseFloat(item.market_value) || 0), 0);
-        const totalProfitLoss = holdings.reduce((sum, item) => sum + (parseFloat(item.profit_loss) || 0), 0);
+    function renderSummary() {
+        const totalMarketValue = allHoldingsData.reduce((sum, item) => sum + (parseFloat(item.market_value) || 0), 0);
+        const totalProfitLoss = allHoldingsData.reduce((sum, item) => sum + (parseFloat(item.profit_loss) || 0), 0);
         const totalInvestment = totalMarketValue - totalProfitLoss;
         const totalProfitLossRate = totalInvestment !== 0 ? (totalProfitLoss / totalInvestment) * 100 : 0;
-        // 年間配当金の合計を計算
-        const totalEstimatedAnnualDividend = holdings.reduce((sum, item) => sum + (parseFloat(item.estimated_annual_dividend) || 0), 0);
-
+        
+        const totalEstimatedAnnualDividend = fullAnalysisData.total_annual_dividend || 0;
+        const totalEstimatedAnnualDividendAfterTax = fullAnalysisData.total_annual_dividend_after_tax || 0;
 
         const summaryProfitLossClass = totalProfitLoss >= 0 ? 'profit' : 'loss';
         const summaryProfitLossRateClass = totalProfitLossRate >= 0 ? 'profit' : 'loss';
@@ -126,6 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <p>総損益: <span class="${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossClass}">${formatNumber(totalProfitLoss, 0)}円</span></p>
             <p>総損益率: <span class="${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossRateClass}">${formatNumber(totalProfitLossRate, 2)}%</span></p>
             <p>年間配当合計: <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalEstimatedAnnualDividend, 0)}円</span></p>
+            <p>年間配当合計(税引後): <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalEstimatedAnnualDividendAfterTax, 0)}円</span></p>
         `;
     }
 
@@ -310,7 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleVisibilityCheckbox.addEventListener('change', (event) => {
         isAmountVisible = !event.target.checked;
         renderAnalysisTable(filteredHoldingsData);
-        renderSummary(filteredHoldingsData);
+        renderSummary();
     });
 
     downloadAnalysisCsvButton.addEventListener('click', () => {

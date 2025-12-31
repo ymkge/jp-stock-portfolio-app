@@ -220,14 +220,16 @@ def delete_holding(holding_id: str) -> bool:
 def calculate_holding_values(
     asset_data: Dict[str, Any],
     holding: Dict[str, Any],
-    exchange_rates: Dict[str, float]
+    exchange_rates: Dict[str, float],
+    tax_config: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
     個別の保有情報に対して、評価額、損益、年間配当などを計算し、円換算する。
     データが取得できない場合はエラーを出さずに 'None' を返すように堅牢化。
     """
     market_value, profit_loss, profit_loss_rate, price_in_jpy = None, None, None, None
-    total_annual_dividend = 0
+    total_annual_dividend = None
+    total_annual_dividend_after_tax = None
     
     try:
         purchase_price = float(holding.get("purchase_price", 0))
@@ -252,6 +254,20 @@ def calculate_holding_values(
             currency = asset_data.get("currency", "JPY")
             exchange_rate = exchange_rates.get(currency, 1.0)
             total_annual_dividend = annual_dividend_foreign * quantity * exchange_rate
+
+            # --- 税金計算ロジック ---
+            total_annual_dividend_after_tax = total_annual_dividend
+            account_type = holding.get("account_type")
+            asset_type = asset_data.get("asset_type")
+            
+            # tax_config と、その中のキーの存在をチェック
+            if tax_config and 'non_taxable_accounts' in tax_config and 'tax_info' in tax_config:
+                is_taxable = account_type not in tax_config.get("non_taxable_accounts", [])
+                
+                if is_taxable and asset_type in tax_config["tax_info"]:
+                    tax_rate = tax_config["tax_info"][asset_type].get("tax_rate", 0)
+                    total_annual_dividend_after_tax = total_annual_dividend * (1 - tax_rate)
+            # -------------------------
     
     except (ValueError, TypeError, KeyError, ZeroDivisionError):
         pass
@@ -266,6 +282,7 @@ def calculate_holding_values(
         "profit_loss": profit_loss,
         "profit_loss_rate": profit_loss_rate,
         "estimated_annual_dividend": total_annual_dividend,
+        "estimated_annual_dividend_after_tax": total_annual_dividend_after_tax,
     }
 
 def create_csv_data(data: list[dict]) -> str:
@@ -363,11 +380,11 @@ def create_analysis_csv_data(data: list[dict]) -> str:
 
     headers = [
         "code", "name", "asset_type", "market", "currency", "account_type", "industry", "quantity", "purchase_price", "price",
-        "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend"
+        "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend", "estimated_annual_dividend_after_tax"
     ]
     display_headers = [
         "コード", "名称", "資産タイプ", "市場", "通貨", "口座種別", "業種", "数量", "取得単価", "現在値",
-        "評価額", "損益", "損益率(%)", "年間配当"
+        "評価額", "損益", "損益率(%)", "年間配当", "年間配当(税引後)"
     ]
     writer.writerow(display_headers)
 
@@ -391,7 +408,7 @@ def create_analysis_csv_data(data: list[dict]) -> str:
                 value = item.get("currency", "")
             elif h == "industry" and item.get("asset_type") == "investment_trust":
                 value = "投資信託" # 投資信託の業種は「投資信託」とする
-            elif h == "estimated_annual_dividend" and item.get("asset_type") == "investment_trust":
+            elif h in ["estimated_annual_dividend", "estimated_annual_dividend_after_tax"] and item.get("asset_type") == "investment_trust":
                 value = "" # 投資信託には年間配当は表示しない
             else:
                 value = item.get(h, "")

@@ -1,0 +1,16 @@
+{
+  "tax_info": {
+    "jp_stock": {
+      "description": "国内株式・投資信託など（申告分離課税）",
+      "tax_rate": 0.20315
+    },
+    "us_stock": {
+      "description": "米国株式（米国源泉徴収10% + 日本国内課税20.315%）。外国税額控除は未考慮。",
+      "tax_rate": 0.282835
+    }
+  },
+  "non_taxable_accounts": [
+    "新NISA",
+    "旧NISA"
+  ]
+}

@@ -52,6 +52,14 @@ try:
 except (FileNotFoundError, json.JSONDecodeError) as e:
     logger.warning(f"highlight_rules.json の読み込みに失敗しました。デフォルト値で動作します。: {e}")
 
+# --- 税金設定の読み込み ---
+TAX_CONFIG = {}
+try:
+    with open("tax_config.json", "r", encoding="utf-8") as f:
+        TAX_CONFIG = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError) as e:
+    logger.warning(f"tax_config.json の読み込みに失敗しました。税金計算は行われません。: {e}")
+
 # 静的ファイルのマウント
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -330,6 +338,8 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
     industry_breakdown = {}
     account_type_breakdown = {}
     country_breakdown = {} # 国別ポートフォリオの内訳を追加
+    total_annual_dividend = 0
+    total_annual_dividend_after_tax = 0
 
     for asset in all_assets:
         if "error" in asset or not asset.get("holdings"):
@@ -338,7 +348,7 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
         for holding in asset["holdings"]:
             # portfolio_managerのヘルパー関数で計算
             calculated_holding_data = portfolio_manager.calculate_holding_values(
-                asset, holding, exchange_rates
+                asset, holding, exchange_rates, TAX_CONFIG
             )
             
             # 計算結果をholding_detailにマージ
@@ -368,12 +378,18 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
                 elif asset.get("asset_type") == "investment_trust":
                     country = "投資信託"
                 country_breakdown[country] = country_breakdown.get(country, 0) + market_value_jpy
+            
+            # 年間配当の合計を加算
+            if holding_detail.get("estimated_annual_dividend") and isinstance(holding_detail.get("estimated_annual_dividend"), (int, float)):
+                total_annual_dividend += holding_detail["estimated_annual_dividend"]
+            if holding_detail.get("estimated_annual_dividend_after_tax") and isinstance(holding_detail.get("estimated_annual_dividend_after_tax"), (int, float)):
+                total_annual_dividend_after_tax += holding_detail["estimated_annual_dividend_after_tax"]
 
             if "holdings" in holding_detail: del holding_detail["holdings"]
             holdings_list.append(holding_detail)
 
     # フロントエンド表示用に、Noneを"N/A"に変換
-    display_keys_to_convert = ["price", "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend"]
+    display_keys_to_convert = ["price", "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend", "estimated_annual_dividend_after_tax"]
     for item in holdings_list:
         for key in display_keys_to_convert:
             if item.get(key) is None:
@@ -385,6 +401,8 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
         "industry_breakdown": industry_breakdown,
         "account_type_breakdown": account_type_breakdown,
         "country_breakdown": country_breakdown,
+        "total_annual_dividend": total_annual_dividend,
+        "total_annual_dividend_after_tax": total_annual_dividend_after_tax,
     }
 
 @app.get("/api/portfolio/analysis/csv")

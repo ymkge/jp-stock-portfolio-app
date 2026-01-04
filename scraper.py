@@ -146,17 +146,39 @@ class JPStockScraper(BaseScraper):
                 # 辞書でない場合は、その値自体を返す (Noneの場合は"N/A"にフォールバック)
                 return item if item is not None else "N/A"
 
-            market_cap_str = ref_index.get("totalPrice", "N/A")
+            market_cap_item = ref_index.get("totalPrice")
             market_cap = "N/A"
-            if market_cap_str != "N/A":
-                mc_val_str = re.sub(r'[^\\d]', '', market_cap_str)
-                if mc_val_str and mc_val_str.isdigit(): # isdigit() を追加
-                    try:
+            logger.debug(f"銘柄 {code} の market_cap_item (raw): {market_cap_item}")
+
+            try:
+                if isinstance(market_cap_item, dict) and market_cap_item.get("value"):
+                    # パターンA: 辞書形式の場合 (米国株と同様の形式を想定)
+                    logger.debug(f"銘柄 {code}: 時価総額を辞書として処理")
+                    market_cap_str = market_cap_item["value"]
+                    # 不要な ".00" を削除
+                    if market_cap_str.endswith(".00"):
+                        market_cap_str = market_cap_str[:-3]
+                    market_cap = f"{market_cap_str}{market_cap_item.get('suffix', '')}".strip()
+
+                elif isinstance(market_cap_item, str) and market_cap_item not in ["N/A", "--", ""]:
+                    # パターンB: 文字列形式の場合 (例: "12,345")
+                    logger.debug(f"銘柄 {code}: 時価総額を文字列として処理")
+                    mc_val_str = re.sub(r'[^0-9]', '', market_cap_item) # カンマを除去
+                    if mc_val_str.isdigit():
+                        # 単位が「百万円」であることを前提とする既存のロジック
                         market_cap = f"{int(mc_val_str) * 1_000_000:,}"
-                    except (ValueError, TypeError):
-                        market_cap = "N/A"
+                    else:
+                        # "1.23兆円" のような形式は現状では正しくパースできないため、
+                        # ひとまずそのままの値を使う
+                        market_cap = market_cap_item
                 else:
-                    market_cap = "N/A" # 数字でない場合はN/Aとする
+                    logger.debug(f"銘柄 {code}: 時価総額が N/A または空")
+
+            except (ValueError, TypeError, KeyError) as e:
+                logger.warning(f"銘柄 {code} の時価総額解析中に予期せぬエラー: {e}", exc_info=True)
+                market_cap = "N/A"
+            
+            logger.debug(f"銘柄 {code} の最終的な market_cap: {market_cap}")
 
             dividend_history = self._fetch_dividend_history(code, num_years_dividend)
             

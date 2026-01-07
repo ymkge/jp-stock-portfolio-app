@@ -288,17 +288,39 @@ class USStockScraper(BaseScraper):
             # 時価総額の整形
             market_cap_data = ref_index.get("totalPrice", {})
             market_cap = "N/A"
-            logger.debug(f"米国株 {code} の market_cap_data: {market_cap_data}") # 追加
+            logger.debug(f"米国株 {code} の market_cap_data: {market_cap_data}")
             if market_cap_data and market_cap_data.get("value"):
-                # 整形済み文字列をそのまま利用
-                market_cap_str = market_cap_data["value"]
-                logger.debug(f"米国株 {code} の market_cap_str (before .00 removal): {market_cap_str}") # 追加
-                # 不要な ".00" を削除
-                if market_cap_str.endswith(".00"):
-                    market_cap_str = market_cap_str[:-3]
-                logger.debug(f"米国株 {code} の market_cap_str (after .00 removal): {market_cap_str}") # 追加
-                market_cap = f"{market_cap_str} {market_cap_data.get('suffix', '')}".strip()
-                logger.debug(f"米国株 {code} の最終的な market_cap: {market_cap}") # 追加
+                try:
+                    value_str = market_cap_data.get("value", "0").replace(',', '')
+                    suffix = market_cap_data.get("suffix", "")
+                    if value_str.endswith(".00"):
+                        value_str = value_str[:-3]
+                    value = float(value_str)
+
+                    market_cap_usd = 0
+                    if "千ドル" in suffix:
+                        market_cap_usd = value * 1000
+                    elif "百万ドル" in suffix:
+                        market_cap_usd = value * 1_000_000
+                    elif "億ドル" in suffix:
+                        market_cap_usd = value * 100_000_000
+                    else:
+                        market_cap_usd = value
+
+                    exchange_rate = get_exchange_rate('USDJPY=X')
+                    if exchange_rate and market_cap_usd > 0:
+                        market_cap_jpy = market_cap_usd * exchange_rate
+                        market_cap = str(int(market_cap_jpy)) # 小数点以下は不要なのでintに変換
+                    else:
+                        market_cap = f"{value_str} {suffix}".strip()
+                        logger.warning(f"米国株 {code}: 為替レート取得失敗、または時価総額が0のため、ドル表記のままにします: {market_cap}")
+
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"米国株 {code} の時価総額解析中にエラー: {e}")
+                    original_str = market_cap_data.get("value", "N/A")
+                    if original_str.endswith(".00"):
+                        original_str = original_str[:-3]
+                    market_cap = f"{original_str} {market_cap_data.get('suffix', '')}".strip()
 
             # PER, PBRなどの指標値を取得
             def get_ref_value(key):

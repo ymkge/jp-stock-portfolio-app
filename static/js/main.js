@@ -1,6 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- DOM要素の取得 ---
-    const loadingIndicator = document.getElementById('loading-indicator');
     const addAssetForm = document.getElementById('add-asset-form');
     const assetCodeInput = document.getElementById('asset-code-input');
     const downloadCsvButton = document.getElementById('download-csv-button');
@@ -33,67 +32,68 @@ document.addEventListener('DOMContentLoaded', () => {
     let highlightRules = {};
     let currentSort = { key: 'code', order: 'asc' };
     let currentManagingCode = null;
-    let activeTab = 'jp_stock'; // 初期アクティブタブ
-    const COOLDOWN_MINUTES = 10;
-    const COOLDOWN_STORAGE_KEY = 'fullUpdateCooldownEnd';
+    let activeTab = 'jp_stock';
     const ASSETS_STORAGE_KEY = 'jpStockPortfolioAssets';
-    let cooldownInterval;
 
-    // --- 初期化処理 ---
-    async function initialize() {
-        showLoading(true);
-        try {
-            const stocksResponse = await fetch('/api/stocks');
-            if (!stocksResponse.ok) {
-                let errorDetail = 'Failed to fetch stocks';
-                try {
-                    const errorData = await stocksResponse.json();
-                    errorDetail = errorData.detail || errorDetail;
-                } catch (e) {
-                    errorDetail = stocksResponse.statusText;
-                }
-                const error = new Error(errorDetail);
-                error.status = stocksResponse.status;
-                throw error;
+    // --- データ取得とレンダリング ---
+    async function fetchAndRenderAllData(force = false) {
+        if (!force && !window.appState.canFetch()) {
+            const cachedData = window.appState.getState();
+            if (cachedData && Array.isArray(cachedData)) { // データがポートフォリオ形式か確認
+                allAssetsData = cachedData;
+                filterAndRender();
             }
-            const assets = await stocksResponse.json();
+            return;
+        }
 
-            const [rules, recent, accTypes] = await Promise.all([
-                fetch('/api/highlight-rules').then(res => res.json()),
-                fetch('/api/recent-stocks').then(res => res.json()),
-                fetch('/api/account-types').then(res => res.json())
+        refreshAllButton.disabled = true;
+        refreshAllButton.textContent = '更新中...';
+
+        try {
+            const [assets, rules, recent, accTypes] = await Promise.all([
+                fetch('/api/stocks').then(handleApiResponse),
+                fetch('/api/highlight-rules').then(handleApiResponse),
+                fetch('/api/recent-stocks').then(handleApiResponse),
+                fetch('/api/account-types').then(handleApiResponse)
             ]);
-            
+
             allAssetsData = assets;
             highlightRules = rules;
             accountTypes = accTypes;
+
+            window.appState.updateState(allAssetsData);
+            saveAssetsToStorage(); 
             
-            saveAssetsToStorage();
             renderRecentStocksList(recent);
             filterAndRender();
-            return true; // Success
-        } catch (error) {
-            console.error('Initialization error:', error);
-            if (error.status === 429) {
-                showAlert('クールダウン中です。表示されているのは前回のデータです。', 'info');
-                const cooldownEndInStorage = localStorage.getItem(COOLDOWN_STORAGE_KEY);
-                if (!cooldownEndInStorage || Date.now() > parseInt(cooldownEndInStorage)) {
-                    const newCooldownEnd = Date.now() + COOLDOWN_MINUTES * 60 * 1000;
-                    localStorage.setItem(COOLDOWN_STORAGE_KEY, newCooldownEnd);
-                    startCooldownTimer(newCooldownEnd);
-                }
-            } else {
-                showAlert(`データ更新に失敗しました。表示されているのは古いデータかもしれません。(${error.message})`, 'warning');
-                if (cooldownInterval) clearInterval(cooldownInterval);
-                refreshAllButton.disabled = false;
-                refreshAllButton.textContent = '全件更新';
-                localStorage.removeItem(COOLDOWN_STORAGE_KEY);
+            if (force) {
+                showAlert('ポートフォリオを更新しました。', 'success');
             }
-            return false; // Failure
+
+        } catch (error) {
+            console.error('Data fetch error:', error);
+            showAlert(`データ更新に失敗しました: ${error.message}`, 'danger');
+            loadAssetsFromStorage();
         } finally {
-            showLoading(false);
+            refreshAllButton.disabled = false;
+            refreshAllButton.textContent = '全件更新';
         }
     }
+    
+    async function handleApiResponse(response) {
+        if (!response.ok) {
+            let errorDetail = `HTTP error! status: ${response.status}`;
+            try {
+                const errorData = await response.json();
+                errorDetail = errorData.detail || errorDetail;
+            } catch (e) {
+                // JSONのパースに失敗した場合
+            }
+            throw new Error(errorDetail);
+        }
+        return response.json();
+    }
+
 
     // --- ストレージ関連 ---
     function saveAssetsToStorage() {
@@ -105,38 +105,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (storedAssets) {
             allAssetsData = JSON.parse(storedAssets);
             filterAndRender();
-        }
-    }
-
-    // --- クールダウン関連 ---
-    function startCooldownTimer(endTime) {
-        if (cooldownInterval) clearInterval(cooldownInterval);
-        refreshAllButton.disabled = true;
-
-        const updateTimer = () => {
-            const now = Date.now();
-            const remaining = endTime - now;
-
-            if (remaining <= 0) {
-                clearInterval(cooldownInterval);
-                refreshAllButton.disabled = false;
-                refreshAllButton.textContent = '全件更新';
-                localStorage.removeItem(COOLDOWN_STORAGE_KEY);
-            } else {
-                const minutes = Math.floor((remaining / 1000 / 60) % 60);
-                const seconds = Math.floor((remaining / 1000) % 60);
-                refreshAllButton.textContent = `あと ${minutes}:${seconds.toString().padStart(2, '0')}`;
-            }
-        };
-
-        updateTimer();
-        cooldownInterval = setInterval(updateTimer, 1000);
-    }
-
-    function checkInitialCooldown() {
-        const cooldownEnd = localStorage.getItem(COOLDOWN_STORAGE_KEY);
-        if (cooldownEnd && Date.now() < parseInt(cooldownEnd)) {
-            startCooldownTimer(parseInt(cooldownEnd));
         }
     }
 
@@ -366,10 +334,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-    function showLoading(isLoading) {
-        // loadingIndicator.style.display = isLoading ? 'block' : 'none';
-        // document.querySelectorAll('.tab-content').forEach(tc => tc.style.display = isLoading ? 'none' : '');
-    }
+
     function updateDeleteSelectedButtonState() {
         const checkedCount = document.querySelectorAll(`#${activeTab} .asset-checkbox:checked`).length;
         deleteSelectedStocksButton.disabled = checkedCount === 0;
@@ -378,18 +343,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (value === 'N/A' || value === null || value === undefined || value === '--') return 'N/A';
         const num = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
         if (isNaN(num)) return 'N/A';
-        // バックエンドで円換算されていることを想定し、単位は円で表示
         const trillion = 1e12, oku = 1e8;
         if (num >= trillion) return `${(num / trillion).toFixed(2)}兆円`;
         if (num >= oku) return `${(num / oku).toFixed(2)}億円`;
-        return `${num.toLocaleString()}円`; // 億円未満はそのまま表示
+        return `${num.toLocaleString()}円`;
     }
     function formatDividendHistory(history) {
         if (!history || Object.keys(history).length === 0) return 'N/A';
         return Object.keys(history).sort((a, b) => b - a).map(year => `${year}年: ${history[year]}円`).join(' | ');
     }
     function renderScoreAsStars(score, details, assetType) {
-        if (assetType !== 'jp_stock') return 'N/A'; // 国内株式以外はスコアを表示しない
+        if (assetType !== 'jp_stock') return 'N/A';
         if (score === -1) return `<span class="score-na" title="評価指標なし">N/A</span>`;
         if (score === undefined || score === null) return 'N/A';
         let stars = '★'.repeat(Math.min(score, 5)) + '☆'.repeat(5 - Math.min(score, 5));
@@ -398,7 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return `<span class="score" title="${tooltip}">${stars}</span>`;
     }
     function getHighlightClass(key, value, assetType) {
-        if (assetType !== 'jp_stock') return ''; // 国内株式以外はハイライトしない
+        if (assetType !== 'jp_stock') return '';
         const rules = highlightRules[key];
         if (!rules || value === 'N/A' || value === null || value === undefined || value === '--') return '';
         const numericValue = parseFloat(String(value).replace(/[^0-9.-]/g, ''));
@@ -435,7 +399,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function renderHoldingsList(holdings, assetType) {
         const isFund = assetType === 'investment_trust';
-        const quantityDigits = isFund ? 6 : 0; // 投資信託なら小数点以下6桁、それ以外は0桁
+        const quantityDigits = isFund ? 6 : 0;
 
         holdingsListContainer.innerHTML = '';
         if (!holdings || holdings.length === 0) {
@@ -489,11 +453,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
             if (!response.ok) throw new Error((await response.json()).detail || '保存失敗');
             showAlert('保有情報を保存しました。', 'success');
+            
+            window.appState.clearState();
+            
             const updatedAsset = await fetch(`/api/stocks/${currentManagingCode}`).then(res => res.json());
             const index = allAssetsData.findIndex(a => a.code === currentManagingCode);
             if (index !== -1) allAssetsData[index] = updatedAsset;
+            
+            window.appState.updateState(allAssetsData);
             saveAssetsToStorage();
-            renderHoldingsList(updatedAsset.holdings, updatedAsset.asset_type); // asset_typeを渡す
+            renderHoldingsList(updatedAsset.holdings, updatedAsset.asset_type);
             filterAndRender();
             hideHoldingForm();
         } catch (error) { showAlert(error.message, 'danger'); }
@@ -504,11 +473,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`/api/holdings/${holdingId}`, { method: 'DELETE' });
             if (!response.ok) throw new Error('削除失敗');
             showAlert('保有情報を削除しました。', 'success');
+
+            window.appState.clearState();
+
             const updatedAsset = await fetch(`/api/stocks/${currentManagingCode}`).then(res => res.json());
             const index = allAssetsData.findIndex(a => a.code === currentManagingCode);
             if (index !== -1) allAssetsData[index] = updatedAsset;
+
+            window.appState.updateState(allAssetsData);
             saveAssetsToStorage();
-            renderHoldingsList(updatedAsset.holdings, updatedAsset.asset_type); // asset_typeを渡す
+            renderHoldingsList(updatedAsset.holdings, updatedAsset.asset_type);
             filterAndRender();
         } catch (error) { showAlert(error.message, 'danger'); }
     }
@@ -518,24 +492,25 @@ document.addEventListener('DOMContentLoaded', () => {
     addAssetForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         const code = assetCodeInput.value.trim();
-        // asset_type はバックエンドで自動判定するため、フロントからは送信しない
         if (!code) return;
         try {
             const response = await fetch('/api/stocks', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code }), // asset_type を削除
+                body: JSON.stringify({ code }),
             });
             const data = await response.json();
             showAlert(data.message, data.status === 'success' ? 'success' : (data.status === 'exists' ? 'warning' : 'danger'));
             
             if (data.status === 'success') {
-                // APIから返されたstockデータにはasset_typeが含まれている
-                const newAsset = data.stock; // APIから返されたstockデータを使用
+                window.appState.clearState();
+
+                const newAsset = data.stock;
                 allAssetsData.push(newAsset);
+                
+                window.appState.updateState(allAssetsData);
                 saveAssetsToStorage();
 
-                // 追加した資産のタブに切り替える
                 const newAssetType = newAsset.asset_type;
                 if (activeTab !== newAssetType) {
                     activeTab = newAssetType;
@@ -628,7 +603,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (!response.ok) throw new Error((await response.json()).detail || '一括削除失敗');
             showAlert(`${codesToDelete.length} 件の銘柄情報を削除しました。`, 'success');
+            
+            window.appState.clearState();
+
             allAssetsData = allAssetsData.filter(asset => !codesToDelete.includes(asset.code));
+            
+            window.appState.updateState(allAssetsData);
             saveAssetsToStorage();
             filterAndRender();
             document.querySelector(`.select-all-assets[data-asset-type="${activeTab}"]`).checked = false;
@@ -636,21 +616,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) { showAlert(error.message, 'danger'); }
     });
 
-    refreshAllButton.addEventListener('click', async () => {
-        if (refreshAllButton.disabled) return;
-
-        showAlert('全資産のデータを更新しています...', 'info');
-        
-        const cooldownEnd = Date.now() + COOLDOWN_MINUTES * 60 * 1000;
-        localStorage.setItem(COOLDOWN_STORAGE_KEY, cooldownEnd);
-        startCooldownTimer(cooldownEnd);
-
-        const success = await initialize();
-        
-        if (success) {
-            showAlert('全資産のデータを更新しました。', 'success');
-        }
-    });
+    refreshAllButton.addEventListener('click', () => fetchAndRenderAllData(true));
 
     // モーダルイベント
     addNewHoldingBtn.addEventListener('click', () => showHoldingForm());
@@ -672,6 +638,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 初期実行 ---
     loadAssetsFromStorage();
-    checkInitialCooldown();
-    initialize();
+    fetchAndRenderAllData(false);
 });

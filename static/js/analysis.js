@@ -22,8 +22,18 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentSort = { key: 'market_value', order: 'desc' };
     let isAmountVisible = true;
 
-    // --- 初期化処理 ---
-    async function initialize() {
+    // --- データ取得とレンダリング ---
+    async function fetchAndRenderAnalysisData() {
+        // 状態管理チェック
+        if (!window.appState.canFetch()) {
+            const cachedData = window.appState.getState();
+            // analysisページのデータはオブジェクト形式なので、配列でないことを確認
+            if (cachedData && typeof cachedData === 'object' && !Array.isArray(cachedData)) {
+                processAnalysisData(cachedData);
+            }
+            return;
+        }
+
         try {
             const response = await fetch('/api/portfolio/analysis');
             if (!response.ok) {
@@ -34,22 +44,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (e) {
                     errorDetail = response.statusText;
                 }
-                const error = new Error(errorDetail);
-                error.status = response.status;
-                throw error;
+                throw new Error(errorDetail);
             }
             const analysisData = await response.json();
-            fullAnalysisData = analysisData;
-            allHoldingsData = analysisData.holdings_list;
+            
+            // 状態を更新
+            window.appState.updateState(analysisData);
+            
+            processAnalysisData(analysisData);
 
-            isAmountVisible = !toggleVisibilityCheckbox.checked;
-
-            populateFilters();
-            filterAndRender();
         } catch (error) {
-            console.error('Analysis initialization error:', error);
+            console.error('Analysis fetch error:', error);
             showAlert(`分析データの取得に失敗しました。(${error.message})`, 'danger');
         }
+    }
+
+    function processAnalysisData(analysisData) {
+        fullAnalysisData = analysisData;
+        allHoldingsData = analysisData.holdings_list || [];
+        isAmountVisible = !toggleVisibilityCheckbox.checked;
+        populateFilters();
+        filterAndRender();
     }
 
     // --- レンダリング関連 ---
@@ -91,7 +106,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const profitLoss = parseFloat(item.profit_loss);
             const profitLossRate = parseFloat(item.profit_loss_rate);
-            // 'text-plus'と'text-minus'を元の'profit'と'loss'に戻す
             const profitLossClass = isNaN(profitLoss) ? '' : (profitLoss >= 0 ? 'profit' : 'loss');
             const profitLossRateClass = isNaN(profitLossRate) ? '' : (profitLossRate >= 0 ? 'profit' : 'loss');
 
@@ -100,7 +114,6 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(item.industry || 'N/A');
             createCell(item.asset_type === 'jp_stock' ? '国内株式' : (item.asset_type === 'investment_trust' ? '投資信託' : (item.asset_type === 'us_stock' ? '米国株式' : 'N/A')));
             createCell(item.account_type);
-            // 数量、取得単価、年間配当にも masked-amount クラスを適用
             createCell(formatNumber(item.quantity, item.asset_type === 'investment_trust' ? 6 : 0), !isAmountVisible ? 'masked-amount' : '');
             createCell(formatNumber(item.purchase_price, 2), !isAmountVisible ? 'masked-amount' : '');
             createCell(formatNumber(item.price, 2));
@@ -168,7 +181,6 @@ document.addEventListener('DOMContentLoaded', () => {
                             const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
                             const percentage = total > 0 ? (context.raw / total * 100) : 0;
                             
-                            // 金額を隠す機能に対応
                             const formattedAmount = isAmountVisible ? `${formatNumber(context.raw, 0)}円` : '***円';
                             label += `${formattedAmount} (${percentage.toFixed(2)}%)`;
                             return label;
@@ -328,5 +340,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- 初期実行 ---
-    initialize();
+    // まずメモリ上のキャッシュデータで描画を試みる
+    const cachedAnalysisData = window.appState.getState();
+    if (cachedAnalysisData && typeof cachedAnalysisData === 'object' && !Array.isArray(cachedAnalysisData)) {
+        processAnalysisData(cachedAnalysisData);
+    }
+    // その後、APIから最新データを取得する
+    fetchAndRenderAnalysisData();
 });

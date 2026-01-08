@@ -38,8 +38,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- データ取得とレンダリング ---
     async function fetchAndRenderAllData(force = false) {
         if (!force && !window.appState.canFetch()) {
-            const cachedData = window.appState.getState();
-            if (cachedData && Array.isArray(cachedData)) { // データがポートフォリオ形式か確認
+            const cachedData = window.appState.getState('portfolio');
+            if (cachedData) {
                 allAssetsData = cachedData;
                 filterAndRender();
             }
@@ -61,7 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
             highlightRules = rules;
             accountTypes = accTypes;
 
-            window.appState.updateState(allAssetsData);
+            window.appState.updateState('portfolio', allAssetsData);
+            window.appState.updateTimestamp();
             saveAssetsToStorage(); 
             
             renderRecentStocksList(recent);
@@ -456,14 +457,14 @@ document.addEventListener('DOMContentLoaded', () => {
             
             window.appState.clearState();
             
-            const updatedAsset = await fetch(`/api/stocks/${currentManagingCode}`).then(res => res.json());
-            const index = allAssetsData.findIndex(a => a.code === currentManagingCode);
-            if (index !== -1) allAssetsData[index] = updatedAsset;
+            // After clearing state, force a re-fetch.
+            await fetchAndRenderAllData(true);
             
-            window.appState.updateState(allAssetsData);
-            saveAssetsToStorage();
-            renderHoldingsList(updatedAsset.holdings, updatedAsset.asset_type);
-            filterAndRender();
+            // Find the updated asset in the newly fetched data
+            const updatedAsset = allAssetsData.find(a => a.code === currentManagingCode);
+            if (updatedAsset) {
+                renderHoldingsList(updatedAsset.holdings, updatedAsset.asset_type);
+            }
             hideHoldingForm();
         } catch (error) { showAlert(error.message, 'danger'); }
     }
@@ -475,15 +476,15 @@ document.addEventListener('DOMContentLoaded', () => {
             showAlert('保有情報を削除しました。', 'success');
 
             window.appState.clearState();
+            
+            // After clearing state, force a re-fetch.
+            await fetchAndRenderAllData(true);
 
-            const updatedAsset = await fetch(`/api/stocks/${currentManagingCode}`).then(res => res.json());
-            const index = allAssetsData.findIndex(a => a.code === currentManagingCode);
-            if (index !== -1) allAssetsData[index] = updatedAsset;
-
-            window.appState.updateState(allAssetsData);
-            saveAssetsToStorage();
-            renderHoldingsList(updatedAsset.holdings, updatedAsset.asset_type);
-            filterAndRender();
+            // Find the updated asset in the newly fetched data
+            const updatedAsset = allAssetsData.find(a => a.code === currentManagingCode);
+            if (updatedAsset) {
+                renderHoldingsList(updatedAsset.holdings, updatedAsset.asset_type);
+            }
         } catch (error) { showAlert(error.message, 'danger'); }
     }
     function closeModal() { modalOverlay.classList.add('hidden'); currentManagingCode = null; }
@@ -504,28 +505,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (data.status === 'success') {
                 window.appState.clearState();
-
-                const newAsset = data.stock;
-                allAssetsData.push(newAsset);
-                
-                window.appState.updateState(allAssetsData);
-                saveAssetsToStorage();
-
-                const newAssetType = newAsset.asset_type;
-                if (activeTab !== newAssetType) {
-                    activeTab = newAssetType;
-                    document.querySelector('.tab-link.active').classList.remove('active');
-                    const newTabLink = document.querySelector(`.tab-link[data-tab="${newAssetType}"]`);
-                    if (newTabLink) newTabLink.classList.add('active');
-                    
-                    document.querySelector('.tab-content.active').classList.remove('active');
-                    const newTabContent = document.getElementById(newAssetType);
-                    if (newTabContent) newTabContent.classList.add('active');
-                }
-
-                const recent = await fetch('/api/recent-stocks').then(res => res.json());
-                renderRecentStocksList(recent);
-                filterAndRender();
+                await fetchAndRenderAllData(true); // Force re-fetch
             }
             assetCodeInput.value = '';
         } catch (error) { showAlert('資産の追加中にエラーが発生しました。', 'danger'); }
@@ -605,14 +585,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showAlert(`${codesToDelete.length} 件の銘柄情報を削除しました。`, 'success');
             
             window.appState.clearState();
-
-            allAssetsData = allAssetsData.filter(asset => !codesToDelete.includes(asset.code));
-            
-            window.appState.updateState(allAssetsData);
-            saveAssetsToStorage();
-            filterAndRender();
-            document.querySelector(`.select-all-assets[data-asset-type="${activeTab}"]`).checked = false;
-            updateDeleteSelectedButtonState();
+            await fetchAndRenderAllData(true); // Force re-fetch
         } catch (error) { showAlert(error.message, 'danger'); }
     });
 
@@ -637,6 +610,12 @@ document.addEventListener('DOMContentLoaded', () => {
     modalOverlay.addEventListener('click', (event) => { if (event.target === modalOverlay) closeModal(); });
 
     // --- 初期実行 ---
-    loadAssetsFromStorage();
+    const cachedData = window.appState.getState('portfolio');
+    if (cachedData) {
+        allAssetsData = cachedData;
+        filterAndRender();
+    } else {
+        loadAssetsFromStorage();
+    }
     fetchAndRenderAllData(false);
 });

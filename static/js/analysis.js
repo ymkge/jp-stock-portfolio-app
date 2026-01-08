@@ -24,11 +24,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- データ取得とレンダリング ---
     async function fetchAndRenderAnalysisData() {
-        // 状態管理チェック
         if (!window.appState.canFetch()) {
-            const cachedData = window.appState.getState();
-            // analysisページのデータはオブジェクト形式なので、配列でないことを確認
-            if (cachedData && typeof cachedData === 'object' && !Array.isArray(cachedData)) {
+            const cachedData = window.appState.getState('analysis');
+            if (cachedData) {
                 processAnalysisData(cachedData);
             }
             return;
@@ -48,8 +46,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const analysisData = await response.json();
             
-            // 状態を更新
-            window.appState.updateState(analysisData);
+            window.appState.updateState('analysis', analysisData);
+            window.appState.updateTimestamp();
             
             processAnalysisData(analysisData);
 
@@ -340,11 +338,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- 初期実行 ---
-    // まずメモリ上のキャッシュデータで描画を試みる
-    const cachedAnalysisData = window.appState.getState();
-    if (cachedAnalysisData && typeof cachedAnalysisData === 'object' && !Array.isArray(cachedAnalysisData)) {
+    const cachedAnalysisData = window.appState.getState('analysis');
+    if (cachedAnalysisData) {
         processAnalysisData(cachedAnalysisData);
     }
-    // その後、APIから最新データを取得する
     fetchAndRenderAnalysisData();
 });

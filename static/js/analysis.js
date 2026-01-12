@@ -1,3 +1,12 @@
+// カスタムエラー
+class HttpError extends Error {
+    constructor(message, status) {
+        super(message);
+        this.name = 'HttpError';
+        this.status = status;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // --- DOM要素の取得 ---
     const alertContainer = document.getElementById('alert-container');
@@ -9,11 +18,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const accountTypeFilterSelect = document.getElementById('account-type-filter');
     const downloadAnalysisCsvButton = document.getElementById('download-analysis-csv-button');
     const chartToggleBtns = document.querySelectorAll('.chart-toggle-btn');
+    const loadingIndicator = document.getElementById('loading-indicator');
 
     // --- Chart.jsインスタンス ---
-    let industryChart;
-    let accountTypeChart;
-    let countryChart;
+    let industryChart, accountTypeChart, countryChart;
 
     // --- グローバル変数 ---
     let allHoldingsData = [];
@@ -21,40 +29,74 @@ document.addEventListener('DOMContentLoaded', () => {
     let filteredHoldingsData = [];
     let currentSort = { key: 'market_value', order: 'desc' };
     let isAmountVisible = true;
+    let retryTimer = null;
+    let fetchController = null; // AbortControllerを保持
 
-    // --- データ取得とレンダリング ---
+    // --- データ取得とレンダリング (最終修正) ---
     async function fetchAndRenderAnalysisData() {
+        if (retryTimer) clearTimeout(retryTimer);
+        if (fetchController) {
+            fetchController.abort(); // 既存のリクエストをキャンセル
+        }
+        fetchController = new AbortController();
+        const signal = fetchController.signal;
+
+        const cachedData = window.appState.getState('analysis');
+        if (cachedData) {
+            processAnalysisData(cachedData);
+        }
+
         if (!window.appState.canFetch()) {
-            const cachedData = window.appState.getState('analysis');
-            if (cachedData) {
-                processAnalysisData(cachedData);
+            const remainingTime = window.appState.getCooldownRemainingTime();
+            if (remainingTime > 0) {
+                scheduleRetry(remainingTime, cachedData);
             }
             return;
         }
 
         try {
-            const response = await fetch('/api/portfolio/analysis');
+            loadingIndicator.innerHTML = cachedData ? '最新データを取得中...' : 'データを取得中...';
+            loadingIndicator.classList.remove('hidden');
+
+            const response = await fetch('/api/portfolio/analysis', { signal });
             if (!response.ok) {
-                let errorDetail = 'Failed to fetch analysis data';
-                try {
-                    const errorData = await response.json();
-                    errorDetail = errorData.detail || errorDetail;
-                } catch (e) {
-                    errorDetail = response.statusText;
-                }
-                throw new Error(errorDetail);
+                const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+                throw new HttpError(errorData.detail || `HTTP error! status: ${response.status}`, response.status);
             }
+
             const analysisData = await response.json();
-            
             window.appState.updateState('analysis', analysisData);
             window.appState.updateTimestamp();
-            
             processAnalysisData(analysisData);
+            loadingIndicator.classList.add('hidden');
 
         } catch (error) {
-            console.error('Analysis fetch error:', error);
-            showAlert(`分析データの取得に失敗しました。(${error.message})`, 'danger');
+            if (error.name === 'AbortError') {
+                console.log('Analysis page fetch aborted.');
+                return; // 中断された場合は何もしない
+            }
+            
+            if (error instanceof HttpError && error.status === 429) {
+                const remainingTime = window.appState.getCooldownRemainingTime() || 10000;
+                scheduleRetry(remainingTime, cachedData);
+            } else {
+                console.error('Analysis fetch error:', error);
+                if (!cachedData) {
+                    showAlert(`分析データの取得に失敗しました。(${error.message})`, 'danger');
+                }
+                loadingIndicator.classList.add('hidden');
+            }
         }
+    }
+
+    function scheduleRetry(delay, cachedData) {
+        if (!cachedData) {
+            loadingIndicator.innerHTML = `データ更新中です... (あと ${Math.ceil(delay / 1000)} 秒)`;
+            loadingIndicator.classList.remove('hidden');
+        }
+        retryTimer = setTimeout(() => {
+            fetchAndRenderAnalysisData();
+        }, delay + 200);
     }
 
     function processAnalysisData(analysisData) {
@@ -89,7 +131,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderAnalysisTable(holdings) {
         analysisTableBody.innerHTML = '';
         if (!holdings || holdings.length === 0) {
-            analysisTableBody.innerHTML = `<tr><td colspan="13" style="text-align:center;">該当する保有銘柄はありません。</td></tr>`;
+            if (loadingIndicator.classList.contains('hidden')) {
+                analysisTableBody.innerHTML = `<tr><td colspan="13" style="text-align:center;">該当する保有銘柄はありません。</td></tr>`;
+            }
             return;
         }
 
@@ -136,6 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const summaryProfitLossRateClass = totalProfitLossRate >= 0 ? 'profit' : 'loss';
 
         portfolioSummary.innerHTML = `
+            <h3>サマリー</h3>
             <p>総評価額: <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalMarketValue, 0)}円</span></p>
             <p>総損益: <span class="${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossClass}">${formatNumber(totalProfitLoss, 0)}円</span></p>
             <p>総損益率: <span class="${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossRateClass}">${formatNumber(totalProfitLossRate, 2)}%</span></p>
@@ -145,19 +190,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderCharts(holdings) {
-        const industryBreakdown = {};
-        const accountTypeBreakdown = {};
-        const countryBreakdown = {};
+        const industryBreakdown = {}, accountTypeBreakdown = {}, countryBreakdown = {};
 
         holdings.forEach(item => {
             const marketValue = parseFloat(item.market_value) || 0;
             if (marketValue > 0) {
                 const industry = item.industry || 'その他';
                 industryBreakdown[industry] = (industryBreakdown[industry] || 0) + marketValue;
-
                 const accountType = item.account_type || '不明';
                 accountTypeBreakdown[accountType] = (accountTypeBreakdown[accountType] || 0) + marketValue;
-                
                 let country = 'その他';
                 if (item.asset_type === 'jp_stock') country = '日本';
                 else if (item.asset_type === 'us_stock') country = '米国';
@@ -167,8 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         const chartOptions = {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             plugins: {
                 legend: { position: 'right' },
                 tooltip: {
@@ -178,7 +218,6 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (label) label += ': ';
                             const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
                             const percentage = total > 0 ? (context.raw / total * 100) : 0;
-                            
                             const formattedAmount = isAmountVisible ? `${formatNumber(context.raw, 0)}円` : '***円';
                             label += `${formattedAmount} (${percentage.toFixed(2)}%)`;
                             return label;
@@ -190,36 +229,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const getChartData = (breakdown) => ({
             labels: Object.keys(breakdown),
-            datasets: [{
-                data: Object.values(breakdown),
-                backgroundColor: generateColors(Object.keys(breakdown).length),
-                hoverOffset: 4
-            }]
+            datasets: [{ data: Object.values(breakdown), backgroundColor: generateColors(Object.keys(breakdown).length), hoverOffset: 4 }]
         });
 
         if (industryChart) industryChart.destroy();
         if (Object.keys(industryBreakdown).length > 0) {
             document.getElementById('industry-chart').classList.remove('hidden');
             industryChart = new Chart(document.getElementById('industry-chart'), { type: 'pie', data: getChartData(industryBreakdown), options: chartOptions });
-        } else {
-            document.getElementById('industry-chart').classList.add('hidden');
-        }
+        } else { document.getElementById('industry-chart').classList.add('hidden'); }
 
         if (accountTypeChart) accountTypeChart.destroy();
         if (Object.keys(accountTypeBreakdown).length > 0) {
             document.getElementById('account-type-chart').classList.remove('hidden');
             accountTypeChart = new Chart(document.getElementById('account-type-chart'), { type: 'pie', data: getChartData(accountTypeBreakdown), options: chartOptions });
-        } else {
-            document.getElementById('account-type-chart').classList.add('hidden');
-        }
+        } else { document.getElementById('account-type-chart').classList.add('hidden'); }
 
         if (countryChart) countryChart.destroy();
         if (Object.keys(countryBreakdown).length > 0) {
             document.getElementById('country-chart').classList.remove('hidden');
             countryChart = new Chart(document.getElementById('country-chart'), { type: 'pie', data: getChartData(countryBreakdown), options: chartOptions });
-        } else {
-            document.getElementById('country-chart').classList.add('hidden');
-        }
+        } else { document.getElementById('country-chart').classList.add('hidden'); }
         
         updateChart('industry');
     }
@@ -227,10 +256,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateChart(chartType) {
         document.querySelectorAll('.chart-container canvas').forEach(canvas => canvas.classList.add('hidden'));
         document.querySelectorAll('.chart-toggle-btn').forEach(btn => btn.classList.remove('active'));
-
         const activeBtn = document.querySelector(`.chart-toggle-btn[data-chart-type="${chartType}"]`);
         if (activeBtn) activeBtn.classList.add('active');
-
         const chartCanvas = document.getElementById(`${chartType}-chart`);
         if (chartCanvas) chartCanvas.classList.remove('hidden');
     }
@@ -286,17 +313,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function populateFilters() {
         const industries = [...new Set(allHoldingsData.map(item => item.industry || 'N/A'))].sort();
         industryFilterSelect.innerHTML = '<option value="">すべての業種</option>' + industries.map(ind => `<option value="${ind}">${ind}</option>`).join('');
-
         const accountTypes = [...new Set(allHoldingsData.map(item => item.account_type || 'N/A'))].sort();
         accountTypeFilterSelect.innerHTML = '<option value="">すべての口座種別</option>' + accountTypes.map(acc => `<option value="${acc}">${acc}</option>`).join('');
     }
 
     function generateColors(numColors) {
         const colors = [];
-        const baseColors = [
-            '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b', 
-            '#858796', '#5a5c69', '#f8f9fc', '#6f42c1', '#fd7e14'
-        ];
+        const baseColors = ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b', '#858796', '#5a5c69', '#f8f9fc', '#6f42c1', '#fd7e14'];
         for (let i = 0; i < numColors; i++) {
             colors.push(baseColors[i % baseColors.length]);
         }
@@ -307,7 +330,6 @@ document.addEventListener('DOMContentLoaded', () => {
     analysisFilterInput.addEventListener('input', filterAndRender);
     industryFilterSelect.addEventListener('change', filterAndRender);
     accountTypeFilterSelect.addEventListener('change', filterAndRender);
-
     document.querySelector('#analysis-table thead').addEventListener('click', (event) => {
         const header = event.target.closest('.sortable');
         if (!header) return;
@@ -320,27 +342,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         filterAndRender();
     });
-
     toggleVisibilityCheckbox.addEventListener('change', (event) => {
         isAmountVisible = !event.target.checked;
         renderAnalysisTable(filteredHoldingsData);
         renderSummary();
     });
-
-    downloadAnalysisCsvButton.addEventListener('click', () => {
-        window.location.href = '/api/portfolio/analysis/csv';
-    });
-
+    downloadAnalysisCsvButton.addEventListener('click', () => { window.location.href = '/api/portfolio/analysis/csv'; });
     chartToggleBtns.forEach(btn => {
         btn.addEventListener('click', () => {
             updateChart(btn.dataset.chartType);
         });
     });
 
+    // ページを離れるときにfetchをキャンセル
+    window.addEventListener('pagehide', () => {
+        if (fetchController) {
+            fetchController.abort();
+        }
+    });
+
     // --- 初期実行 ---
-    const cachedAnalysisData = window.appState.getState('analysis');
-    if (cachedAnalysisData) {
-        processAnalysisData(cachedAnalysisData);
-    }
     fetchAndRenderAnalysisData();
 });

@@ -34,9 +34,16 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentManagingCode = null;
     let activeTab = 'jp_stock';
     const ASSETS_STORAGE_KEY = 'jpStockPortfolioAssets';
+    let fetchController = null; // AbortControllerを保持
 
     // --- データ取得とレンダリング ---
     async function fetchAndRenderAllData(force = false) {
+        if (fetchController) {
+            fetchController.abort(); // 既存のリクエストをキャンセル
+        }
+        fetchController = new AbortController();
+        const signal = fetchController.signal;
+
         if (!force && !window.appState.canFetch()) {
             const cachedData = window.appState.getState('portfolio');
             if (cachedData) {
@@ -50,11 +57,13 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshAllButton.textContent = '更新中...';
 
         try {
+            const apiFetch = (url) => fetch(url, { signal }).then(handleApiResponse);
+
             const [assets, rules, recent, accTypes] = await Promise.all([
-                fetch('/api/stocks').then(handleApiResponse),
-                fetch('/api/highlight-rules').then(handleApiResponse),
-                fetch('/api/recent-stocks').then(handleApiResponse),
-                fetch('/api/account-types').then(handleApiResponse)
+                apiFetch('/api/stocks'),
+                apiFetch('/api/highlight-rules'),
+                apiFetch('/api/recent-stocks'),
+                apiFetch('/api/account-types')
             ]);
 
             allAssetsData = assets;
@@ -72,9 +81,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
         } catch (error) {
-            console.error('Data fetch error:', error);
-            showAlert(`データ更新に失敗しました: ${error.message}`, 'danger');
-            loadAssetsFromStorage();
+            if (error.name === 'AbortError') {
+                console.log('Main page fetch aborted.');
+            } else {
+                console.error('Data fetch error:', error);
+                showAlert(`データ更新に失敗しました: ${error.message}`, 'danger');
+                loadAssetsFromStorage();
+            }
         } finally {
             refreshAllButton.disabled = false;
             refreshAllButton.textContent = '全件更新';
@@ -608,6 +621,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     modalCloseBtn.addEventListener('click', closeModal);
     modalOverlay.addEventListener('click', (event) => { if (event.target === modalOverlay) closeModal(); });
+
+    // ページを離れるときにfetchをキャンセル
+    window.addEventListener('pagehide', () => {
+        if (fetchController) {
+            fetchController.abort();
+        }
+    });
 
     // --- 初期実行 ---
     const cachedData = window.appState.getState('portfolio');

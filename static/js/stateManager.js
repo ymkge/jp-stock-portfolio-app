@@ -44,6 +44,28 @@ function canFetch() {
 }
 
 /**
+ * クールダウンの残り時間をミリ秒単位で取得する。
+ * @returns {number} - 残り時間（ミリ秒）。クールダウン中でなければ0。
+ */
+function getCooldownRemainingTime() {
+    let lastFetchTime = state.global.lastFetchTime;
+    if (!lastFetchTime) {
+        const storedTime = sessionStorage.getItem(SESSION_STORAGE_KEY);
+        if (storedTime) {
+            lastFetchTime = new Date(storedTime);
+            state.global.lastFetchTime = lastFetchTime;
+        }
+    }
+    if (!lastFetchTime) {
+        return 0;
+    }
+    const now = new Date();
+    const elapsedMilliseconds = now - lastFetchTime;
+    const remainingMilliseconds = (API_COOLDOWN_SECONDS * 1000) - elapsedMilliseconds;
+    return remainingMilliseconds > 0 ? remainingMilliseconds : 0;
+}
+
+/**
  * API最終取得時刻を更新する。
  */
 function updateTimestamp() {
@@ -86,7 +108,8 @@ function clearState() {
 // 他のJSファイルからアクセスできるよう、windowオブジェクトに公開する
 window.appState = {
     canFetch,
-    updateTimestamp, // 新しく追加
+    getCooldownRemainingTime, // 新しく追加
+    updateTimestamp,
     updateState,
     getState,
     clearState,

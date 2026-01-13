@@ -34,7 +34,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- データ取得とレンダリング (最終修正) ---
     async function fetchAndRenderAnalysisData() {
-        if (retryTimer) clearTimeout(retryTimer);
+        if (retryTimer) {
+        clearInterval(retryTimer);
+        retryTimer = null;
+    }
         if (fetchController) {
             fetchController.abort(); // 既存のリクエストをキャンセル
         }
@@ -90,14 +93,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function scheduleRetry(delay, cachedData) {
-        if (!cachedData) {
-            loadingIndicator.innerHTML = `データ更新中です... (あと ${Math.ceil(delay / 1000)} 秒)`;
-            loadingIndicator.classList.remove('hidden');
-        }
-        retryTimer = setTimeout(() => {
-            fetchAndRenderAnalysisData();
-        }, delay + 200);
+    if (retryTimer) {
+        clearInterval(retryTimer);
     }
+
+    let remainingSeconds = Math.ceil(delay / 1000);
+
+    if (!cachedData) {
+        loadingIndicator.innerHTML = `データ更新中です... (あと ${remainingSeconds} 秒)`;
+        loadingIndicator.classList.remove('hidden');
+    }
+
+    retryTimer = setInterval(() => {
+        remainingSeconds--;
+        if (remainingSeconds >= 0 && !cachedData) {
+            loadingIndicator.innerHTML = `データ更新中です... (あと ${remainingSeconds} 秒)`;
+        }
+        
+        if (remainingSeconds < 0) {
+            clearInterval(retryTimer);
+            retryTimer = null;
+            // 少し遅延させてからフェッチを開始することで、連続的な再試行を防ぐ
+            setTimeout(() => fetchAndRenderAnalysisData(), 200);
+        }
+    }, 1000);
+}
 
     function processAnalysisData(analysisData) {
         fullAnalysisData = analysisData;
@@ -358,6 +378,10 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('pagehide', () => {
         if (fetchController) {
             fetchController.abort();
+        }
+        if (retryTimer) {
+            clearInterval(retryTimer);
+            retryTimer = null;
         }
     });
 

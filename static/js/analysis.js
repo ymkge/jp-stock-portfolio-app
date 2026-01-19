@@ -143,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         sortHoldings(filteredHoldingsData);
         renderAnalysisTable(filteredHoldingsData);
-        renderSummary();
+        renderSummary(filteredHoldingsData);
         renderCharts(filteredHoldingsData);
         updateSortHeaders();
     }
@@ -187,14 +187,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function renderSummary() {
-        const totalMarketValue = allHoldingsData.reduce((sum, item) => sum + (parseFloat(item.market_value) || 0), 0);
-        const totalProfitLoss = allHoldingsData.reduce((sum, item) => sum + (parseFloat(item.profit_loss) || 0), 0);
+    function renderSummary(holdings) {
+        const totalMarketValue = holdings.reduce((sum, item) => sum + (parseFloat(item.market_value) || 0), 0);
+        const totalProfitLoss = holdings.reduce((sum, item) => sum + (parseFloat(item.profit_loss) || 0), 0);
         const totalInvestment = totalMarketValue - totalProfitLoss;
         const totalProfitLossRate = totalInvestment !== 0 ? (totalProfitLoss / totalInvestment) * 100 : 0;
         
-        const totalEstimatedAnnualDividend = fullAnalysisData.total_annual_dividend || 0;
-        const totalEstimatedAnnualDividendAfterTax = fullAnalysisData.total_annual_dividend_after_tax || 0;
+        // フィルタリングされたデータから年間配当を再計算
+        const totalEstimatedAnnualDividend = holdings.reduce((sum, item) => sum + (parseFloat(item.estimated_annual_dividend) || 0), 0);
+        const totalEstimatedAnnualDividendAfterTax = holdings.reduce((sum, item) => sum + (parseFloat(item.estimated_annual_dividend_after_tax) || 0), 0);
 
         const summaryProfitLossClass = totalProfitLoss >= 0 ? 'profit' : 'loss';
         const summaryProfitLossRateClass = totalProfitLossRate >= 0 ? 'profit' : 'loss';

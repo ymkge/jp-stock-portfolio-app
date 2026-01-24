@@ -60,6 +60,15 @@ try:
 except (FileNotFoundError, json.JSONDecodeError) as e:
     logger.warning(f"tax_config.json の読み込みに失敗しました。税金計算は行われません。: {e}")
 
+# --- 証券会社リストの読み込み ---
+SECURITY_COMPANIES = []
+try:
+    with open("security_companies.json", "r", encoding="utf-8") as f:
+        SECURITY_COMPANIES = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError) as e:
+    logger.warning(f"security_companies.json の読み込みに失敗しました。デフォルト値で動作します。: {e}")
+    SECURITY_COMPANIES = ["その他"]
+
 # 静的ファイルのマウント
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -77,6 +86,8 @@ class HoldingData(BaseModel):
     account_type: str
     purchase_price: float
     quantity: float
+    security_company: Optional[str] = None
+    memo: Optional[str] = None
 
 # --- 計算ヘルパー関数 ---
 def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
@@ -185,6 +196,10 @@ async def read_analysis(request: Request):
 @app.get("/api/account-types")
 async def get_account_types():
     return ACCOUNT_TYPES
+
+@app.get("/api/security-companies")
+async def get_security_companies():
+    return SECURITY_COMPANIES
 
 @app.get("/api/highlight-rules")
 async def get_highlight_rules():

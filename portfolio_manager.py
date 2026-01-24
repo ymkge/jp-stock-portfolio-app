@@ -275,6 +275,8 @@ def calculate_holding_values(
     return {
         "holding_id": holding.get("id"),
         "account_type": holding.get("account_type"),
+        "security_company": holding.get("security_company"),
+        "memo": holding.get("memo"),
         "purchase_price": holding.get("purchase_price"),
         "quantity": holding.get("quantity"),
         "price": price_in_jpy, # 円換算後の現在値を返す
@@ -379,12 +381,12 @@ def create_analysis_csv_data(data: list[dict]) -> str:
     writer = csv.writer(output)
 
     headers = [
-        "code", "name", "asset_type", "market", "currency", "account_type", "industry", "quantity", "purchase_price", "price",
-        "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend", "estimated_annual_dividend_after_tax"
+        "code", "name", "asset_type", "market", "currency", "security_company", "account_type", "industry", "quantity", "purchase_price", "price",
+        "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend", "estimated_annual_dividend_after_tax", "memo"
     ]
     display_headers = [
-        "コード", "名称", "資産タイプ", "市場", "通貨", "口座種別", "業種", "数量", "取得単価", "現在値",
-        "評価額", "損益", "損益率(%)", "年間配当", "年間配当(税引後)"
+        "コード", "名称", "資産タイプ", "市場", "通貨", "証券会社", "口座種別", "業種", "数量", "取得単価", "現在値",
+        "評価額", "損益", "損益率(%)", "年間配当", "年間配当(税引後)", "備考"
     ]
     writer.writerow(display_headers)
 

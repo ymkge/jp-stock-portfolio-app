@@ -25,10 +25,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const quantityInput = document.getElementById('quantity-input');
     const holdingFormCancelBtn = document.getElementById('holding-form-cancel-btn');
     const modalCloseBtn = document.getElementById('modal-close-btn');
+    const securityCompanySelect = document.getElementById('security-company-select'); // 証券会社セレクトボックス
+    const memoInput = document.getElementById('memo-input'); // 備考入力欄
 
     // --- グローバル変数 ---
     let allAssetsData = [];
     let accountTypes = [];
+    let securityCompanies = []; // 証券会社リスト
     let highlightRules = {};
     let currentSort = { key: 'code', order: 'asc' };
     let currentManagingCode = null;
@@ -59,16 +62,18 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const apiFetch = (url) => fetch(url, { signal }).then(handleApiResponse);
 
-            const [assets, rules, recent, accTypes] = await Promise.all([
+            const [assets, rules, recent, accTypes, secCompanies] = await Promise.all([
                 apiFetch('/api/stocks'),
                 apiFetch('/api/highlight-rules'),
                 apiFetch('/api/recent-stocks'),
-                apiFetch('/api/account-types')
+                apiFetch('/api/account-types'),
+                apiFetch('/api/security-companies') // 証券会社リスト取得
             ]);
 
             allAssetsData = assets;
             highlightRules = rules;
             accountTypes = accTypes;
+            securityCompanies = secCompanies; // グローバル変数にセット
 
             window.appState.updateState('portfolio', allAssetsData);
             window.appState.updateTimestamp();
@@ -440,12 +445,16 @@ document.addEventListener('DOMContentLoaded', () => {
     function showHoldingForm(holding = null) {
         holdingForm.reset();
         accountTypeSelect.innerHTML = accountTypes.map(t => `<option value="${t}">${t}</option>`).join('');
+        securityCompanySelect.innerHTML = '<option value="">(未選択)</option>' + securityCompanies.map(c => `<option value="${c}">${c}</option>`).join(''); // 証券会社リスト生成
+
         if (holding) {
             holdingFormTitle.textContent = '保有情報の編集';
             holdingIdInput.value = holding.id;
             accountTypeSelect.value = holding.account_type;
             purchasePriceInput.value = holding.purchase_price;
             quantityInput.value = holding.quantity;
+            securityCompanySelect.value = holding.security_company || ""; // 既存値があればセット
+            memoInput.value = holding.memo || ""; // 既存値があればセット
         } else {
             holdingFormTitle.textContent = '保有情報の新規追加';
             holdingIdInput.value = '';
@@ -459,7 +468,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = {
             account_type: accountTypeSelect.value,
             purchase_price: parseFloat(purchasePriceInput.value),
-            quantity: parseFloat(quantityInput.value)
+            quantity: parseFloat(quantityInput.value),
+            security_company: securityCompanySelect.value || null, // 空文字ならnull
+            memo: memoInput.value || null // 空文字ならnull
         };
         const url = holdingId ? `/api/holdings/${holdingId}` : `/api/stocks/${currentManagingCode}/holdings`;
         const method = holdingId ? 'PUT' : 'POST';

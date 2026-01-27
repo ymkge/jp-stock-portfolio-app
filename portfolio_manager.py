@@ -101,8 +101,12 @@ def load_portfolio() -> List[Dict[str, Any]]:
              save_portfolio(new_portfolio)
              return new_portfolio
 
+    except FileNotFoundError:
         return []
-    except (json.JSONDecodeError, IOError) as e:
+    except json.JSONDecodeError as e:
+        print(f"Error decoding portfolio file: {e}")
+        raise e
+    except IOError as e:
         print(f"Error loading portfolio file: {e}")
         return []
 

@@ -90,7 +90,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log('Main page fetch aborted.');
             } else {
                 console.error('Data fetch error:', error);
-                showAlert(`データ更新に失敗しました: ${error.message}`, 'danger');
+                // エラーメッセージにHTMLが含まれている可能性があるため、isHtml=trueで呼び出す
+                // ただし、error.message自体が信頼できるソースからのもの（今回の場合はサーバーからの詳細メッセージ）であることを前提とする
+                showAlert(`データ更新に失敗しました: ${error.message}`, 'danger', true);
                 loadAssetsFromStorage();
             }
         } finally {
@@ -310,17 +312,21 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function showAlert(message, type = 'danger') {
+    function showAlert(message, type = 'danger', isHtml = false) {
         const alert = document.createElement('div');
         alert.className = `alert alert-${type}`;
-        alert.textContent = message;
+        if (isHtml) {
+            alert.innerHTML = message;
+        } else {
+            alert.textContent = message;
+        }
         alertContainer.appendChild(alert);
         requestAnimationFrame(() => alert.classList.add('show'));
         setTimeout(() => {
             alert.classList.remove('show');
             alert.classList.add('hide');
             alert.addEventListener('transitionend', () => alert.remove());
-        }, 5000);
+        }, 10000); // エラーメッセージを少し長く表示 (5秒 -> 10秒)
     }
 
     const formatNumber = (num, fractionDigits = 0) => {

@@ -146,7 +146,15 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
     ポートフォリオ内の全資産のデータを並行して取得し、スコア計算などを行う。
     新しいscraperのアーキテクチャに対応。
     """
-    portfolio = portfolio_manager.load_portfolio()
+    try:
+        portfolio = portfolio_manager.load_portfolio()
+    except json.JSONDecodeError as e:
+        logger.error(f"portfolio.json JSON Decode Error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"portfolio.json の形式が不正です。カンマの有無や括弧の対応を確認してください。<br>エラー詳細: {str(e)}<br>ヒント: <a href='https://jsonlint.com/' target='_blank'>JSON Lint</a> などで構文チェックを行ってください。"
+        )
+    
     if not portfolio: return []
 
     tasks = []

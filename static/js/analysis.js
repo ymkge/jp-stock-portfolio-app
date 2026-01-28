@@ -16,12 +16,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const analysisFilterInput = document.getElementById('analysis-filter-input');
     const industryFilterSelect = document.getElementById('industry-filter');
     const accountTypeFilterSelect = document.getElementById('account-type-filter');
+    const securityCompanyFilterSelect = document.getElementById('security-company-filter');
     const downloadAnalysisCsvButton = document.getElementById('download-analysis-csv-button');
     const chartToggleBtns = document.querySelectorAll('.chart-toggle-btn');
     const loadingIndicator = document.getElementById('loading-indicator');
 
     // --- Chart.jsインスタンス ---
-    let industryChart, accountTypeChart, countryChart;
+    let industryChart, accountTypeChart, countryChart, securityCompanyChart;
 
     // --- グローバル変数 ---
     let allHoldingsData = [];
@@ -132,13 +133,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const filterText = analysisFilterInput.value.toLowerCase();
         const selectedIndustry = industryFilterSelect.value;
         const selectedAccountType = accountTypeFilterSelect.value;
+        const selectedSecurityCompany = securityCompanyFilterSelect.value;
 
         filteredHoldingsData = allHoldingsData.filter(item => {
             const matchesText = String(item.code).toLowerCase().includes(filterText) ||
                                 String(item.name || '').toLowerCase().includes(filterText);
             const matchesIndustry = !selectedIndustry || item.industry === selectedIndustry || (selectedIndustry === 'N/A' && !item.industry);
             const matchesAccountType = !selectedAccountType || item.account_type === selectedAccountType;
-            return matchesText && matchesIndustry && matchesAccountType;
+            const matchesSecurityCompany = !selectedSecurityCompany || (item.security_company || '-') === selectedSecurityCompany;
+            return matchesText && matchesIndustry && matchesAccountType && matchesSecurityCompany;
         });
 
         sortHoldings(filteredHoldingsData);
@@ -213,7 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderCharts(holdings) {
-        const industryBreakdown = {}, accountTypeBreakdown = {}, countryBreakdown = {};
+        const industryBreakdown = {}, accountTypeBreakdown = {}, countryBreakdown = {}, securityCompanyBreakdown = {};
 
         holdings.forEach(item => {
             const marketValue = parseFloat(item.market_value) || 0;
@@ -222,6 +225,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 industryBreakdown[industry] = (industryBreakdown[industry] || 0) + marketValue;
                 const accountType = item.account_type || '不明';
                 accountTypeBreakdown[accountType] = (accountTypeBreakdown[accountType] || 0) + marketValue;
+                const securityCompany = item.security_company || '-';
+                securityCompanyBreakdown[securityCompany] = (securityCompanyBreakdown[securityCompany] || 0) + marketValue;
                 let country = 'その他';
                 if (item.asset_type === 'jp_stock') country = '日本';
                 else if (item.asset_type === 'us_stock') country = '米国';
@@ -266,6 +271,12 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('account-type-chart').classList.remove('hidden');
             accountTypeChart = new Chart(document.getElementById('account-type-chart'), { type: 'pie', data: getChartData(accountTypeBreakdown), options: chartOptions });
         } else { document.getElementById('account-type-chart').classList.add('hidden'); }
+
+        if (securityCompanyChart) securityCompanyChart.destroy();
+        if (Object.keys(securityCompanyBreakdown).length > 0) {
+            document.getElementById('security-company-chart').classList.remove('hidden');
+            securityCompanyChart = new Chart(document.getElementById('security-company-chart'), { type: 'pie', data: getChartData(securityCompanyBreakdown), options: chartOptions });
+        } else { document.getElementById('security-company-chart').classList.add('hidden'); }
 
         if (countryChart) countryChart.destroy();
         if (Object.keys(countryBreakdown).length > 0) {
@@ -338,6 +349,8 @@ document.addEventListener('DOMContentLoaded', () => {
         industryFilterSelect.innerHTML = '<option value="">すべての業種</option>' + industries.map(ind => `<option value="${ind}">${ind}</option>`).join('');
         const accountTypes = [...new Set(allHoldingsData.map(item => item.account_type || 'N/A'))].sort();
         accountTypeFilterSelect.innerHTML = '<option value="">すべての口座種別</option>' + accountTypes.map(acc => `<option value="${acc}">${acc}</option>`).join('');
+        const securityCompanies = [...new Set(allHoldingsData.map(item => item.security_company || '-'))].sort();
+        securityCompanyFilterSelect.innerHTML = '<option value="">すべての証券会社</option>' + securityCompanies.map(sc => `<option value="${sc}">${sc}</option>`).join('');
     }
 
     function generateColors(numColors) {
@@ -353,6 +366,7 @@ document.addEventListener('DOMContentLoaded', () => {
     analysisFilterInput.addEventListener('input', filterAndRender);
     industryFilterSelect.addEventListener('change', filterAndRender);
     accountTypeFilterSelect.addEventListener('change', filterAndRender);
+    securityCompanyFilterSelect.addEventListener('change', filterAndRender);
     document.querySelector('#analysis-table thead').addEventListener('click', (event) => {
         const header = event.target.closest('.sortable');
         if (!header) return;

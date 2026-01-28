@@ -38,11 +38,13 @@
                         <div class="chart-controls">
                             <button class="chart-toggle-btn active" data-chart-type="industry">業種別</button>
                             <button class="chart-toggle-btn" data-chart-type="account-type">口座種別</button>
+                            <button class="chart-toggle-btn" data-chart-type="security-company">証券会社別</button>
                             <button class="chart-toggle-btn" data-chart-type="country">国別</button> <!-- 国別ボタンを追加 -->
                         </div>
                         <div class="chart-container">
                             <canvas id="industry-chart"></canvas>
                             <canvas id="account-type-chart" class="hidden"></canvas>
+                            <canvas id="security-company-chart" class="hidden"></canvas>
                             <canvas id="country-chart" class="hidden"></canvas> <!-- 国別グラフ用のcanvasを追加 -->
                         </div>
                     </section>
@@ -55,6 +57,7 @@
                                 <input type="text" id="analysis-filter-input" placeholder="コード/銘柄名">
                                 <select id="industry-filter"><option value="">すべての業種</option></select>
                                 <select id="account-type-filter"><option value="">すべての口座種別</option></select>
+                                <select id="security-company-filter"><option value="">すべての証券会社</option></select>
                             </div>
                             <button id="download-analysis-csv-button">この一覧をCSVでダウンロード</button>
                         </div>

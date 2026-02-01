@@ -424,7 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleVisibilityCheckbox.addEventListener('change', (event) => {
         isAmountVisible = !event.target.checked;
         renderAnalysisTable(filteredHoldingsData);
-        renderSummary();
+        renderSummary(filteredHoldingsData);
     });
     downloadAnalysisCsvButton.addEventListener('click', () => { window.location.href = '/api/portfolio/analysis/csv'; });
     chartToggleBtns.forEach(btn => {

@@ -411,6 +411,14 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
             if "holdings" in holding_detail: del holding_detail["holdings"]
             holdings_list.append(holding_detail)
 
+    # 配当比率の計算
+    for item in holdings_list:
+        div = item.get("estimated_annual_dividend")
+        if total_annual_dividend > 0 and isinstance(div, (int, float)):
+            item["dividend_contribution"] = (div / total_annual_dividend) * 100
+        else:
+            item["dividend_contribution"] = 0
+
     # フロントエンド表示用に、Noneを"N/A"に変換
     display_keys_to_convert = ["price", "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend", "estimated_annual_dividend_after_tax"]
     for item in holdings_list:

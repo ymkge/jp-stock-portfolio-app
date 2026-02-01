@@ -40,12 +40,14 @@
                             <button class="chart-toggle-btn" data-chart-type="account-type">口座種別</button>
                             <button class="chart-toggle-btn" data-chart-type="security-company">証券会社別</button>
                             <button class="chart-toggle-btn" data-chart-type="country">国別</button> <!-- 国別ボタンを追加 -->
+                            <button class="chart-toggle-btn" data-chart-type="dividend-industry">配当構成(業種別)</button>
                         </div>
                         <div class="chart-container">
                             <canvas id="industry-chart"></canvas>
                             <canvas id="account-type-chart" class="hidden"></canvas>
                             <canvas id="security-company-chart" class="hidden"></canvas>
                             <canvas id="country-chart" class="hidden"></canvas> <!-- 国別グラフ用のcanvasを追加 -->
+                            <canvas id="dividend-industry-chart" class="hidden"></canvas>
                         </div>
                     </section>
                 </div>
@@ -76,6 +78,7 @@
                                         <th class="sortable" data-key="price">現在値</th>
                                         <th class="sortable" data-key="estimated_annual_dividend">年間配当</th>
                                         <th class="sortable" data-key="estimated_annual_dividend_after_tax">年間配当(税引後)</th>
+                                        <th class="sortable" data-key="dividend_contribution">配当比率(%)</th>
                                         <th class="sortable" data-key="market_value">評価額</th>
                                         <th class="sortable" data-key="profit_loss">損益</th>
                                         <th class="sortable" data-key="profit_loss_rate">損益率(%)</th>

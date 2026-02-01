@@ -386,11 +386,11 @@ def create_analysis_csv_data(data: list[dict]) -> str:
 
     headers = [
         "code", "name", "asset_type", "market", "currency", "security_company", "account_type", "industry", "quantity", "purchase_price", "price",
-        "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend", "estimated_annual_dividend_after_tax", "memo"
+        "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend", "estimated_annual_dividend_after_tax", "dividend_contribution", "memo"
     ]
     display_headers = [
         "コード", "名称", "資産タイプ", "市場", "通貨", "証券会社", "口座種別", "業種", "数量", "取得単価", "現在値",
-        "評価額", "損益", "損益率(%)", "年間配当", "年間配当(税引後)", "備考"
+        "評価額", "損益", "損益率(%)", "年間配当", "年間配当(税引後)", "配当比率(%)", "備考"
     ]
     writer.writerow(display_headers)
 

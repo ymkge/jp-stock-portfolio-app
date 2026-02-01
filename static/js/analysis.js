@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadingIndicator = document.getElementById('loading-indicator');
 
     // --- Chart.jsインスタンス ---
-    let industryChart, accountTypeChart, countryChart, securityCompanyChart;
+    let industryChart, accountTypeChart, countryChart, securityCompanyChart, dividendIndustryChart;
 
     // --- グローバル変数 ---
     let allHoldingsData = [];
@@ -144,6 +144,13 @@ document.addEventListener('DOMContentLoaded', () => {
             return matchesText && matchesIndustry && matchesAccountType && matchesSecurityCompany;
         });
 
+        // 配当比率の計算
+        const totalEstimatedAnnualDividend = filteredHoldingsData.reduce((sum, item) => sum + (parseFloat(item.estimated_annual_dividend) || 0), 0);
+        filteredHoldingsData.forEach(item => {
+            const div = parseFloat(item.estimated_annual_dividend) || 0;
+            item.dividend_contribution = totalEstimatedAnnualDividend > 0 ? (div / totalEstimatedAnnualDividend * 100) : 0;
+        });
+
         sortHoldings(filteredHoldingsData);
         renderAnalysisTable(filteredHoldingsData);
         renderSummary(filteredHoldingsData);
@@ -155,7 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
         analysisTableBody.innerHTML = '';
         if (!holdings || holdings.length === 0) {
             if (loadingIndicator.classList.contains('hidden')) {
-                analysisTableBody.innerHTML = `<tr><td colspan="13" style="text-align:center;">該当する保有銘柄はありません。</td></tr>`;
+                analysisTableBody.innerHTML = `<tr><td colspan="16" style="text-align:center;">該当する保有銘柄はありません。</td></tr>`;
             }
             return;
         }
@@ -185,6 +192,7 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(formatNumber(item.price, 2));
             createCell(formatNumber(item.estimated_annual_dividend, 0), !isAmountVisible ? 'masked-amount' : '');
             createCell(formatNumber(item.estimated_annual_dividend_after_tax, 0), !isAmountVisible ? 'masked-amount' : '');
+            createCell(formatNumber(item.dividend_contribution, 2), !isAmountVisible ? 'masked-amount' : '');
             createCell(formatNumber(item.market_value, 0), !isAmountVisible ? 'masked-amount' : '');
             createCell(formatNumber(item.profit_loss, 0), `${!isAmountVisible ? 'masked-amount' : ''} ${profitLossClass}`);
             createCell(formatNumber(item.profit_loss_rate, 2), `${!isAmountVisible ? 'masked-amount' : ''} ${profitLossRateClass}`);
@@ -202,6 +210,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalEstimatedAnnualDividend = holdings.reduce((sum, item) => sum + (parseFloat(item.estimated_annual_dividend) || 0), 0);
         const totalEstimatedAnnualDividendAfterTax = holdings.reduce((sum, item) => sum + (parseFloat(item.estimated_annual_dividend_after_tax) || 0), 0);
 
+        // 配当利回りの計算 (配当が出る銘柄のみを対象)
+        const dividendPayingHoldings = holdings.filter(item => (parseFloat(item.estimated_annual_dividend) || 0) > 0);
+        const mvOfDividendPaying = dividendPayingHoldings.reduce((sum, item) => sum + (parseFloat(item.market_value) || 0), 0);
+        const costOfDividendPaying = dividendPayingHoldings.reduce((sum, item) => {
+            const mv = parseFloat(item.market_value) || 0;
+            const pl = parseFloat(item.profit_loss) || 0;
+            return sum + (mv - pl);
+        }, 0);
+
+        const yieldOnCurrent = mvOfDividendPaying > 0 ? (totalEstimatedAnnualDividend / mvOfDividendPaying * 100) : 0;
+        const yieldOnCost = costOfDividendPaying > 0 ? (totalEstimatedAnnualDividend / costOfDividendPaying * 100) : 0;
+
         const summaryProfitLossClass = totalProfitLoss >= 0 ? 'profit' : 'loss';
         const summaryProfitLossRateClass = totalProfitLossRate >= 0 ? 'profit' : 'loss';
 
@@ -212,16 +232,21 @@ document.addEventListener('DOMContentLoaded', () => {
             <p>総損益率: <span class="${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossRateClass}">${formatNumber(totalProfitLossRate, 2)}%</span></p>
             <p>年間配当合計: <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalEstimatedAnnualDividend, 0)}円</span></p>
             <p>年間配当合計(税引後): <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalEstimatedAnnualDividendAfterTax, 0)}円</span></p>
+            <hr>
+            <p title="配当が出る銘柄のみを対象とした利回りです">配当利回り(現在値): <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(yieldOnCurrent, 2)}%</span></p>
+            <p title="配当が出る銘柄のみを対象とした、投資額に対する利回りです">配当利回り(取得値): <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(yieldOnCost, 2)}%</span></p>
         `;
     }
 
     function renderCharts(holdings) {
-        const industryBreakdown = {}, accountTypeBreakdown = {}, countryBreakdown = {}, securityCompanyBreakdown = {};
+        const industryBreakdown = {}, accountTypeBreakdown = {}, countryBreakdown = {}, securityCompanyBreakdown = {}, dividendIndustryBreakdown = {};
 
         holdings.forEach(item => {
             const marketValue = parseFloat(item.market_value) || 0;
+            const annualDividend = parseFloat(item.estimated_annual_dividend) || 0;
+            const industry = item.industry || 'その他';
+
             if (marketValue > 0) {
-                const industry = item.industry || 'その他';
                 industryBreakdown[industry] = (industryBreakdown[industry] || 0) + marketValue;
                 const accountType = item.account_type || '不明';
                 accountTypeBreakdown[accountType] = (accountTypeBreakdown[accountType] || 0) + marketValue;
@@ -232,6 +257,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 else if (item.asset_type === 'us_stock') country = '米国';
                 else if (item.asset_type === 'investment_trust') country = '投資信託';
                 countryBreakdown[country] = (countryBreakdown[country] || 0) + marketValue;
+            }
+
+            if (annualDividend > 0) {
+                dividendIndustryBreakdown[industry] = (dividendIndustryBreakdown[industry] || 0) + annualDividend;
             }
         });
 
@@ -246,7 +275,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (label) label += ': ';
                             const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
                             const percentage = total > 0 ? (context.raw / total * 100) : 0;
-                            const formattedAmount = isAmountVisible ? `${formatNumber(context.raw, 0)}円` : '***円';
+                            const unit = context.chart.canvas.id.includes('dividend') ? '円' : '円';
+                            const formattedAmount = isAmountVisible ? `${formatNumber(context.raw, 0)}${unit}` : `***${unit}`;
                             label += `${formattedAmount} (${percentage.toFixed(2)}%)`;
                             return label;
                         }
@@ -283,8 +313,20 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('country-chart').classList.remove('hidden');
             countryChart = new Chart(document.getElementById('country-chart'), { type: 'pie', data: getChartData(countryBreakdown), options: chartOptions });
         } else { document.getElementById('country-chart').classList.add('hidden'); }
+
+        if (dividendIndustryChart) dividendIndustryChart.destroy();
+        if (Object.keys(dividendIndustryBreakdown).length > 0) {
+            document.getElementById('dividend-industry-chart').classList.remove('hidden');
+            dividendIndustryChart = new Chart(document.getElementById('dividend-industry-chart'), { type: 'pie', data: getChartData(dividendIndustryBreakdown), options: chartOptions });
+        } else { document.getElementById('dividend-industry-chart').classList.add('hidden'); }
         
-        updateChart('industry');
+        // アクティブなグラフを表示する
+        const activeBtn = document.querySelector('.chart-toggle-btn.active');
+        if (activeBtn) {
+            updateChart(activeBtn.dataset.chartType);
+        } else {
+            updateChart('industry');
+        }
     }
 
     function updateChart(chartType) {

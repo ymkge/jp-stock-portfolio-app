@@ -16,5 +16,10 @@
   "consecutive_increase": {
     "good": 3,
     "excellent": 7
+  },
+  "trend": {
+    "enabled": true,
+    "short_term_days": 25,
+    "medium_term_days": 75
   }
 }

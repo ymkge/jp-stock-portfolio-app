@@ -105,29 +105,34 @@ def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
     return consecutive_years
 
 def calculate_score(stock_data: dict) -> tuple[int, dict]:
-    details = {"per": 0, "pbr": 0, "roe": 0, "yield": 0, "consecutive_increase": 0}
+    details = {
+        "per": 0, "pbr": 0, "roe": 0, "yield": 0, "consecutive_increase": 0,
+        "trend_short": 0, "trend_medium": 0, "trend_signal": 0
+    }
     is_calculable = False
     rules = HIGHLIGHT_RULES
+    
+    # --- 既存のファンダメンタルズ評価 ---
     try:
-        per = float(str(stock_data.get("per", "inf")).replace('倍', ''))
+        per = float(str(stock_data.get("per", "inf")).replace('倍', '').replace(',', ''))
         is_calculable = True
         if per <= rules.get("per", {}).get("undervalued", 15.0): details["per"] += 1
         if per <= 10.0: details["per"] += 1
     except (ValueError, TypeError): pass
     try:
-        pbr = float(str(stock_data.get("pbr", "inf")).replace('倍', ''))
+        pbr = float(str(stock_data.get("pbr", "inf")).replace('倍', '').replace(',', ''))
         is_calculable = True
         if pbr <= rules.get("pbr", {}).get("undervalued", 1.0): details["pbr"] += 1
         if pbr <= 0.7: details["pbr"] += 1
     except (ValueError, TypeError): pass
     try:
-        roe = float(str(stock_data.get("roe", "0")).replace('%', ''))
+        roe = float(str(stock_data.get("roe", "0")).replace('%', '').replace(',', ''))
         is_calculable = True
         if roe >= rules.get("roe", {}).get("undervalued", 10.0): details["roe"] += 1
         if roe >= 15.0: details["roe"] += 1
     except (ValueError, TypeError): pass
     try:
-        yield_val = float(str(stock_data.get("yield", "0")).replace('%', ''))
+        yield_val = float(str(stock_data.get("yield", "0")).replace('%', '').replace(',', ''))
         is_calculable = True
         if yield_val >= rules.get("yield", {}).get("undervalued", 3.0): details["yield"] += 1
         if yield_val >= 4.0: details["yield"] += 1
@@ -138,6 +143,22 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
         if increase_years >= rules.get("consecutive_increase", {}).get("good", 3): details["consecutive_increase"] += 1
         if increase_years >= rules.get("consecutive_increase", {}).get("excellent", 7): details["consecutive_increase"] += 1
     except (ValueError, TypeError): pass
+
+    # --- トレンド評価 (新規追加) ---
+    trend_rules = rules.get("trend", {})
+    if trend_rules.get("enabled", False):
+        try:
+            price = float(str(stock_data.get("price", "0")).replace(',', ''))
+            ma_25 = stock_data.get("moving_average_25")
+            ma_75 = stock_data.get("moving_average_75")
+            
+            if price > 0 and ma_25 and ma_75:
+                is_calculable = True
+                if price > ma_25: details["trend_short"] += 1
+                if price > ma_75: details["trend_medium"] += 1
+                if ma_25 > ma_75: details["trend_signal"] += 1
+        except (ValueError, TypeError): pass
+
     total_score = sum(details.values())
     return total_score if is_calculable else -1, details
 

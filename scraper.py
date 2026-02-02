@@ -101,6 +101,19 @@ class JPStockScraper(BaseScraper):
             logger.error(f"銘柄 {stock_code} の配当データ解析中にエラー: {e}", exc_info=True)
             return {}
 
+    def _calculate_moving_average(self, sorted_histories: list, days: int) -> Optional[float]:
+        """直近N日間の終値の平均を計算する"""
+        if not sorted_histories or len(sorted_histories) < days:
+            return None
+        
+        # 直近N日分のデータを取得 (リストの末尾が最新と仮定)
+        recent_data = sorted_histories[-days:]
+        try:
+            total_close = sum(float(item["closePrice"]) for item in recent_data if "closePrice" in item)
+            return total_close / days
+        except (ValueError, TypeError, ZeroDivisionError):
+            return None
+
     @cachedmethod(lambda self: self.cache)
     def fetch_data(self, code: str, num_years_dividend: int = 10) -> Optional[Dict[str, Any]]:
         # --- 決算月を取得 ---
@@ -137,6 +150,28 @@ class JPStockScraper(BaseScraper):
             data = json.loads(match.group(1))
             price_board = data.get("mainStocksPriceBoard", {}).get("priceBoard", {})
             ref_index = data.get("mainStocksDetail", {}).get("referenceIndex", {})
+            
+            # --- トレンド分析用のデータ取得と計算 ---
+            ma_25 = None
+            ma_75 = None
+            trend_signal = "N/A"
+            try:
+                chart_setting = data.get("mainItemDetailChartSetting", {})
+                histories = chart_setting.get("timeSeriesData", {}).get("histories", [])
+                
+                if histories:
+                    # 日付順にソート
+                    sorted_histories = sorted(histories, key=lambda x: x.get("baseDatetime", ""))
+                    
+                    # 移動平均線の計算
+                    ma_25 = self._calculate_moving_average(sorted_histories, 25)
+                    ma_75 = self._calculate_moving_average(sorted_histories, 75)
+                    
+                    if ma_25 and ma_75:
+                        trend_signal = "uptrend" if ma_25 > ma_75 else "downtrend"
+            except Exception as e:
+                logger.warning(f"銘柄 {code} のトレンドデータ計算中にエラー: {e}")
+            # --------------------------------------
 
             # オブジェクトと文字列の両方に対応できる、より堅牢なヘルパー関数
             def get_ref_value(key, source_dict=ref_index):
@@ -202,6 +237,9 @@ class JPStockScraper(BaseScraper):
                 "annual_dividend": latest_annual_dividend,
                 "dividend_history": dividend_history,
                 "settlement_month": settlement_month, # 取得した決算月を追加
+                "moving_average_25": ma_25, # トレンド分析用
+                "moving_average_75": ma_75, # トレンド分析用
+                "trend_signal": trend_signal, # トレンド分析用
                 "asset_type": "jp_stock", "currency": "JPY"
             }
         except (json.JSONDecodeError, KeyError) as e:

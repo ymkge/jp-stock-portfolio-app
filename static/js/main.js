@@ -383,7 +383,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (score === undefined || score === null) return 'N/A';
         let stars = '★'.repeat(Math.min(score, 5)) + '☆'.repeat(5 - Math.min(score, 5));
         stars += '<br>' + '★'.repeat(Math.max(0, score - 5)) + '☆'.repeat(5 - Math.max(0, score - 5));
-        const tooltip = `合計: ${score}/10 (PER: ${details.per||0}/2, PBR: ${details.pbr||0}/2, ROE: ${details.roe||0}/2, 利回り: ${details.yield||0}/2, 連続増配: ${details.consecutive_increase||0}/2)`;
+        
+        let tooltip = `合計: ${score}/13 (PER: ${details.per||0}/2, PBR: ${details.pbr||0}/2, ROE: ${details.roe||0}/2, 利回り: ${details.yield||0}/2, 連続増配: ${details.consecutive_increase||0}/2, トレンド短期: ${details.trend_short||0}/1, トレンド中期: ${details.trend_medium||0}/1, 上昇基調: ${details.trend_signal||0}/1)`;
         return `<span class="score" title="${tooltip}">${stars}</span>`;
     }
     function getHighlightClass(key, value, assetType) {

@@ -381,8 +381,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (assetType !== 'jp_stock') return 'N/A';
         if (score === -1) return `<span class="score-na" title="評価指標なし">N/A</span>`;
         if (score === undefined || score === null) return 'N/A';
-        let stars = '★'.repeat(Math.min(score, 5)) + '☆'.repeat(5 - Math.min(score, 5));
-        stars += '<br>' + '★'.repeat(Math.max(0, score - 5)) + '☆'.repeat(5 - Math.max(0, score - 5));
+        
+        // 13点満点に対応するため、1行あたりの星の数を調整
+        // 7個 × 2行 = 最大14個まで表示可能なレイアウトにする
+        const maxStarsPerRow = 7;
+        let stars = '★'.repeat(Math.min(score, maxStarsPerRow)) + '☆'.repeat(maxStarsPerRow - Math.min(score, maxStarsPerRow));
+        stars += '<br>' + '★'.repeat(Math.max(0, score - maxStarsPerRow)) + '☆'.repeat(maxStarsPerRow - Math.max(0, score - maxStarsPerRow));
         
         let tooltip = `合計: ${score}/13 (PER: ${details.per||0}/2, PBR: ${details.pbr||0}/2, ROE: ${details.roe||0}/2, 利回り: ${details.yield||0}/2, 連続増配: ${details.consecutive_increase||0}/2, トレンド短期: ${details.trend_short||0}/1, トレンド中期: ${details.trend_medium||0}/1, 上昇基調: ${details.trend_signal||0}/1)`;
         return `<span class="score" title="${tooltip}">${stars}</span>`;

@@ -12,6 +12,7 @@ import re
 import scraper
 import portfolio_manager
 import recent_stocks_manager
+import history_manager
 import json
 import logging
 
@@ -441,11 +442,24 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
             item["dividend_contribution"] = 0
 
     # フロントエンド表示用に、Noneを"N/A"に変換
+    # 履歴保存のために変換前のデータを保持しておく
+    raw_holdings_list = [item.copy() for item in holdings_list]
+
     display_keys_to_convert = ["price", "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend", "estimated_annual_dividend_after_tax"]
     for item in holdings_list:
         for key in display_keys_to_convert:
             if item.get(key) is None:
                 item[key] = "N/A"
+
+    # --- 履歴データの保存 (半自動: 分析ページアクセス時に保存) ---
+    try:
+        # 非同期で実行するのが理想だが、SQLiteへの書き込みは高速なため、
+        # 簡易的に同期処理で行う（デグレリスク低減のため複雑な非同期処理は避ける）。
+        # N/A変換前の生データ(raw_holdings_list)を渡す
+        history_manager.save_snapshot(raw_holdings_list)
+    except Exception as e:
+        logger.error(f"Error saving history snapshot: {e}")
+    # -------------------------------------------------------
 
     last_full_update_time = datetime.now()
     return {
@@ -468,3 +482,8 @@ async def download_analysis_csv():
     response = StreamingResponse(io.StringIO(csv_data), media_type="text/csv")
     response.headers["Content-Disposition"] = f"attachment; filename={filename}"
     return response
+
+@app.get("/api/history/summary")
+async def get_history_summary():
+    """月次履歴のサマリーを取得する"""
+    return history_manager.get_monthly_summary()

@@ -319,11 +319,22 @@ button {
 .overvalued { background-color: var(--overvalued-bg); }
 
 /* --- スコア表示 --- */
-.score {
-    color: var(--star-color);
+.score-container {
     font-size: 1.1rem;
     display: inline-block;
     line-height: 1.2;
+}
+
+.score-fundamental {
+    color: var(--star-color);
+}
+
+.score-trend {
+    color: var(--primary-color);
+}
+
+.score-empty {
+    color: #e0e0e0;
 }
 
 .score-na {

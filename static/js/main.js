@@ -385,11 +385,34 @@ document.addEventListener('DOMContentLoaded', () => {
         // 13点満点に対応するため、1行あたりの星の数を調整
         // 7個 × 2行 = 最大14個まで表示可能なレイアウトにする
         const maxStarsPerRow = 7;
-        let stars = '★'.repeat(Math.min(score, maxStarsPerRow)) + '☆'.repeat(maxStarsPerRow - Math.min(score, maxStarsPerRow));
-        stars += '<br>' + '★'.repeat(Math.max(0, score - maxStarsPerRow)) + '☆'.repeat(maxStarsPerRow - Math.max(0, score - maxStarsPerRow));
+        const totalSlots = 14; // 7 * 2
+        
+        // トレンドスコアの合計を計算
+        const trendScore = (details.trend_short || 0) + (details.trend_medium || 0) + (details.trend_signal || 0);
+        // ファンダメンタルズスコア = 全体スコア - トレンドスコア
+        const fundamentalScore = score - trendScore;
+
+        let starsHtml = '';
+        for (let i = 0; i < totalSlots; i++) {
+            if (i === maxStarsPerRow) starsHtml += '<br>';
+            
+            let className = 'score-empty';
+            let char = '★'; // デフォルトは塗りつぶし星（色はクラスで制御）
+            
+            if (i < fundamentalScore) {
+                className = 'score-fundamental';
+            } else if (i < score) { // fundamentalScore <= i < score
+                className = 'score-trend';
+            } else {
+                className = 'score-empty';
+                char = '☆'; // 空の場合は白抜き星にする
+            }
+            
+            starsHtml += `<span class="${className}">${char}</span>`;
+        }
         
         let tooltip = `合計: ${score}/13 (PER: ${details.per||0}/2, PBR: ${details.pbr||0}/2, ROE: ${details.roe||0}/2, 利回り: ${details.yield||0}/2, 連続増配: ${details.consecutive_increase||0}/2, トレンド短期: ${details.trend_short||0}/1, トレンド中期: ${details.trend_medium||0}/1, 上昇基調: ${details.trend_signal||0}/1)`;
-        return `<span class="score" title="${tooltip}">${stars}</span>`;
+        return `<span class="score-container" title="${tooltip}">${starsHtml}</span>`;
     }
     function getHighlightClass(key, value, assetType) {
         if (assetType !== 'jp_stock') return '';

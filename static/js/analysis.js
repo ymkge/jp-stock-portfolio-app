@@ -104,15 +104,18 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/api/history/summary');
             if (!response.ok) throw new Error('履歴データの取得に失敗しました');
             const historyData = await response.json();
+            console.log('History data received:', historyData); // デバッグ用
             renderHistoryCharts(historyData);
         } catch (error) {
             console.error('History fetch error:', error);
-            // 履歴の失敗はメイン機能に影響させないためアラートは出さない
         }
     }
 
     function renderHistoryCharts(historyData) {
-        if (!historyData || historyData.length === 0) return;
+        if (!historyData || historyData.length === 0) {
+            console.log('No history data to render.');
+            return;
+        }
 
         const labels = historyData.map(d => d.snapshot_month);
         const marketValues = historyData.map(d => d.total_market_value);
@@ -123,8 +126,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const commonOptions = {
             responsive: true,
             maintainAspectRatio: false,
+            layout: {
+                padding: {
+                    left: 10,
+                    right: 25,
+                    top: 25,
+                    bottom: 0
+                }
+            },
             plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                },
                 tooltip: {
+                    mode: 'index',
+                    intersect: false,
                     callbacks: {
                         label: function(context) {
                             let label = context.dataset.label || '';
@@ -138,61 +155,78 @@ document.addEventListener('DOMContentLoaded', () => {
             },
             scales: {
                 y: {
-                    beginAtZero: false,
+                    beginAtZero: true,
                     ticks: {
                         callback: function(value) {
                             return isAmountVisible ? formatNumber(value, 0) + '円' : '***円';
                         }
                     }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    }
                 }
             }
         };
 
+        console.log('Rendering charts with labels:', labels);
+
         // 資産推移グラフ
-        if (assetHistoryChart) assetHistoryChart.destroy();
-        const assetCtx = document.getElementById('asset-history-chart').getContext('2d');
-        assetHistoryChart = new Chart(assetCtx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: '総資産額',
-                        data: marketValues,
-                        borderColor: '#4e73df',
-                        backgroundColor: 'rgba(78, 115, 223, 0.1)',
-                        fill: true,
-                        tension: 0.1
-                    },
-                    {
-                        label: '投資元本',
-                        data: originalInvestments,
-                        borderColor: '#858796',
-                        borderDash: [5, 5],
-                        fill: false,
-                        tension: 0
-                    }
-                ]
-            },
-            options: commonOptions
-        });
+        const assetCanvas = document.getElementById('asset-history-chart');
+        if (assetCanvas) {
+            if (assetHistoryChart) assetHistoryChart.destroy();
+            const assetCtx = assetCanvas.getContext('2d');
+            assetHistoryChart = new Chart(assetCtx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '総資産額',
+                            data: marketValues,
+                            borderColor: '#4e73df',
+                            backgroundColor: 'rgba(78, 115, 223, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 5,
+                            pointBackgroundColor: '#4e73df'
+                        },
+                        {
+                            label: '投資元本',
+                            data: originalInvestments,
+                            borderColor: '#858796',
+                            borderDash: [5, 5],
+                            fill: false,
+                            tension: 0,
+                            pointRadius: 3
+                        }
+                    ]
+                },
+                options: commonOptions
+            });
+        }
 
         // 配当推移グラフ
-        if (dividendHistoryChart) dividendHistoryChart.destroy();
-        const divCtx = document.getElementById('dividend-history-chart').getContext('2d');
-        dividendHistoryChart = new Chart(divCtx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: '年間配当予定額',
-                    data: dividends,
-                    backgroundColor: '#1cc88a',
-                    borderRadius: 4
-                }]
-            },
-            options: commonOptions
-        });
+        const divCanvas = document.getElementById('dividend-history-chart');
+        if (divCanvas) {
+            if (dividendHistoryChart) dividendHistoryChart.destroy();
+            const divCtx = divCanvas.getContext('2d');
+            dividendHistoryChart = new Chart(divCtx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '年間配当予定額',
+                        data: dividends,
+                        backgroundColor: '#1cc88a',
+                        hoverBackgroundColor: '#17a673',
+                        borderRadius: 4
+                    }]
+                },
+                options: commonOptions
+            });
+        }
     }
 
     function scheduleRetry(delay, cachedData) {

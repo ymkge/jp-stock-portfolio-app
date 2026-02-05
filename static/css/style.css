@@ -701,6 +701,14 @@ button {
     border-bottom: none;
 }
 
+.portfolio-history {
+    margin-top: 1rem;
+}
+
+.portfolio-history h3 {
+    margin-bottom: 1.5rem;
+}
+
 .chart-container {
     position: relative;
     height: 300px; /* Adjust as needed */

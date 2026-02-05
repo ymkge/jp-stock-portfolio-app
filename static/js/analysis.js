@@ -49,7 +49,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const cachedData = window.appState.getState('analysis');
         if (cachedData) {
             processAnalysisData(cachedData);
-            // 履歴データもキャッシュがあれば表示を試みる（今回は簡易化のため毎回フェッチ）
             fetchAndRenderHistoryData();
         }
 
@@ -82,8 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             if (error.name === 'AbortError') {
-                console.log('Analysis page fetch aborted.');
-                return; // 中断された場合は何もしない
+                return;
             }
             
             if (error instanceof HttpError && error.status === 429) {
@@ -104,7 +102,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/api/history/summary');
             if (!response.ok) throw new Error('履歴データの取得に失敗しました');
             const historyData = await response.json();
-            console.log('History data received:', historyData); // デバッグ用
             renderHistoryCharts(historyData);
         } catch (error) {
             console.error('History fetch error:', error);
@@ -112,10 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderHistoryCharts(historyData) {
-        if (!historyData || historyData.length === 0) {
-            console.log('No history data to render.');
-            return;
-        }
+        if (!historyData || historyData.length === 0) return;
 
         const labels = historyData.map(d => d.snapshot_month);
         const marketValues = historyData.map(d => d.total_market_value);
@@ -126,19 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const commonOptions = {
             responsive: true,
             maintainAspectRatio: false,
-            layout: {
-                padding: {
-                    left: 10,
-                    right: 25,
-                    top: 25,
-                    bottom: 0
-                }
-            },
             plugins: {
-                legend: {
-                    display: true,
-                    position: 'top',
-                },
                 tooltip: {
                     mode: 'index',
                     intersect: false,
@@ -161,21 +143,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             return isAmountVisible ? formatNumber(value, 0) + '円' : '***円';
                         }
                     }
-                },
-                x: {
-                    grid: {
-                        display: false
-                    }
                 }
             }
         };
 
-        console.log('Rendering charts with labels:', labels);
-
         // 資産推移グラフ
         const assetCanvas = document.getElementById('asset-history-chart');
-        console.log('Asset Canvas Element:', assetCanvas); // 要素確認
-
         if (assetCanvas) {
             if (assetHistoryChart) assetHistoryChart.destroy();
             const assetCtx = assetCanvas.getContext('2d');
@@ -190,9 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             borderColor: '#4e73df',
                             backgroundColor: 'rgba(78, 115, 223, 0.1)',
                             fill: true,
-                            tension: 0.3,
-                            pointRadius: 5,
-                            pointBackgroundColor: '#4e73df'
+                            tension: 0.3
                         },
                         {
                             label: '投資元本',
@@ -200,8 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             borderColor: '#858796',
                             borderDash: [5, 5],
                             fill: false,
-                            tension: 0,
-                            pointRadius: 3
+                            tension: 0
                         }
                     ]
                 },
@@ -222,7 +192,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         label: '年間配当予定額',
                         data: dividends,
                         backgroundColor: '#1cc88a',
-                        hoverBackgroundColor: '#17a673',
                         borderRadius: 4
                     }]
                 },
@@ -252,7 +221,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (remainingSeconds < 0) {
             clearInterval(retryTimer);
             retryTimer = null;
-            // 少し遅延させてからフェッチを開始することで、連続的な再試行を防ぐ
             setTimeout(() => fetchAndRenderAnalysisData(), 200);
         }
     }, 1000);
@@ -282,7 +250,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return matchesText && matchesIndustry && matchesAccountType && matchesSecurityCompany;
         });
 
-        // 配当比率の計算
         const totalEstimatedAnnualDividend = filteredHoldingsData.reduce((sum, item) => sum + (parseFloat(item.estimated_annual_dividend) || 0), 0);
         filteredHoldingsData.forEach(item => {
             const div = parseFloat(item.estimated_annual_dividend) || 0;
@@ -323,7 +290,7 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(item.name);
             createCell(item.industry || 'N/A');
             createCell(item.asset_type === 'jp_stock' ? '国内株式' : (item.asset_type === 'investment_trust' ? '投資信託' : (item.asset_type === 'us_stock' ? '米国株式' : 'N/A')));
-            createCell(item.security_company || '-'); // 証券会社
+            createCell(item.security_company || '-'); 
             createCell(item.account_type);
             createCell(formatNumber(item.quantity, item.asset_type === 'investment_trust' ? 6 : 0), !isAmountVisible ? 'masked-amount' : '');
             createCell(formatNumber(item.purchase_price, 2), !isAmountVisible ? 'masked-amount' : '');
@@ -334,7 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(formatNumber(item.market_value, 0), !isAmountVisible ? 'masked-amount' : '');
             createCell(formatNumber(item.profit_loss, 0), `${!isAmountVisible ? 'masked-amount' : ''} ${profitLossClass}`);
             createCell(formatNumber(item.profit_loss_rate, 2), `${!isAmountVisible ? 'masked-amount' : ''} ${profitLossRateClass}`);
-            createCell(item.memo || '-'); // 備考
+            createCell(item.memo || '-'); 
         });
     }
 
@@ -344,11 +311,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalInvestment = totalMarketValue - totalProfitLoss;
         const totalProfitLossRate = totalInvestment !== 0 ? (totalProfitLoss / totalInvestment) * 100 : 0;
         
-        // フィルタリングされたデータから年間配当を再計算
         const totalEstimatedAnnualDividend = holdings.reduce((sum, item) => sum + (parseFloat(item.estimated_annual_dividend) || 0), 0);
         const totalEstimatedAnnualDividendAfterTax = holdings.reduce((sum, item) => sum + (parseFloat(item.estimated_annual_dividend_after_tax) || 0), 0);
 
-        // 配当利回りの計算 (配当が出る銘柄のみを対象)
         const dividendPayingHoldings = holdings.filter(item => (parseFloat(item.estimated_annual_dividend) || 0) > 0);
         const mvOfDividendPaying = dividendPayingHoldings.reduce((sum, item) => sum + (parseFloat(item.market_value) || 0), 0);
         const costOfDividendPaying = dividendPayingHoldings.reduce((sum, item) => {
@@ -413,7 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (label) label += ': ';
                             const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
                             const percentage = total > 0 ? (context.raw / total * 100) : 0;
-                            const unit = context.chart.canvas.id.includes('dividend') ? '円' : '円';
+                            const unit = '円';
                             const formattedAmount = isAmountVisible ? `${formatNumber(context.raw, 0)}${unit}` : `***${unit}`;
                             label += `${formattedAmount} (${percentage.toFixed(2)}%)`;
                             return label;
@@ -430,45 +395,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (industryChart) industryChart.destroy();
         if (Object.keys(industryBreakdown).length > 0) {
-            document.getElementById('industry-chart').classList.remove('hidden');
-            industryChart = new Chart(document.getElementById('industry-chart'), { type: 'pie', data: getChartData(industryBreakdown), options: chartOptions });
-        } else { document.getElementById('industry-chart').classList.add('hidden'); }
+            const canvas = document.getElementById('industry-chart');
+            if (canvas) industryChart = new Chart(canvas, { type: 'pie', data: getChartData(industryBreakdown), options: chartOptions });
+        }
 
         if (accountTypeChart) accountTypeChart.destroy();
         if (Object.keys(accountTypeBreakdown).length > 0) {
-            document.getElementById('account-type-chart').classList.remove('hidden');
-            accountTypeChart = new Chart(document.getElementById('account-type-chart'), { type: 'pie', data: getChartData(accountTypeBreakdown), options: chartOptions });
-        } else { document.getElementById('account-type-chart').classList.add('hidden'); }
+            const canvas = document.getElementById('account-type-chart');
+            if (canvas) accountTypeChart = new Chart(canvas, { type: 'pie', data: getChartData(accountTypeBreakdown), options: chartOptions });
+        }
 
         if (securityCompanyChart) securityCompanyChart.destroy();
         if (Object.keys(securityCompanyBreakdown).length > 0) {
-            document.getElementById('security-company-chart').classList.remove('hidden');
-            securityCompanyChart = new Chart(document.getElementById('security-company-chart'), { type: 'pie', data: getChartData(securityCompanyBreakdown), options: chartOptions });
-        } else { document.getElementById('security-company-chart').classList.add('hidden'); }
+            const canvas = document.getElementById('security-company-chart');
+            if (canvas) securityCompanyChart = new Chart(canvas, { type: 'pie', data: getChartData(securityCompanyBreakdown), options: chartOptions });
+        }
 
         if (countryChart) countryChart.destroy();
         if (Object.keys(countryBreakdown).length > 0) {
-            document.getElementById('country-chart').classList.remove('hidden');
-            countryChart = new Chart(document.getElementById('country-chart'), { type: 'pie', data: getChartData(countryBreakdown), options: chartOptions });
-        } else { document.getElementById('country-chart').classList.add('hidden'); }
+            const canvas = document.getElementById('country-chart');
+            if (canvas) countryChart = new Chart(canvas, { type: 'pie', data: getChartData(countryBreakdown), options: chartOptions });
+        }
 
         if (dividendIndustryChart) dividendIndustryChart.destroy();
         if (Object.keys(dividendIndustryBreakdown).length > 0) {
-            document.getElementById('dividend-industry-chart').classList.remove('hidden');
-            dividendIndustryChart = new Chart(document.getElementById('dividend-industry-chart'), { type: 'pie', data: getChartData(dividendIndustryBreakdown), options: chartOptions });
-        } else { document.getElementById('dividend-industry-chart').classList.add('hidden'); }
-        
-        // アクティブなグラフを表示する
-        const activeBtn = document.querySelector('.chart-toggle-btn.active');
-        if (activeBtn) {
-            updateChart(activeBtn.dataset.chartType);
-        } else {
-            updateChart('industry');
+            const canvas = document.getElementById('dividend-industry-chart');
+            if (canvas) dividendIndustryChart = new Chart(canvas, { type: 'pie', data: getChartData(dividendIndustryBreakdown), options: chartOptions });
         }
+        
+        const activeBtn = document.querySelector('.chart-toggle-btn.active');
+        updateChart(activeBtn ? activeBtn.dataset.chartType : 'industry');
     }
 
     function updateChart(chartType) {
-        document.querySelectorAll('.chart-container canvas').forEach(canvas => canvas.classList.add('hidden'));
+        document.querySelectorAll('.chart-container canvas').forEach(canvas => {
+            if (!canvas.id.includes('history')) canvas.classList.add('hidden');
+        });
         document.querySelectorAll('.chart-toggle-btn').forEach(btn => btn.classList.remove('active'));
         const activeBtn = document.querySelector(`.chart-toggle-btn[data-chart-type="${chartType}"]`);
         if (activeBtn) activeBtn.classList.add('active');
@@ -476,10 +438,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (chartCanvas) chartCanvas.classList.remove('hidden');
     }
 
-    // --- ヘルパー関数 ---
     const formatNumber = (num, fractionDigits = 0) => {
         const parsedNum = parseFloat(num);
-        if (parsedNum === null || parsedNum === undefined || isNaN(parsedNum)) return 'N/A';
+        if (isNaN(parsedNum)) return 'N/A';
         return parsedNum.toLocaleString(undefined, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
     };
 
@@ -534,15 +495,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function generateColors(numColors) {
-        const colors = [];
-        const baseColors = ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b', '#858796', '#5a5c69', '#f8f9fc', '#6f42c1', '#fd7e14'];
-        for (let i = 0; i < numColors; i++) {
-            colors.push(baseColors[i % baseColors.length]);
-        }
-        return colors;
+        const baseColors = ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b', '#858796', '#5a5c69', '#6f42c1', '#fd7e14'];
+        return Array.from({length: numColors}, (_, i) => baseColors[i % baseColors.length]);
     }
 
-    // --- イベントリスナー ---
     analysisFilterInput.addEventListener('input', filterAndRender);
     industryFilterSelect.addEventListener('change', filterAndRender);
     accountTypeFilterSelect.addEventListener('change', filterAndRender);
@@ -563,7 +519,6 @@ document.addEventListener('DOMContentLoaded', () => {
         isAmountVisible = !event.target.checked;
         renderAnalysisTable(filteredHoldingsData);
         renderSummary(filteredHoldingsData);
-        // 履歴データが読み込まれていれば再描画
         fetchAndRenderHistoryData();
     });
     downloadAnalysisCsvButton.addEventListener('click', () => { window.location.href = '/api/portfolio/analysis/csv'; });
@@ -573,17 +528,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // ページを離れるときにfetchをキャンセル
     window.addEventListener('pagehide', () => {
-        if (fetchController) {
-            fetchController.abort();
-        }
-        if (retryTimer) {
-            clearInterval(retryTimer);
-            retryTimer = null;
-        }
+        if (fetchController) fetchController.abort();
+        if (retryTimer) clearInterval(retryTimer);
     });
 
-    // --- 初期実行 ---
     fetchAndRenderAnalysisData();
 });

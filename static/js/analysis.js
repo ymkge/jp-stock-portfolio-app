@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Chart.jsインスタンス ---
     let industryChart, accountTypeChart, countryChart, securityCompanyChart, dividendIndustryChart;
+    let assetHistoryChart, dividendHistoryChart;
 
     // --- グローバル変数 ---
     let allHoldingsData = [];
@@ -48,6 +49,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const cachedData = window.appState.getState('analysis');
         if (cachedData) {
             processAnalysisData(cachedData);
+            // 履歴データもキャッシュがあれば表示を試みる（今回は簡易化のため毎回フェッチ）
+            fetchAndRenderHistoryData();
         }
 
         if (!window.appState.canFetch()) {
@@ -74,6 +77,9 @@ document.addEventListener('DOMContentLoaded', () => {
             processAnalysisData(analysisData);
             loadingIndicator.classList.add('hidden');
 
+            // メインデータの更新が終わったら履歴データも取得
+            fetchAndRenderHistoryData();
+
         } catch (error) {
             if (error.name === 'AbortError') {
                 console.log('Analysis page fetch aborted.');
@@ -91,6 +97,102 @@ document.addEventListener('DOMContentLoaded', () => {
                 loadingIndicator.classList.add('hidden');
             }
         }
+    }
+
+    async function fetchAndRenderHistoryData() {
+        try {
+            const response = await fetch('/api/history/summary');
+            if (!response.ok) throw new Error('履歴データの取得に失敗しました');
+            const historyData = await response.json();
+            renderHistoryCharts(historyData);
+        } catch (error) {
+            console.error('History fetch error:', error);
+            // 履歴の失敗はメイン機能に影響させないためアラートは出さない
+        }
+    }
+
+    function renderHistoryCharts(historyData) {
+        if (!historyData || historyData.length === 0) return;
+
+        const labels = historyData.map(d => d.snapshot_month);
+        const marketValues = historyData.map(d => d.total_market_value);
+        const profitLosses = historyData.map(d => d.total_profit_loss);
+        const originalInvestments = marketValues.map((mv, i) => mv - profitLosses[i]);
+        const dividends = historyData.map(d => d.total_dividend);
+
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) label += ': ';
+                            const formattedValue = isAmountVisible ? formatNumber(context.raw, 0) + '円' : '***円';
+                            label += formattedValue;
+                            return label;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: false,
+                    ticks: {
+                        callback: function(value) {
+                            return isAmountVisible ? formatNumber(value, 0) + '円' : '***円';
+                        }
+                    }
+                }
+            }
+        };
+
+        // 資産推移グラフ
+        if (assetHistoryChart) assetHistoryChart.destroy();
+        const assetCtx = document.getElementById('asset-history-chart').getContext('2d');
+        assetHistoryChart = new Chart(assetCtx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: '総資産額',
+                        data: marketValues,
+                        borderColor: '#4e73df',
+                        backgroundColor: 'rgba(78, 115, 223, 0.1)',
+                        fill: true,
+                        tension: 0.1
+                    },
+                    {
+                        label: '投資元本',
+                        data: originalInvestments,
+                        borderColor: '#858796',
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0
+                    }
+                ]
+            },
+            options: commonOptions
+        });
+
+        // 配当推移グラフ
+        if (dividendHistoryChart) dividendHistoryChart.destroy();
+        const divCtx = document.getElementById('dividend-history-chart').getContext('2d');
+        dividendHistoryChart = new Chart(divCtx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '年間配当予定額',
+                    data: dividends,
+                    backgroundColor: '#1cc88a',
+                    borderRadius: 4
+                }]
+            },
+            options: commonOptions
+        });
     }
 
     function scheduleRetry(delay, cachedData) {
@@ -425,6 +527,8 @@ document.addEventListener('DOMContentLoaded', () => {
         isAmountVisible = !event.target.checked;
         renderAnalysisTable(filteredHoldingsData);
         renderSummary(filteredHoldingsData);
+        // 履歴データが読み込まれていれば再描画
+        fetchAndRenderHistoryData();
     });
     downloadAnalysisCsvButton.addEventListener('click', () => { window.location.href = '/api/portfolio/analysis/csv'; });
     chartToggleBtns.forEach(btn => {

@@ -174,6 +174,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 資産推移グラフ
         const assetCanvas = document.getElementById('asset-history-chart');
+        console.log('Asset Canvas Element:', assetCanvas); // 要素確認
+
         if (assetCanvas) {
             if (assetHistoryChart) assetHistoryChart.destroy();
             const assetCtx = assetCanvas.getContext('2d');

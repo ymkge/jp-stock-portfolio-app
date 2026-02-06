@@ -13,3 +13,4 @@ venv/
 .DS_Store
 portfolio.json
 recent_stocks.json
+portfolio_history.db

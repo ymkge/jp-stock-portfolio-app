@@ -477,6 +477,10 @@ document.addEventListener('DOMContentLoaded', () => {
             let valA = a[currentSort.key], valB = b[currentSort.key];
             const parseValue = (v) => {
                 if (v === undefined || v === null || v === 'N/A' || v === '--' || v === '') return -Infinity;
+                // フィボナッチなどのオブジェクト対応
+                if (typeof v === 'object' && v !== null && v.retracement !== undefined) {
+                    return v.retracement;
+                }
                 if (typeof v === 'string') {
                     const num = parseFloat(v.replace(/,/g, ''));
                     return isNaN(num) ? v : num;

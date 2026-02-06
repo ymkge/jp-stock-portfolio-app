@@ -1,5 +1,6 @@
 # 国内株式ポートフォリオ管理アプリ (jp-stock-portfolio-app)
-<img width="1898" height="943" alt="スクリーンショット 2025-11-26 22 37 34" src="https://github.com/user-attachments/assets/f869bce0-8d15-40e0-8492-066085751fd1" />
+<img width="1910" height="960" alt="スクリーンショット 2026-02-06 20 08 09" src="https://github.com/user-attachments/assets/fcc497c9-7c71-44af-aadd-d8c3d27128ee" />
+
 
 ## 概要
 

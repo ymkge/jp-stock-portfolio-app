@@ -108,7 +108,8 @@ def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
 def calculate_score(stock_data: dict) -> tuple[int, dict]:
     details = {
         "per": 0, "pbr": 0, "roe": 0, "yield": 0, "consecutive_increase": 0,
-        "trend_short": 0, "trend_medium": 0, "trend_signal": 0
+        "trend_short": 0, "trend_medium": 0, "trend_signal": 0,
+        "fibonacci": 0, "rci": 0
     }
     is_calculable = False
     rules = HIGHLIGHT_RULES
@@ -145,19 +146,48 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
         if increase_years >= rules.get("consecutive_increase", {}).get("excellent", 7): details["consecutive_increase"] += 1
     except (ValueError, TypeError): pass
 
-    # --- トレンド評価 (新規追加) ---
+    # --- トレンド評価 (既存 + 新規指標) ---
     trend_rules = rules.get("trend", {})
     if trend_rules.get("enabled", False):
         try:
-            price = float(str(stock_data.get("price", "0")).replace(',', ''))
+            price_val = stock_data.get("price")
+            if isinstance(price_val, str):
+                price_val = price_val.replace(',', '')
+            price = float(price_val or 0)
             ma_25 = stock_data.get("moving_average_25")
             ma_75 = stock_data.get("moving_average_75")
             
-            if price > 0 and ma_25 and ma_75:
-                is_calculable = True
-                if price > ma_25: details["trend_short"] += 1
-                if price > ma_75: details["trend_medium"] += 1
-                if ma_25 > ma_75: details["trend_signal"] += 1
+            if price > 0:
+                if ma_25 and price > ma_25: 
+                    is_calculable = True
+                    details["trend_short"] += 1
+                if ma_75 and price > ma_75: 
+                    is_calculable = True
+                    details["trend_medium"] += 1
+                if ma_25 and ma_75 and ma_25 > ma_75: 
+                    is_calculable = True
+                    details["trend_signal"] += 1
+
+            # --- フィボナッチ判定 ---
+            fib = stock_data.get("fibonacci")
+            if fib and isinstance(fib, dict):
+                retracement = fib.get("retracement")
+                fib_rules = trend_rules.get("fibonacci", {})
+                min_ret = fib_rules.get("min_retracement", 50.0)
+                max_ret = fib_rules.get("max_retracement", 78.6)
+                if retracement is not None and min_ret <= retracement <= max_ret:
+                    is_calculable = True
+                    details["fibonacci"] += 1
+
+            # --- RCI判定 ---
+            rci_val = stock_data.get("rci_26")
+            if rci_val is not None:
+                rci_rules = trend_rules.get("rci", {})
+                threshold = rci_rules.get("threshold", -80)
+                if rci_val <= threshold:
+                    is_calculable = True
+                    details["rci"] += 1
+
         except (ValueError, TypeError): pass
 
     total_score = sum(details.values())

@@ -292,6 +292,21 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(item.asset_type === 'jp_stock' ? '国内株式' : (item.asset_type === 'investment_trust' ? '投資信託' : (item.asset_type === 'us_stock' ? '米国株式' : 'N/A')));
             createCell(item.security_company || '-'); 
             createCell(item.account_type);
+            
+            // フィボナッチの表示
+            let fibText = '-';
+            if (item.fibonacci && item.fibonacci.retracement !== undefined) {
+                fibText = `${item.fibonacci.retracement.toFixed(1)}%`;
+            }
+            createCell(fibText);
+
+            // RCIの表示
+            let rciText = '-';
+            if (item.rci_26 !== undefined && item.rci_26 !== null) {
+                rciText = `${item.rci_26.toFixed(1)}%`;
+            }
+            createCell(rciText);
+
             createCell(formatNumber(item.quantity, item.asset_type === 'investment_trust' ? 6 : 0), !isAmountVisible ? 'masked-amount' : '');
             createCell(formatNumber(item.purchase_price, 2), !isAmountVisible ? 'masked-amount' : '');
             createCell(formatNumber(item.price, 2));

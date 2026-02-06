@@ -161,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tableBody = document.querySelector('#portfolio-table-jp_stock tbody');
         tableBody.innerHTML = '';
         if (!stocks || stocks.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="15" style="text-align:center;">登録されている銘柄はありません。</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="17" style="text-align:center;">登録されている銘柄はありません。</td></tr>`;
             return;
         }
         stocks.forEach(jpStock => {
@@ -189,7 +189,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 createCell(`<input type="checkbox" class="asset-checkbox" data-code="${jpStock.code}" disabled>`);
                 createCell(jpStock.code);
                 const errorCell = createCell(jpStock.error, 'error-message');
-                errorCell.colSpan = 12; // colspanを調整
+                errorCell.colSpan = 14; // colspanを調整
                 createCell(`<button class="manage-btn" data-code="${jpStock.code}" disabled>管理</button>`);
                 return;
             }
@@ -205,6 +205,20 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(jpStock.pbr, getHighlightClass('pbr', jpStock.pbr, jpStock.asset_type));
             createCell(jpStock.roe, getHighlightClass('roe', jpStock.roe, jpStock.asset_type));
             createCell(jpStock.yield, getHighlightClass('yield', jpStock.yield, jpStock.asset_type));
+
+            // フィボナッチの表示
+            let fibText = '-';
+            if (jpStock.fibonacci && jpStock.fibonacci.retracement !== undefined) {
+                fibText = `${jpStock.fibonacci.retracement.toFixed(1)}%`;
+            }
+            createCell(fibText);
+
+            // RCIの表示
+            let rciText = '-';
+            if (jpStock.rci_26 !== undefined && jpStock.rci_26 !== null) {
+                rciText = `${jpStock.rci_26.toFixed(1)}%`;
+            }
+            createCell(rciText);
             
             const tooltipContent = formatDividendHistory(jpStock.dividend_history);
             const externalLink = `https://finance.yahoo.co.jp/quote/${jpStock.code}.T/dividend`;
@@ -382,13 +396,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (score === -1) return `<span class="score-na" title="評価指標なし">N/A</span>`;
         if (score === undefined || score === null) return 'N/A';
         
-        // 13点満点に対応するため、1行あたりの星の数を調整
-        // 7個 × 2行 = 最大14個まで表示可能なレイアウトにする
-        const maxStarsPerRow = 7;
-        const totalSlots = 14; // 7 * 2
+        // 15点満点に対応するため、1行あたりの星の数を調整
+        // 8個 × 2行 = 最大16個まで表示可能なレイアウトにする
+        const maxStarsPerRow = 8;
+        const totalSlots = 16; // 8 * 2
         
         // トレンドスコアの合計を計算
-        const trendScore = (details.trend_short || 0) + (details.trend_medium || 0) + (details.trend_signal || 0);
+        const trendScore = (details.trend_short || 0) + (details.trend_medium || 0) + (details.trend_signal || 0) + (details.fibonacci || 0) + (details.rci || 0);
         // ファンダメンタルズスコア = 全体スコア - トレンドスコア
         const fundamentalScore = score - trendScore;
 
@@ -411,7 +425,7 @@ document.addEventListener('DOMContentLoaded', () => {
             starsHtml += `<span class="${className}">${char}</span>`;
         }
         
-        let tooltip = `合計: ${score}/13 (PER: ${details.per||0}/2, PBR: ${details.pbr||0}/2, ROE: ${details.roe||0}/2, 利回り: ${details.yield||0}/2, 連続増配: ${details.consecutive_increase||0}/2, トレンド短期: ${details.trend_short||0}/1, トレンド中期: ${details.trend_medium||0}/1, 上昇基調: ${details.trend_signal||0}/1)`;
+        let tooltip = `合計: ${score}/15 (PER: ${details.per||0}/2, PBR: ${details.pbr||0}/2, ROE: ${details.roe||0}/2, 利回り: ${details.yield||0}/2, 連続増配: ${details.consecutive_increase||0}/2, トレンド短期: ${details.trend_short||0}/1, トレンド中期: ${details.trend_medium||0}/1, 上昇基調: ${details.trend_signal||0}/1, フィボナッチ: ${details.fibonacci||0}/1, RCI: ${details.rci||0}/1)`;
         return `<span class="score-container" title="${tooltip}">${starsHtml}</span>`;
     }
     function getHighlightClass(key, value, assetType) {

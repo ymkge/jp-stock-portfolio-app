@@ -20,6 +20,14 @@
   "trend": {
     "enabled": true,
     "short_term_days": 25,
-    "medium_term_days": 75
+    "medium_term_days": 75,
+    "fibonacci": {
+      "min_retracement": 50.0,
+      "max_retracement": 78.6
+    },
+    "rci": {
+      "period": 26,
+      "threshold": -80
+    }
   }
 }

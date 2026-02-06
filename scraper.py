@@ -114,6 +114,80 @@ class JPStockScraper(BaseScraper):
         except (ValueError, TypeError, ZeroDivisionError):
             return None
 
+    def _calculate_rci(self, sorted_histories: list, days: int) -> Optional[float]:
+        """RCI (Rank Correlation Index) を計算する"""
+        if not sorted_histories or len(sorted_histories) < days:
+            return None
+
+        # 直近N日分の終値を取得
+        recent_data = sorted_histories[-days:]
+        try:
+            prices = [float(item["closePrice"]) for item in recent_data if "closePrice" in item]
+            if len(prices) < days:
+                return None
+            
+            # 日付の順位 (最新が1、古いほど大きい) -> 計算式上は古い順に 1, 2, ..., n
+            # ここでは 1, 2, ..., n を日付順位 X とする
+            x_ranks = list(range(1, days + 1))
+            
+            # 価格の順位 (値が高いほど 1) -> 価格が高い順に 1, 2, ..., n
+            # 同値がある場合は平均順位にするのが一般的だが、簡略化のため出現順で処理
+            sorted_prices = sorted(prices) # 昇順
+            y_ranks = [sorted_prices.index(p) + 1 for p in prices] # 実際は同値対応が必要だが簡易版
+            
+            # 同値対応の改善版
+            price_with_index = []
+            for i, p in enumerate(prices):
+                price_with_index.append({'price': p, 'original_idx': i})
+            
+            # 価格の昇順でソート
+            sorted_by_price = sorted(price_with_index, key=lambda x: x['price'])
+            for i, item in enumerate(sorted_by_price):
+                item['rank'] = i + 1
+            
+            # 元の順序に戻す
+            y_ranks = [0] * days
+            for item in sorted_by_price:
+                y_ranks[item['original_idx']] = item['rank']
+            
+            # RCI = (1 - (6 * sum(d^2)) / (n * (n^2 - 1))) * 100
+            # d = 日付順位 - 価格順位
+            # ※一般的には日付順位は「最新がn、最古が1」とする。x_ranksは1...nでOK。
+            d_squared_sum = sum((x - y) ** 2 for x, y in zip(x_ranks, y_ranks))
+            
+            rci = (1 - (6 * d_squared_sum) / (days * (days**2 - 1))) * 100
+            return rci
+        except (ValueError, TypeError, ZeroDivisionError):
+            return None
+
+    def _calculate_fibonacci(self, sorted_histories: list) -> Optional[Dict[str, float]]:
+        """フィボナッチ・リトレースメントに必要な高値・安値・現在の位置を計算する"""
+        if not sorted_histories or len(sorted_histories) < 2:
+            return None
+        
+        try:
+            prices = [float(item["closePrice"]) for item in sorted_histories if "closePrice" in item]
+            high = max(prices)
+            low = min(prices)
+            current = prices[-1]
+            
+            if high == low:
+                return None
+            
+            # 位置 (0.0 = 安値, 1.0 = 高値)
+            position = (current - low) / (high - low)
+            # リトレースメント（高値からの下落率） 0% = 高値, 100% = 安値
+            retracement = (high - current) / (high - low) * 100
+            
+            return {
+                "high": high,
+                "low": low,
+                "position": position,
+                "retracement": retracement
+            }
+        except (ValueError, TypeError, ZeroDivisionError):
+            return None
+
     @cachedmethod(lambda self: self.cache)
     def fetch_data(self, code: str, num_years_dividend: int = 10) -> Optional[Dict[str, Any]]:
         # --- 決算月を取得 ---
@@ -155,6 +229,9 @@ class JPStockScraper(BaseScraper):
             ma_25 = None
             ma_75 = None
             trend_signal = "N/A"
+            rci_26 = None
+            fibonacci = None
+            
             try:
                 chart_setting = data.get("mainItemDetailChartSetting", {})
                 histories = chart_setting.get("timeSeriesData", {}).get("histories", [])
@@ -169,6 +246,12 @@ class JPStockScraper(BaseScraper):
                     
                     if ma_25 and ma_75:
                         trend_signal = "uptrend" if ma_25 > ma_75 else "downtrend"
+                    
+                    # RCI (26日) の計算
+                    rci_26 = self._calculate_rci(sorted_histories, 26)
+                    
+                    # フィボナッチの計算 (全期間を使用、通常125日程度)
+                    fibonacci = self._calculate_fibonacci(sorted_histories)
             except Exception as e:
                 logger.warning(f"銘柄 {code} のトレンドデータ計算中にエラー: {e}")
             # --------------------------------------
@@ -240,6 +323,8 @@ class JPStockScraper(BaseScraper):
                 "moving_average_25": ma_25, # トレンド分析用
                 "moving_average_75": ma_75, # トレンド分析用
                 "trend_signal": trend_signal, # トレンド分析用
+                "rci_26": rci_26, # 追加
+                "fibonacci": fibonacci, # 追加
                 "asset_type": "jp_stock", "currency": "JPY"
             }
         except (json.JSONDecodeError, KeyError) as e:

@@ -250,12 +250,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return matchesText && matchesIndustry && matchesAccountType && matchesSecurityCompany;
         });
 
-        const totalEstimatedAnnualDividend = filteredHoldingsData.reduce((sum, item) => sum + (parseFloat(item.estimated_annual_dividend) || 0), 0);
-        filteredHoldingsData.forEach(item => {
-            const div = parseFloat(item.estimated_annual_dividend) || 0;
-            item.dividend_contribution = totalEstimatedAnnualDividend > 0 ? (div / totalEstimatedAnnualDividend * 100) : 0;
-        });
-
         sortHoldings(filteredHoldingsData);
         renderAnalysisTable(filteredHoldingsData);
         renderSummary(filteredHoldingsData);

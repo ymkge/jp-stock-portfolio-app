@@ -463,7 +463,7 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
             if "holdings" in holding_detail: del holding_detail["holdings"]
             holdings_list.append(holding_detail)
 
-    # 配当比率の計算
+    # 配当構成比の計算
     for item in holdings_list:
         div = item.get("estimated_annual_dividend")
         if total_annual_dividend > 0 and isinstance(div, (int, float)):

@@ -90,6 +90,98 @@ class HoldingData(BaseModel):
     security_company: Optional[str] = None
     memo: Optional[str] = None
 
+# --- 購入注目フラグの表示設定 ---
+BUY_SIGNAL_CONFIG = {
+    "level_1": {
+        "icon": "🟡",
+        "icon_diamond": "💎🟡",
+        "label": "注目",
+    },
+    "level_2": {
+        "icon": "🔥",
+        "icon_diamond": "💎🔥",
+        "label": "チャンス",
+    }
+}
+
+def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
+    """
+    購入シグナル（注目フラグ）を判定する。
+    """
+    if stock_data.get("asset_type") != "jp_stock" or "score_details" not in stock_data:
+        return None
+
+    details = stock_data["score_details"]
+    # ファンダメンタルズスコアの合計（10点満点）
+    f_score = details.get("per", 0) + details.get("pbr", 0) + details.get("roe", 0) + \
+              details.get("yield", 0) + details.get("consecutive_increase", 0)
+
+    # 共通条件：ファンダメンタルズ3点以上
+    if f_score < 3:
+        return None
+
+    is_diamond = f_score >= 6
+    reasons = []
+    
+    # --- Level 1 判定条件 (売られすぎ) ---
+    is_level1 = False
+    
+    rsi_14 = stock_data.get("rsi_14")
+    if rsi_14 is not None and rsi_14 <= 30:
+        is_level1 = True
+        reasons.append(f"RSI売られすぎ({rsi_14:.1f})")
+
+    rci_26 = stock_data.get("rci_26")
+    if rci_26 is not None and rci_26 <= -80:
+        is_level1 = True
+        reasons.append(f"RCI底値圏({rci_26:.1f})")
+
+    fib = stock_data.get("fibonacci")
+    if fib and isinstance(fib, dict):
+        ret = fib.get("retracement")
+        if ret is not None and 61.8 <= ret <= 78.6:
+            is_level1 = True
+            reasons.append(f"フィボナッチ押し目({ret:.1f}%)")
+
+    if not is_level1:
+        return None
+
+    # --- Level 2 判定条件 (反転確認) ---
+    is_level2 = False
+    level2_reasons = []
+    
+    # 5日線突破
+    try:
+        price_val = stock_data.get("price")
+        if isinstance(price_val, str): price_val = price_val.replace(',', '')
+        price = float(price_val or 0)
+        ma_5 = stock_data.get("moving_average_5")
+        if price > 0 and ma_5 and price > ma_5:
+            is_level2 = True
+            level2_reasons.append("5日線突破")
+    except (ValueError, TypeError): pass
+
+    # RSIのボトムアウト (当日 > 前日)
+    rsi_14_prev = stock_data.get("rsi_14_prev")
+    if rsi_14 is not None and rsi_14_prev is not None and rsi_14 > rsi_14_prev:
+        is_level2 = True
+        level2_reasons.append("RSI反転")
+
+    level = 2 if is_level2 else 1
+    config = BUY_SIGNAL_CONFIG[f"level_{level}"]
+    
+    # ダイヤモンド判定を理由に追加
+    if is_diamond:
+        reasons.insert(0, "高確信(ファンダ6点以上)")
+
+    return {
+        "level": level,
+        "is_diamond": is_diamond,
+        "icon": config["icon_diamond"] if is_diamond else config["icon"],
+        "label": config["label"],
+        "reasons": reasons + level2_reasons
+    }
+
 # --- 計算ヘルパー関数 ---
 def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
     if not dividend_history or len(dividend_history) < 2: return 0
@@ -238,6 +330,8 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
                 score, details = calculate_score(merged_data)
                 merged_data["score"] = score
                 merged_data["score_details"] = details
+                # 購入シグナルの判定を追加
+                merged_data["buy_signal"] = calculate_buy_signal(merged_data)
         
         processed_data.append(merged_data)
         
@@ -315,6 +409,8 @@ async def get_single_stock(code: str):
         score, details = calculate_score(merged_data)
         merged_data["score"] = score
         merged_data["score_details"] = details
+        # 購入シグナルの判定を追加
+        merged_data["buy_signal"] = calculate_buy_signal(merged_data)
     
     return merged_data
 
@@ -353,6 +449,8 @@ async def add_asset_endpoint(asset: Asset):
             score, details = calculate_score(new_asset_data)
             new_asset_data["score"] = score
             new_asset_data["score_details"] = details
+            # 購入シグナルの判定を追加
+            new_asset_data["buy_signal"] = calculate_buy_signal(new_asset_data)
         
         asset_name = new_asset_data.get("name", "")
         return {"status": "success", "message": f"資産 {code} ({asset_name}) を追加しました。", "stock": new_asset_data}

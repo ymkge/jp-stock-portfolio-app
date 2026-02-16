@@ -365,6 +365,22 @@ button {
     opacity: 0.8;
 }
 
+/* --- 購入注目フラグのスタイル --- */
+.buy-signal-icon {
+    cursor: help;
+    font-size: 1.1em;
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 4px;
+    animation: pulse-soft 2s infinite ease-in-out;
+}
+
+@keyframes pulse-soft {
+    0% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.1); opacity: 1; }
+    100% { transform: scale(1); opacity: 0.8; }
+}
+
 /* 銘柄コードカラムのスタイル (チェックボックスの次なので2列目) */
 .portfolio-table th:nth-child(2),
 .portfolio-table td:nth-child(2) {

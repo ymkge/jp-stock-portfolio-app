@@ -9,6 +9,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const recentStocksList = document.getElementById('recent-stocks-list');
     const filterInput = document.getElementById('filter-input');
     const showOnlyManagedAssetsCheckbox = document.getElementById('show-only-managed-assets-checkbox');
+    const showOnlyAttentionAssetsCheckbox = document.getElementById('show-only-attention-assets-checkbox');
+    const showOnlyOpportunityAssetsCheckbox = document.getElementById('show-only-opportunity-assets-checkbox');
     const tabNav = document.querySelector('.tab-nav');
 
     // --- モーダル関連DOM要素 ---
@@ -133,10 +135,21 @@ document.addEventListener('DOMContentLoaded', () => {
     function filterAndRender() {
         const filterText = filterInput.value.toLowerCase();
         const showOnlyManaged = showOnlyManagedAssetsCheckbox.checked;
+        const showOnlyAttention = showOnlyAttentionAssetsCheckbox.checked;
+        const showOnlyOpportunity = showOnlyOpportunityAssetsCheckbox.checked;
+        
         let filteredAssets = allAssetsData.filter(asset => asset.asset_type === activeTab);
 
         if (showOnlyManaged) {
             filteredAssets = filteredAssets.filter(asset => asset.holdings && asset.holdings.length > 0);
+        }
+
+        if (showOnlyAttention) {
+            filteredAssets = filteredAssets.filter(asset => asset.buy_signal && asset.buy_signal.level >= 1);
+        }
+
+        if (showOnlyOpportunity) {
+            filteredAssets = filteredAssets.filter(asset => asset.buy_signal && asset.buy_signal.level >= 2);
         }
 
         if (filterText) {
@@ -195,7 +208,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             createCell(`<input type="checkbox" class="asset-checkbox" data-code="${jpStock.code}">`);
             createCell(jpStock.code);
-            createCell(`<a href="https://finance.yahoo.co.jp/quote/${jpStock.code}.T" target="_blank">${jpStock.name}</a>`);
+            
+            // 銘柄名と購入シグナルの表示
+            let nameHtml = `<a href="https://finance.yahoo.co.jp/quote/${jpStock.code}.T" target="_blank">${jpStock.name}</a>`;
+            if (jpStock.buy_signal) {
+                const signal = jpStock.buy_signal;
+                const reasons = signal.reasons.join('\n');
+                nameHtml += ` <span class="buy-signal-icon" title="判定理由:\n${reasons}">${signal.icon}</span>`;
+            }
+            createCell(nameHtml);
+
             createCell(jpStock.industry || 'N/A');
             createCell(renderScoreAsStars(jpStock.score, jpStock.score_details, jpStock.asset_type));
             createCell(jpStock.price);
@@ -624,6 +646,8 @@ document.addEventListener('DOMContentLoaded', () => {
     downloadCsvButton.addEventListener('click', () => { window.location.href = '/api/stocks/csv'; });
     filterInput.addEventListener('input', filterAndRender);
     showOnlyManagedAssetsCheckbox.addEventListener('input', filterAndRender);
+    showOnlyAttentionAssetsCheckbox.addEventListener('input', filterAndRender);
+    showOnlyOpportunityAssetsCheckbox.addEventListener('input', filterAndRender);
     
     document.querySelectorAll('.select-all-assets').forEach(checkbox => {
         checkbox.addEventListener('change', (event) => {

@@ -188,6 +188,41 @@ class JPStockScraper(BaseScraper):
         except (ValueError, TypeError, ZeroDivisionError):
             return None
 
+    def _calculate_rsi(self, sorted_histories: list, days: int = 14) -> Optional[float]:
+        """RSI (Relative Strength Index) を計算する"""
+        if not sorted_histories or len(sorted_histories) < days + 1:
+            return None
+
+        try:
+            # 直近 (days + 1) 日分の終値を取得
+            recent_data = sorted_histories[-(days + 1):]
+            prices = [float(item["closePrice"]) for item in recent_data if "closePrice" in item]
+            
+            if len(prices) < days + 1:
+                return None
+
+            deltas = []
+            for i in range(1, len(prices)):
+                deltas.append(prices[i] - prices[i-1])
+
+            gains = [d for d in deltas if d > 0]
+            losses = [abs(d) for d in deltas if d < 0]
+
+            # 簡易移動平均を用いたRSI計算
+            avg_gain = sum(gains) / days
+            avg_loss = sum(losses) / days
+
+            if avg_loss == 0:
+                if avg_gain == 0:
+                    return 50.0
+                return 100.0
+            
+            rs = avg_gain / avg_loss
+            rsi = 100.0 - (100.0 / (1.0 + rs))
+            return rsi
+        except (ValueError, TypeError, ZeroDivisionError):
+            return None
+
     @cachedmethod(lambda self: self.cache)
     def fetch_data(self, code: str, num_years_dividend: int = 10) -> Optional[Dict[str, Any]]:
         # --- 決算月を取得 ---
@@ -241,6 +276,7 @@ class JPStockScraper(BaseScraper):
                     sorted_histories = sorted(histories, key=lambda x: x.get("baseDatetime", ""))
                     
                     # 移動平均線の計算
+                    ma_5 = self._calculate_moving_average(sorted_histories, 5)
                     ma_25 = self._calculate_moving_average(sorted_histories, 25)
                     ma_75 = self._calculate_moving_average(sorted_histories, 75)
                     
@@ -249,6 +285,10 @@ class JPStockScraper(BaseScraper):
                     
                     # RCI (26日) の計算
                     rci_26 = self._calculate_rci(sorted_histories, 26)
+                    
+                    # RSI (14日) の計算
+                    rsi_14 = self._calculate_rsi(sorted_histories, 14)
+                    rsi_14_prev = self._calculate_rsi(sorted_histories[:-1], 14)
                     
                     # フィボナッチの計算 (全期間を使用、通常125日程度)
                     fibonacci = self._calculate_fibonacci(sorted_histories)
@@ -320,10 +360,13 @@ class JPStockScraper(BaseScraper):
                 "annual_dividend": latest_annual_dividend,
                 "dividend_history": dividend_history,
                 "settlement_month": settlement_month, # 取得した決算月を追加
+                "moving_average_5": ma_5, # 追加
                 "moving_average_25": ma_25, # トレンド分析用
                 "moving_average_75": ma_75, # トレンド分析用
                 "trend_signal": trend_signal, # トレンド分析用
                 "rci_26": rci_26, # 追加
+                "rsi_14": rsi_14, # 追加
+                "rsi_14_prev": rsi_14_prev, # 追加
                 "fibonacci": fibonacci, # 追加
                 "asset_type": "jp_stock", "currency": "JPY"
             }

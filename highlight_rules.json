@@ -29,5 +29,30 @@
       "period": 26,
       "threshold": -80
     }
+  },
+  "buy_signal": {
+    "thresholds": {
+      "fundamental_min": 3,
+      "fundamental_diamond": 6,
+      "rsi_oversold": 30.0,
+      "rci_bottom": -80.0,
+      "fibonacci_min": 61.8,
+      "fibonacci_max": 78.6
+    },
+    "display": {
+      "level_1": {
+        "icon": "🟡",
+        "icon_diamond": "💎🟡",
+        "label": "注目"
+      },
+      "level_2": {
+        "icon": "🔥",
+        "icon_diamond": "💎🔥",
+        "label": "チャンス"
+      }
+    }
+  },
+  "system": {
+    "update_cooldown_seconds": 10
   }
 }

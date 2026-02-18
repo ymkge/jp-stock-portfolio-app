@@ -53,6 +53,52 @@ try:
 except (FileNotFoundError, json.JSONDecodeError) as e:
     logger.warning(f"highlight_rules.json の読み込みに失敗しました。デフォルト値で動作します。: {e}")
 
+def get_config(path: str, default: Any) -> Any:
+    """
+    ドット区切りのパスで設定を取得する。
+    例: get_config("buy_signal.thresholds.rsi_oversold", 30.0)
+    """
+    keys = path.split(".")
+    val = HIGHLIGHT_RULES
+    for k in keys:
+        if isinstance(val, dict) and k in val:
+            val = val[k]
+        else:
+            return default
+    
+    # 期待される型へのキャスト
+    try:
+        if isinstance(default, float): return float(val)
+        if isinstance(default, int): return int(val)
+    except (ValueError, TypeError):
+        return default
+    return val
+
+# --- システム設定 ---
+UPDATE_COOLDOWN = timedelta(seconds=get_config("system.update_cooldown_seconds", 10))
+
+# --- クールダウン設定 ---
+last_full_update_time: Optional[datetime] = None
+
+async def check_update_cooldown():
+    """全件更新APIのクールダウンをチェックする依存関係"""
+    global last_full_update_time
+    if last_full_update_time and (datetime.now() - last_full_update_time < UPDATE_COOLDOWN):
+        remaining_time = UPDATE_COOLDOWN - (datetime.now() - last_full_update_time)
+        minutes, seconds = divmod(int(remaining_time.total_seconds()), 60)
+        raise HTTPException(
+            status_code=429,
+            detail=f"リクエストが多すぎます。あと {minutes}分{seconds}秒 お待ちください。"
+        )
+# --------------------
+
+app = FastAPI()
+
+# --- 定数 ---
+ACCOUNT_TYPES = ["特定口座", "一般口座", "新NISA", "旧NISA"]
+# 対応資産タイプにus_stockを追加
+ASSET_TYPES = ["jp_stock", "investment_trust", "us_stock"]
+
 # --- 税金設定の読み込み ---
 TAX_CONFIG = {}
 try:
@@ -91,7 +137,7 @@ class HoldingData(BaseModel):
     memo: Optional[str] = None
 
 # --- 購入注目フラグの表示設定 ---
-BUY_SIGNAL_CONFIG = {
+BUY_SIGNAL_DISPLAY = get_config("buy_signal.display", {
     "level_1": {
         "icon": "🟡",
         "icon_diamond": "💎🟡",
@@ -102,7 +148,7 @@ BUY_SIGNAL_CONFIG = {
         "icon_diamond": "💎🔥",
         "label": "チャンス",
     }
-}
+})
 
 def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     """
@@ -116,30 +162,38 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     f_score = details.get("per", 0) + details.get("pbr", 0) + details.get("roe", 0) + \
               details.get("yield", 0) + details.get("consecutive_increase", 0)
 
-    # 共通条件：ファンダメンタルズ3点以上
-    if f_score < 3:
+    # 閾値を設定から取得
+    f_min = get_config("buy_signal.thresholds.fundamental_min", 3)
+    f_diamond = get_config("buy_signal.thresholds.fundamental_diamond", 6)
+
+    # 共通条件：ファンダメンタルズ最小スコア
+    if f_score < f_min:
         return None
 
-    is_diamond = f_score >= 6
+    is_diamond = f_score >= f_diamond
     reasons = []
     
     # --- Level 1 判定条件 (売られすぎ) ---
     is_level1 = False
     
+    rsi_threshold = get_config("buy_signal.thresholds.rsi_oversold", 30.0)
     rsi_14 = stock_data.get("rsi_14")
-    if rsi_14 is not None and rsi_14 <= 30:
+    if rsi_14 is not None and rsi_14 <= rsi_threshold:
         is_level1 = True
         reasons.append(f"RSI売られすぎ({rsi_14:.1f})")
 
+    rci_threshold = get_config("buy_signal.thresholds.rci_bottom", -80.0)
     rci_26 = stock_data.get("rci_26")
-    if rci_26 is not None and rci_26 <= -80:
+    if rci_26 is not None and rci_26 <= rci_threshold:
         is_level1 = True
         reasons.append(f"RCI底値圏({rci_26:.1f})")
 
+    fib_min = get_config("buy_signal.thresholds.fibonacci_min", 61.8)
+    fib_max = get_config("buy_signal.thresholds.fibonacci_max", 78.6)
     fib = stock_data.get("fibonacci")
     if fib and isinstance(fib, dict):
         ret = fib.get("retracement")
-        if ret is not None and 61.8 <= ret <= 78.6:
+        if ret is not None and fib_min <= ret <= fib_max:
             is_level1 = True
             reasons.append(f"フィボナッチ押し目({ret:.1f}%)")
 
@@ -168,7 +222,7 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
         level2_reasons.append("RSI反転")
 
     level = 2 if is_level2 else 1
-    config = BUY_SIGNAL_CONFIG[f"level_{level}"]
+    config = BUY_SIGNAL_DISPLAY[f"level_{level}"]
     
     # ダイヤモンド判定を理由に追加
     if is_diamond:
@@ -204,43 +258,41 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
         "fibonacci": 0, "rci": 0
     }
     is_calculable = False
-    rules = HIGHLIGHT_RULES
     
     # --- 既存のファンダメンタルズ評価 ---
     try:
         per = float(str(stock_data.get("per", "inf")).replace('倍', '').replace(',', ''))
         is_calculable = True
-        if per <= rules.get("per", {}).get("undervalued", 15.0): details["per"] += 1
+        if per <= get_config("per.undervalued", 15.0): details["per"] += 1
         if per <= 10.0: details["per"] += 1
     except (ValueError, TypeError): pass
     try:
         pbr = float(str(stock_data.get("pbr", "inf")).replace('倍', '').replace(',', ''))
         is_calculable = True
-        if pbr <= rules.get("pbr", {}).get("undervalued", 1.0): details["pbr"] += 1
+        if pbr <= get_config("pbr.undervalued", 1.0): details["pbr"] += 1
         if pbr <= 0.7: details["pbr"] += 1
     except (ValueError, TypeError): pass
     try:
         roe = float(str(stock_data.get("roe", "0")).replace('%', '').replace(',', ''))
         is_calculable = True
-        if roe >= rules.get("roe", {}).get("undervalued", 10.0): details["roe"] += 1
+        if roe >= get_config("roe.undervalued", 10.0): details["roe"] += 1
         if roe >= 15.0: details["roe"] += 1
     except (ValueError, TypeError): pass
     try:
         yield_val = float(str(stock_data.get("yield", "0")).replace('%', '').replace(',', ''))
         is_calculable = True
-        if yield_val >= rules.get("yield", {}).get("undervalued", 3.0): details["yield"] += 1
+        if yield_val >= get_config("yield.undervalued", 3.0): details["yield"] += 1
         if yield_val >= 4.0: details["yield"] += 1
     except (ValueError, TypeError): pass
     try:
         increase_years = int(stock_data.get("consecutive_increase_years", 0))
         is_calculable = True
-        if increase_years >= rules.get("consecutive_increase", {}).get("good", 3): details["consecutive_increase"] += 1
-        if increase_years >= rules.get("consecutive_increase", {}).get("excellent", 7): details["consecutive_increase"] += 1
+        if increase_years >= get_config("consecutive_increase.good", 3): details["consecutive_increase"] += 1
+        if increase_years >= get_config("consecutive_increase.excellent", 7): details["consecutive_increase"] += 1
     except (ValueError, TypeError): pass
 
     # --- トレンド評価 (既存 + 新規指標) ---
-    trend_rules = rules.get("trend", {})
-    if trend_rules.get("enabled", False):
+    if get_config("trend.enabled", False):
         try:
             price_val = stock_data.get("price")
             if isinstance(price_val, str):
@@ -264,9 +316,8 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
             fib = stock_data.get("fibonacci")
             if fib and isinstance(fib, dict):
                 retracement = fib.get("retracement")
-                fib_rules = trend_rules.get("fibonacci", {})
-                min_ret = fib_rules.get("min_retracement", 50.0)
-                max_ret = fib_rules.get("max_retracement", 78.6)
+                min_ret = get_config("trend.fibonacci.min_retracement", 50.0)
+                max_ret = get_config("trend.fibonacci.max_retracement", 78.6)
                 if retracement is not None and min_ret <= retracement <= max_ret:
                     is_calculable = True
                     details["fibonacci"] += 1
@@ -274,8 +325,7 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
             # --- RCI判定 ---
             rci_val = stock_data.get("rci_26")
             if rci_val is not None:
-                rci_rules = trend_rules.get("rci", {})
-                threshold = rci_rules.get("threshold", -80)
+                threshold = get_config("trend.rci.threshold", -80)
                 if rci_val <= threshold:
                     is_calculable = True
                     details["rci"] += 1

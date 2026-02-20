@@ -343,9 +343,27 @@ class JPStockScraper(BaseScraper):
             # annual_dividend を dividend_history から取得するように変更
             latest_annual_dividend = "N/A"
             if dividend_history:
-                # dividend_historyのキーは文字列の年なので、数値に変換して最大値を取得
+                # dividend_historyのキーは文字列의年なので、数値に変換して最大値を取得
                 latest_year = max(dividend_history.keys(), key=int) 
                 latest_annual_dividend = dividend_history[latest_year]
+
+            # --- 配当利回りのリカバリ対応 ---
+            dividend_yield = get_ref_value("shareDividendYield")
+            if dividend_yield in [None, "N/A", "", "--"]:
+                try:
+                    # 現在株価を取得 (文字列の場合はカンマを除去)
+                    price_str = price_board.get("price")
+                    if isinstance(price_str, str):
+                        price_str = price_str.replace(',', '')
+                    price_val = float(price_str)
+                    
+                    if price_val > 0 and isinstance(latest_annual_dividend, (int, float)):
+                        calculated_yield = (latest_annual_dividend / price_val) * 100
+                        dividend_yield = f"{calculated_yield:.2f}%"
+                        logger.info(f"銘柄 {code}: 配当利回りをリカバリしました ({dividend_yield})")
+                except (ValueError, TypeError):
+                    pass
+            # ------------------------------
 
             return {
                 "code": code, "name": price_board.get("name", "N/A"),
@@ -356,7 +374,7 @@ class JPStockScraper(BaseScraper):
                 "pbr": get_ref_value("pbr"),
                 "roe": get_ref_value("roe"),
                 "eps": get_ref_value("eps"),
-                "yield": get_ref_value("shareDividendYield"),
+                "yield": dividend_yield,
                 "annual_dividend": latest_annual_dividend,
                 "dividend_history": dividend_history,
                 "settlement_month": settlement_month, # 取得した決算月を追加

@@ -403,7 +403,7 @@ document.addEventListener('DOMContentLoaded', () => {
             weighted_roe: weightsTotal.roe > 0 ? weightedSums.roe / weightsTotal.roe : null,
             weighted_yield: weightsTotal.yield > 0 ? weightedSums.yield / weightsTotal.yield : null,
             hhi: hhi,
-            top5_ratio: top5_ratio
+            top5_ratio: top5Ratio
         };
     }
 

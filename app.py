@@ -639,6 +639,10 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
         logger.error(f"Error saving history snapshot: {e}")
     # -------------------------------------------------------
 
+    # --- ポートフォリオの統計情報(加重平均など)を計算 ---
+    summary_stats = portfolio_manager.calculate_portfolio_stats(raw_holdings_list)
+    # ---------------------------------------------------
+
     last_full_update_time = datetime.now()
     return {
         "holdings_list": holdings_list,
@@ -647,6 +651,7 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
         "country_breakdown": country_breakdown,
         "total_annual_dividend": total_annual_dividend,
         "total_annual_dividend_after_tax": total_annual_dividend_after_tax,
+        "summary_stats": summary_stats,
     }
 
 @app.get("/api/portfolio/analysis/csv")

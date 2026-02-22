@@ -337,17 +337,113 @@ document.addEventListener('DOMContentLoaded', () => {
         const summaryProfitLossClass = totalProfitLoss >= 0 ? 'profit' : 'loss';
         const summaryProfitLossRateClass = totalProfitLossRate >= 0 ? 'profit' : 'loss';
 
-        portfolioSummary.innerHTML = `
-            <h3>サマリー</h3>
-            <p>総評価額: <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalMarketValue, 0)}円</span></p>
-            <p>総損益: <span class="${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossClass}">${formatNumber(totalProfitLoss, 0)}円</span></p>
-            <p>総損益率: <span class="${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossRateClass}">${formatNumber(totalProfitLossRate, 2)}%</span></p>
-            <p>年間配当合計: <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalEstimatedAnnualDividend, 0)}円</span></p>
-            <p>年間配当合計(税引後): <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalEstimatedAnnualDividendAfterTax, 0)}円</span></p>
-            <hr>
-            <p title="配当が出る銘柄のみを対象とした利回りです">配当利回り(現在値): <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(yieldOnCurrent, 2)}%</span></p>
-            <p title="配当が出る銘柄のみを対象とした、投資額に対する利回りです">配当利回り(取得値): <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(yieldOnCost, 2)}%</span></p>
-        `;
+        // --- サマリー表示の更新 ---
+        const summaryContent = document.getElementById('summary-content');
+        if (summaryContent) {
+            summaryContent.innerHTML = `
+                <p>総評価額: <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalMarketValue, 0)}円</span></p>
+                <p>総損益: <span class="${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossClass}">${formatNumber(totalProfitLoss, 0)}円</span></p>
+                <p>総損益率: <span class="${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossRateClass}">${formatNumber(totalProfitLossRate, 2)}%</span></p>
+                <p>年間配当合計: <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalEstimatedAnnualDividend, 0)}円</span></p>
+                <p>年間配当合計(税引後): <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalEstimatedAnnualDividendAfterTax, 0)}円</span></p>
+                <hr>
+                <p title="配当が出る銘柄のみを対象とした利回りです">配当利回り(現在値): <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(yieldOnCurrent, 2)}%</span></p>
+                <p title="配当が出る銘柄のみを対象とした、投資額に対する利回りです">配当利回り(取得値): <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(yieldOnCost, 2)}%</span></p>
+            `;
+        }
+
+        // --- ポートフォリオDNAとリスク分析の計算と表示 ---
+        const stats = calculateWeightedStats(holdings);
+        renderDNAAndRisk(stats);
+    }
+
+    function calculateWeightedStats(holdings) {
+        const totalMarketValue = holdings.reduce((sum, item) => sum + (parseFloat(item.market_value) || 0), 0);
+        if (totalMarketValue === 0) return null;
+
+        const metrics = ['per', 'pbr', 'roe', 'yield'];
+        const weightedSums = { per: 0, pbr: 0, roe: 0, yield: 0 };
+        const weightsTotal = { per: 0, pbr: 0, roe: 0, yield: 0 };
+        const assetMarketValues = {};
+
+        holdings.forEach(item => {
+            const mv = parseFloat(item.market_value) || 0;
+            const code = item.code;
+            if (mv > 0 && code) {
+                assetMarketValues[code] = (assetMarketValues[code] || 0) + mv;
+            }
+
+            metrics.forEach(m => {
+                let val = item[m];
+                if (typeof val === 'string') {
+                    val = parseFloat(val.replace(/,/g, '').replace('倍', '').replace('%', '').trim());
+                }
+                if (typeof val === 'number' && !isNaN(val) && isFinite(val) && mv > 0) {
+                    weightedSums[m] += val * mv;
+                    weightsTotal[m] += mv;
+                }
+            });
+        });
+
+        // HHI
+        let hhi = 0;
+        Object.values(assetMarketValues).forEach(mv => {
+            const weightPct = (mv / totalMarketValue) * 100;
+            hhi += weightPct * weightPct;
+        });
+
+        // Top 5
+        const sortedValues = Object.values(assetMarketValues).sort((a, b) => b - a);
+        const top5Value = sortedValues.slice(0, 5).reduce((sum, v) => sum + v, 0);
+        const top5Ratio = (top5Value / totalMarketValue) * 100;
+
+        return {
+            weighted_per: weightsTotal.per > 0 ? weightedSums.per / weightsTotal.per : null,
+            weighted_pbr: weightsTotal.pbr > 0 ? weightedSums.pbr / weightsTotal.pbr : null,
+            weighted_roe: weightsTotal.roe > 0 ? weightedSums.roe / weightsTotal.roe : null,
+            weighted_yield: weightsTotal.yield > 0 ? weightedSums.yield / weightsTotal.yield : null,
+            hhi: hhi,
+            top5_ratio: top5_ratio
+        };
+    }
+
+    function renderDNAAndRisk(stats) {
+        const dnaContent = document.getElementById('dna-content');
+        const riskContent = document.getElementById('risk-content');
+
+        if (!stats) {
+            if (dnaContent) dnaContent.innerHTML = '<p>データがありません</p>';
+            if (riskContent) riskContent.innerHTML = '<p>データがありません</p>';
+            return;
+        }
+
+        if (dnaContent) {
+            dnaContent.innerHTML = `
+                <p title="時価評価額で加重平均したPERです">平均PER: <span>${formatNumber(stats.weighted_per, 2)}倍</span></p>
+                <p title="時価評価額で加重平均したPBRです">平均PBR: <span>${formatNumber(stats.weighted_pbr, 2)}倍</span></p>
+                <p title="時価評価額で加重平均したROEです">平均ROE: <span>${formatNumber(stats.weighted_roe, 2)}%</span></p>
+                <p title="ポートフォリオ全体の時価に対する予想配当利回りです">平均利回り: <span>${formatNumber(stats.weighted_yield, 2)}%</span></p>
+            `;
+        }
+
+        if (riskContent) {
+            let hhiLevel = '良好';
+            let hhiClass = 'profit';
+            if (stats.hhi >= 2500) {
+                hhiLevel = '集中リスクあり';
+                hhiClass = 'loss';
+            } else if (stats.hhi >= 1500) {
+                hhiLevel = 'やや集中';
+                hhiClass = '';
+            }
+
+            riskContent.innerHTML = `
+                <p title="上位5銘柄が占める割合です。40%を超えると集中度が高めです。">上位5銘柄占有率: <span>${formatNumber(stats.top5_ratio, 2)}%</span></p>
+                <p title="銘柄の集中度を計る指標(HHI)。1,500未満が分散良好、2,500以上が集中リスクの目安です。">
+                    分散度(HHI): <span class="${hhiClass}">${formatNumber(stats.hhi, 0)} (${hhiLevel})</span>
+                </p>
+            `;
+        }
     }
 
     function renderCharts(holdings) {

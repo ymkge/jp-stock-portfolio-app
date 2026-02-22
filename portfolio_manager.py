@@ -291,6 +291,78 @@ def calculate_holding_values(
         "estimated_annual_dividend_after_tax": total_annual_dividend_after_tax,
     }
 
+def calculate_portfolio_stats(holdings_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    保有資産リストからポートフォリオ全体の統計情報を計算する。
+    加重平均PER, PBR, ROE, 利回り、および分散度(HHI, Top5)を算出。
+    """
+    total_market_value = sum(item.get("market_value") for item in holdings_list if isinstance(item.get("market_value"), (int, float)))
+    
+    if total_market_value == 0:
+        return {}
+
+    metrics = ["per", "pbr", "roe", "yield"]
+    # 加重合計用の変数。キーごとに (値 * 時価評価額) の合計を保持
+    weighted_sums = {m: 0.0 for m in metrics}
+    # 加重平均を計算する際の分母（その指標が有効な銘柄の時価評価額合計）
+    weights_total = {m: 0.0 for m in metrics}
+
+    # 銘柄ごとの時価評価額を集計（Top5, HHI用）
+    # 同じ銘柄(code)が複数口座にある場合を考慮して合算
+    asset_market_values = {}
+    for item in holdings_list:
+        code = item.get("code")
+        mv = item.get("market_value")
+        if code and isinstance(mv, (int, float)):
+            asset_market_values[code] = asset_market_values.get(code, 0) + mv
+
+    # HHI指数の計算
+    hhi = 0
+    for mv in asset_market_values.values():
+        weight_pct = (mv / total_market_value) * 100
+        hhi += weight_pct ** 2
+
+    # Top5 占有率
+    sorted_values = sorted(asset_market_values.values(), reverse=True)
+    top5_value = sum(sorted_values[:5])
+    top5_ratio = (top5_value / total_market_value) * 100 if total_market_value > 0 else 0
+
+    # 加重平均の計算
+    for item in holdings_list:
+        mv = item.get("market_value")
+        if not isinstance(mv, (int, float)) or mv <= 0:
+            continue
+            
+        for m in metrics:
+            val = item.get(m)
+            # 文字列の場合は数値に変換を試みる
+            if isinstance(val, str):
+                try:
+                    # '倍' や '%' などの単位、カンマを除去
+                    clean_val = val.replace(',', '').replace('倍', '').replace('%', '').strip()
+                    if clean_val and clean_val not in ['N/A', '---']:
+                        val = float(clean_val)
+                    else:
+                        val = None
+                except ValueError:
+                    val = None
+            
+            if isinstance(val, (int, float)):
+                weighted_sums[m] += val * mv
+                weights_total[m] += mv
+
+    summary_stats = {
+        "weighted_per": weighted_sums["per"] / weights_total["per"] if weights_total["per"] > 0 else None,
+        "weighted_pbr": weighted_sums["pbr"] / weights_total["pbr"] if weights_total["pbr"] > 0 else None,
+        "weighted_roe": weighted_sums["roe"] / weights_total["roe"] if weights_total["roe"] > 0 else None,
+        "weighted_yield": weighted_sums["yield"] / weights_total["yield"] if weights_total["yield"] > 0 else None,
+        "hhi": hhi,
+        "top5_ratio": top5_ratio,
+        "total_market_value": total_market_value
+    }
+
+    return summary_stats
+
 def create_csv_data(data: list[dict]) -> str:
     """
     ポートフォリオデータのリストからCSV文字列を生成する。

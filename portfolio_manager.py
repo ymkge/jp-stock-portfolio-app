@@ -358,10 +358,99 @@ def calculate_portfolio_stats(holdings_list: List[Dict[str, Any]]) -> Dict[str, 
         "weighted_yield": weighted_sums["yield"] / weights_total["yield"] if weights_total["yield"] > 0 else None,
         "hhi": hhi,
         "top5_ratio": top5_ratio,
-        "total_market_value": total_market_value
+        "total_market_value": total_market_value,
+        "style_breakdown": calculate_style_breakdown(holdings_list, total_market_value)
     }
 
     return summary_stats
+
+def calculate_style_breakdown(holdings: List[Dict[str, Any]], total_mv: float) -> Dict[str, Any]:
+    """
+    保有資産のスタイル内訳（景気特性、バリュー/グロース、大型/中小型）を計算する。
+    """
+    if total_mv <= 0:
+        return {}
+
+    # 業種分類の定義 (本来は highlight_rules.json から取得すべきだが、まずはコード内に定義)
+    defensive_industries = ["食料品", "医薬品", "電気・ガス業", "陸運業", "情報・通信業"]
+    cyclical_industries = ["輸送用機器", "鉄鋼", "海運業", "卸売業", "鉱業", "機械", "化学", "非鉄金属", "ガラス・土石製品"]
+
+    breakdown = {
+        "cyclicality": {"defensive": 0, "cyclical": 0, "other": 0},
+        "style": {"value": 0, "growth": 0, "blend": 0},
+        "market_cap": {"large": 0, "mid_small": 0}
+    }
+
+    for item in holdings:
+        mv = item.get("market_value")
+        if not isinstance(mv, (int, float)) or mv <= 0:
+            continue
+        
+        # 1. 景気特性
+        industry = item.get("industry", "その他")
+        if industry in defensive_industries:
+            breakdown["cyclicality"]["defensive"] += mv
+        elif industry in cyclical_industries:
+            breakdown["cyclicality"]["cyclical"] += mv
+        else:
+            breakdown["cyclicality"]["other"] += mv
+
+        # 2. バリュー/グロース
+        per = None
+        pbr = None
+        try:
+            p_val = item.get("per")
+            if isinstance(p_val, str):
+                p_val = p_val.replace(',', '').replace('倍', '').replace('%', '').strip()
+                if p_val and p_val not in ['N/A', '---']: per = float(p_val)
+            elif isinstance(p_val, (int, float)): per = p_val
+
+            pb_val = item.get("pbr")
+            if isinstance(pb_val, str):
+                pb_val = pb_val.replace(',', '').replace('倍', '').replace('%', '').strip()
+                if pb_val and pb_val not in ['N/A', '---']: pbr = float(pb_val)
+            elif isinstance(pb_val, (int, float)): pbr = pb_val
+        except (ValueError, TypeError): pass
+
+        if per is not None and pbr is not None:
+            if per < 15.0 and pbr < 1.0:
+                breakdown["style"]["value"] += mv
+            elif per > 25.0 or pbr > 2.5:
+                breakdown["style"]["growth"] += mv
+            else:
+                breakdown["style"]["blend"] += mv
+        else:
+            breakdown["style"]["blend"] += mv
+
+        # 3. 時価総額区分 (大型: 1兆円以上)
+        mcap_val = item.get("market_cap")
+        mcap = 0
+        if isinstance(mcap_val, str):
+            try:
+                mcap_str = mcap_val.replace(',', '')
+                if '兆' in mcap_str:
+                    mcap = float(mcap_str.split('兆')[0]) * 1_000_000_000_000
+                elif '億' in mcap_str:
+                    mcap = float(mcap_str.split('億')[0]) * 100_000_000
+                else:
+                    # 数値のみの場合
+                    mcap = float(mcap_str)
+            except (ValueError, IndexError, TypeError): pass
+        elif isinstance(mcap_val, (int, float)):
+            mcap = mcap_val
+
+        if mcap >= 1_000_000_000_000:
+            breakdown["market_cap"]["large"] += mv
+        else:
+            breakdown["market_cap"]["mid_small"] += mv
+
+    # 比率(%)に変換
+    result = {
+        "cyclicality": {k: (v / total_mv) * 100 for k, v in breakdown["cyclicality"].items()},
+        "style": {k: (v / total_mv) * 100 for k, v in breakdown["style"].items()},
+        "market_cap": {k: (v / total_mv) * 100 for k, v in breakdown["market_cap"].items()}
+    }
+    return result
 
 def create_csv_data(data: list[dict]) -> str:
     """

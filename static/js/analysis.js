@@ -397,23 +397,102 @@ document.addEventListener('DOMContentLoaded', () => {
         const top5Value = sortedValues.slice(0, 5).reduce((sum, v) => sum + v, 0);
         const top5Ratio = (top5Value / totalMarketValue) * 100;
 
+        // スタイル分析の計算
+        const styleBreakdown = calculateStyleBreakdown(holdings, totalMarketValue);
+
         return {
             weighted_per: weightsTotal.per > 0 ? weightedSums.per / weightsTotal.per : null,
             weighted_pbr: weightsTotal.pbr > 0 ? weightedSums.pbr / weightsTotal.pbr : null,
             weighted_roe: weightsTotal.roe > 0 ? weightedSums.roe / weightsTotal.roe : null,
             weighted_yield: weightsTotal.yield > 0 ? weightedSums.yield / weightsTotal.yield : null,
             hhi: hhi,
-            top5_ratio: top5Ratio
+            top5_ratio: top5Ratio,
+            style_breakdown: styleBreakdown
+        };
+    }
+
+    function calculateStyleBreakdown(holdings, totalMv) {
+        if (totalMv <= 0) return null;
+
+        const defensiveIndustries = ["食料品", "医薬品", "電気・ガス業", "陸運業", "情報・通信業"];
+        const cyclicalIndustries = ["輸送用機器", "鉄鋼", "海運業", "卸売業", "鉱業", "機械", "化学", "非鉄金属", "ガラス・土石製品"];
+
+        const breakdown = {
+            cyclicality: { defensive: 0, cyclical: 0, other: 0 },
+            style: { value: 0, growth: 0, blend: 0 },
+            marketCap: { large: 0, midSmall: 0 }
+        };
+
+        holdings.forEach(item => {
+            const mv = parseFloat(item.market_value) || 0;
+            if (mv <= 0) return;
+
+            // 1. 景気特性
+            const industry = item.industry || "その他";
+            if (defensiveIndustries.includes(industry)) breakdown.cyclicality.defensive += mv;
+            else if (cyclicalIndustries.includes(industry)) breakdown.cyclicality.cyclical += mv;
+            else breakdown.cyclicality.other += mv;
+
+            // 2. バリュー/グロース
+            let per = null, pbr = null;
+            const parseVal = (v) => {
+                if (typeof v === 'string') return parseFloat(v.replace(/,/g, '').replace('倍', '').replace('%', '').trim());
+                return (typeof v === 'number' && !isNaN(v)) ? v : null;
+            };
+            per = parseVal(item.per);
+            pbr = parseVal(item.pbr);
+
+            if (per !== null && pbr !== null) {
+                if (per < 15.0 && pbr < 1.0) breakdown.style.value += mv;
+                else if (per > 25.0 || pbr > 2.5) breakdown.style.growth += mv;
+                else breakdown.style.blend += mv;
+            } else {
+                breakdown.style.blend += mv;
+            }
+
+            // 3. 時価総額区分 (大型: 1兆円以上)
+            let mcap = 0;
+            const mcapVal = item.market_cap;
+            if (typeof mcapVal === 'string') {
+                const mcapStr = mcapVal.replace(/,/g, '');
+                if (mcapStr.includes('兆')) mcap = parseFloat(mcapStr.split('兆')[0]) * 1000000000000;
+                else if (mcapStr.includes('億')) mcap = parseFloat(mcapStr.split('億')[0]) * 100000000;
+                else mcap = parseFloat(mcapStr);
+            } else if (typeof mcapVal === 'number' && !isNaN(mcapVal)) {
+                mcap = mcapVal;
+            }
+            if (mcap >= 1000000000000) breakdown.marketCap.large += mv;
+            else breakdown.marketCap.midSmall += mv;
+        });
+
+        const toPct = (val) => (val / totalMv) * 100;
+        return {
+            cyclicality: {
+                defensive: toPct(breakdown.cyclicality.defensive),
+                cyclical: toPct(breakdown.cyclicality.cyclical),
+                other: toPct(breakdown.cyclicality.other)
+            },
+            style: {
+                value: toPct(breakdown.style.value),
+                growth: toPct(breakdown.style.growth),
+                blend: toPct(breakdown.style.blend)
+            },
+            marketCap: {
+                large: toPct(breakdown.marketCap.large),
+                midSmall: toPct(breakdown.marketCap.midSmall)
+            }
         };
     }
 
     function renderDNAAndRisk(stats) {
         const dnaContent = document.getElementById('dna-content');
         const riskContent = document.getElementById('risk-content');
+        const personalityContent = document.getElementById('personality-content');
 
         if (!stats) {
             if (dnaContent) dnaContent.innerHTML = '<p>データがありません</p>';
             if (riskContent) riskContent.innerHTML = '<p>データがありません</p>';
+            if (personalityContent) personalityContent.innerHTML = '<p>データがありません</p>';
             return;
         }
 
@@ -442,6 +521,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 <p title="銘柄の集中度を計る指標(HHI)。1,500未満が分散良好、2,500以上が集中リスクの目安です。">
                     分散度(HHI): <span class="${hhiClass}">${formatNumber(stats.hhi, 0)} (${hhiLevel})</span>
                 </p>
+            `;
+        }
+
+        if (personalityContent) {
+            const b = stats.style_breakdown;
+            const cyclicalityLabel = b.cyclicality.defensive > b.cyclicality.cyclical ? 'ディフェンシブ寄り' : '景気敏感寄り';
+            const styleLabel = b.style.value > b.style.growth ? 'バリュー寄り' : 'グロース寄り';
+            const capLabel = b.marketCap.large > 50 ? '大型株中心' : '中小型株中心';
+
+            personalityContent.innerHTML = `
+                <div class="personality-summary">
+                    <strong>診断結果: ${capLabel}の${cyclicalityLabel}${styleLabel}</strong>
+                </div>
+                <div class="personality-bars">
+                    <div class="style-bar-group">
+                        <div class="style-bar-label"><span>景気敏感 ${formatNumber(b.cyclicality.cyclical, 0)}%</span><span>ディフェンシブ ${formatNumber(b.cyclicality.defensive, 0)}%</span></div>
+                        <div class="progress-stacked">
+                            <div class="progress-bar cyclical" style="width: ${b.cyclicality.cyclical}%"></div>
+                            <div class="progress-bar other" style="width: ${b.cyclicality.other}%"></div>
+                            <div class="progress-bar defensive" style="width: ${b.cyclicality.defensive}%"></div>
+                        </div>
+                    </div>
+                    <div class="style-bar-group">
+                        <div class="style-bar-label"><span>バリュー ${formatNumber(b.style.value, 0)}%</span><span>グロース ${formatNumber(b.style.growth, 0)}%</span></div>
+                        <div class="progress-stacked">
+                            <div class="progress-bar value" style="width: ${b.style.value}%"></div>
+                            <div class="progress-bar blend" style="width: ${b.style.blend}%"></div>
+                            <div class="progress-bar growth" style="width: ${b.style.growth}%"></div>
+                        </div>
+                    </div>
+                    <div class="style-bar-group">
+                        <div class="style-bar-label"><span>大型株 ${formatNumber(b.marketCap.large, 0)}%</span><span>中小型株 ${formatNumber(b.marketCap.midSmall, 0)}%</span></div>
+                        <div class="progress-stacked">
+                            <div class="progress-bar large" style="width: ${b.marketCap.large}%"></div>
+                            <div class="progress-bar midSmall" style="width: ${b.marketCap.midSmall}%"></div>
+                        </div>
+                    </div>
+                </div>
             `;
         }
     }

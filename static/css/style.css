@@ -717,6 +717,59 @@ button {
     border-bottom: none;
 }
 
+/* --- Personality Analysis --- */
+.personality-summary {
+    background-color: #e9ecef;
+    padding: 0.8rem;
+    border-radius: 6px;
+    margin-bottom: 1.2rem;
+    font-size: 0.95rem;
+    color: #495057;
+    text-align: center;
+}
+
+.style-bar-group {
+    margin-bottom: 1rem;
+}
+
+.style-bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    margin-bottom: 4px;
+    color: #666;
+}
+
+.progress-stacked {
+    display: flex;
+    height: 12px;
+    overflow: hidden;
+    background-color: #e9ecef;
+    border-radius: 6px;
+}
+
+.progress-bar {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    color: #fff;
+    text-align: center;
+    white-space: nowrap;
+    transition: width .6s ease;
+}
+
+/* Colors */
+.progress-bar.cyclical { background-color: #e74a3b; } /* Danger/Red */
+.progress-bar.defensive { background-color: #1cc88a; } /* Success/Green */
+.progress-bar.other { background-color: #f6c23e; } /* Warning/Yellow */
+
+.progress-bar.value { background-color: #4e73df; } /* Primary/Blue */
+.progress-bar.growth { background-color: #f680ff; } /* Purple/Pink */
+.progress-bar.blend { background-color: #858796; } /* Gray */
+
+.progress-bar.large { background-color: #36b9cc; } /* Info/Cyan */
+.progress-bar.midSmall { background-color: #6610f2; } /* Indigo */
+
 .portfolio-history {
     margin-top: 1rem;
 }

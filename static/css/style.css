@@ -784,6 +784,19 @@ button {
     width: 100%;
 }
 
+/* --- Portfolio Radar Chart --- */
+.portfolio-radar .chart-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+}
+
+#radar-chart {
+    max-width: 100%;
+    max-height: 100%;
+}
+
 /* --- Analysis Page Chart Controls --- */
 .chart-controls {
     margin-bottom: 1rem;

@@ -36,6 +36,21 @@ document.addEventListener('DOMContentLoaded', () => {
     let fetchController = null; // AbortControllerを保持
 
     // --- データ取得とレンダリング (最終修正) ---
+    async function fetchHighlightRules() {
+        try {
+            const response = await fetch('/api/highlight-rules');
+            if (!response.ok) throw new Error('Failed to fetch rules');
+            highlightRules = await response.json();
+            
+            // ルールが取得できたら、既にデータがあれば再描画
+            if (allHoldingsData && allHoldingsData.length > 0) {
+                filterAndRender();
+            }
+        } catch (error) {
+            console.error('Error fetching highlight rules:', error);
+        }
+    }
+
     async function fetchAndRenderAnalysisData() {
         if (retryTimer) {
         clearInterval(retryTimer);
@@ -65,21 +80,13 @@ document.addEventListener('DOMContentLoaded', () => {
             loadingIndicator.innerHTML = cachedData ? '最新データを取得中...' : 'データを取得中...';
             loadingIndicator.classList.remove('hidden');
 
-            // ハイライトルールと分析データを並行して取得
-            const [rulesResponse, analysisResponse] = await Promise.all([
-                fetch('/api/highlight-rules', { signal }),
-                fetch('/api/portfolio/analysis', { signal })
-            ]);
-
-            if (!rulesResponse.ok) throw new HttpError('ルールの取得に失敗しました', rulesResponse.status);
-            if (!analysisResponse.ok) {
-                const errorData = await analysisResponse.json().catch(() => ({ detail: analysisResponse.statusText }));
-                throw new HttpError(errorData.detail || `HTTP error! status: ${analysisResponse.status}`, analysisResponse.status);
+            const response = await fetch('/api/portfolio/analysis', { signal });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+                throw new HttpError(errorData.detail || `HTTP error! status: ${response.status}`, response.status);
             }
 
-            highlightRules = await rulesResponse.json();
-            const analysisData = await analysisResponse.json();
-
+            const analysisData = await response.json();
             window.appState.updateState('analysis', analysisData);
             window.appState.updateTimestamp();
             processAnalysisData(analysisData);
@@ -387,14 +394,19 @@ document.addEventListener('DOMContentLoaded', () => {
             return Math.min(Math.max(score, 0), 100);
         };
 
+        const safeGet = (obj, path, def = 0) => {
+            return path.split('.').reduce((acc, part) => acc && acc[part], obj) || def;
+        };
+
         // 各軸のスコアリング
         const scores = [
             normalize(stats.weighted_per, 10, 40, true),   // 割安性 (PER 10倍で100点, 40倍で0点)
             normalize(stats.weighted_roe, 0, 20),         // 収益性 (ROE 20%以上で100点)
             normalize(stats.weighted_yield, 0, 5),        // インカム (利回り 5%以上で100点)
             normalize(stats.weighted_years, 0, 10),       // クオリティ (増配10年以上で100点)
-            100 - stats.top5_ratio,                       // 分散度 (Top5占有率が低いほど高得点)
-            (stats.style_breakdown.cyclicality.defensive * 0.7) + (stats.style_breakdown.marketCap.large * 0.3) // 安全性
+            100 - (stats.top5_ratio || 0),                // 分散度 (Top5占有率が低いほど高得点)
+            (safeGet(stats, 'style_breakdown.cyclicality.defensive') * 0.7) + 
+            (safeGet(stats, 'style_breakdown.marketCap.large') * 0.3) // 安全性
         ];
 
         // ベンチマーク（市場平均）のスコアリング
@@ -403,8 +415,8 @@ document.addEventListener('DOMContentLoaded', () => {
             normalize(bm.profitability_roe, 0, 20),
             normalize(bm.income_yield, 0, 5),
             normalize(bm.quality_years, 0, 10),
-            100 - bm.diversification_top5,
-            bm.safety_score
+            100 - (bm.diversification_top5 || 40),
+            bm.safety_score || 50
         ];
 
         radarChart = new Chart(ctx, {
@@ -754,8 +766,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateChart(chartType) {
-        document.querySelectorAll('.chart-container canvas').forEach(canvas => {
-            if (!canvas.id.includes('history')) canvas.classList.add('hidden');
+        // ポートフォリオ構成セクション内のキャンバスのみを対象にする
+        document.querySelectorAll('.portfolio-chart .chart-container canvas').forEach(canvas => {
+            canvas.classList.add('hidden');
         });
         document.querySelectorAll('.chart-toggle-btn').forEach(btn => btn.classList.remove('active'));
         const activeBtn = document.querySelector(`.chart-toggle-btn[data-chart-type="${chartType}"]`);
@@ -863,5 +876,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (retryTimer) clearInterval(retryTimer);
     });
 
+    fetchHighlightRules();
     fetchAndRenderAnalysisData();
 });

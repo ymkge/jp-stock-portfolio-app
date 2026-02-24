@@ -23,11 +23,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Chart.jsインスタンス ---
     let industryChart, accountTypeChart, countryChart, securityCompanyChart, dividendIndustryChart;
-    let assetHistoryChart, dividendHistoryChart;
+    let assetHistoryChart, dividendHistoryChart, radarChart;
 
     // --- グローバル変数 ---
     let allHoldingsData = [];
     let fullAnalysisData = {};
+    let highlightRules = null;
     let filteredHoldingsData = [];
     let currentSort = { key: 'market_value', order: 'desc' };
     let isAmountVisible = true;
@@ -64,13 +65,21 @@ document.addEventListener('DOMContentLoaded', () => {
             loadingIndicator.innerHTML = cachedData ? '最新データを取得中...' : 'データを取得中...';
             loadingIndicator.classList.remove('hidden');
 
-            const response = await fetch('/api/portfolio/analysis', { signal });
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-                throw new HttpError(errorData.detail || `HTTP error! status: ${response.status}`, response.status);
+            // ハイライトルールと分析データを並行して取得
+            const [rulesResponse, analysisResponse] = await Promise.all([
+                fetch('/api/highlight-rules', { signal }),
+                fetch('/api/portfolio/analysis', { signal })
+            ]);
+
+            if (!rulesResponse.ok) throw new HttpError('ルールの取得に失敗しました', rulesResponse.status);
+            if (!analysisResponse.ok) {
+                const errorData = await analysisResponse.json().catch(() => ({ detail: analysisResponse.statusText }));
+                throw new HttpError(errorData.detail || `HTTP error! status: ${analysisResponse.status}`, analysisResponse.status);
             }
 
-            const analysisData = await response.json();
+            highlightRules = await rulesResponse.json();
+            const analysisData = await analysisResponse.json();
+
             window.appState.updateState('analysis', analysisData);
             window.appState.updateTimestamp();
             processAnalysisData(analysisData);
@@ -355,15 +364,109 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- ポートフォリオDNAとリスク分析の計算と表示 ---
         const stats = calculateWeightedStats(holdings);
         renderDNAAndRisk(stats);
+        renderRadarChart(stats);
+    }
+
+    function renderRadarChart(stats) {
+        if (!stats || !highlightRules || !highlightRules.radar_chart) return;
+
+        const canvas = document.getElementById('radar-chart');
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        if (radarChart) radarChart.destroy();
+
+        const config = highlightRules.radar_chart;
+        const bm = config.benchmarks;
+
+        // 正規化ロジック (0-100点)
+        const normalize = (val, min, max, reverse = false) => {
+            if (val === null || val === undefined) return 0;
+            let score = ((val - min) / (max - min)) * 100;
+            if (reverse) score = 100 - score;
+            return Math.min(Math.max(score, 0), 100);
+        };
+
+        // 各軸のスコアリング
+        const scores = [
+            normalize(stats.weighted_per, 10, 40, true),   // 割安性 (PER 10倍で100点, 40倍で0点)
+            normalize(stats.weighted_roe, 0, 20),         // 収益性 (ROE 20%以上で100点)
+            normalize(stats.weighted_yield, 0, 5),        // インカム (利回り 5%以上で100点)
+            normalize(stats.weighted_years, 0, 10),       // クオリティ (増配10年以上で100点)
+            100 - stats.top5_ratio,                       // 分散度 (Top5占有率が低いほど高得点)
+            (stats.style_breakdown.cyclicality.defensive * 0.7) + (stats.style_breakdown.marketCap.large * 0.3) // 安全性
+        ];
+
+        // ベンチマーク（市場平均）のスコアリング
+        const benchmarkScores = [
+            normalize(bm.valuation_per, 10, 40, true),
+            normalize(bm.profitability_roe, 0, 20),
+            normalize(bm.income_yield, 0, 5),
+            normalize(bm.quality_years, 0, 10),
+            100 - bm.diversification_top5,
+            bm.safety_score
+        ];
+
+        radarChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: config.labels,
+                datasets: [
+                    {
+                        label: 'マイ・ポートフォリオ',
+                        data: scores,
+                        backgroundColor: 'rgba(78, 115, 223, 0.2)',
+                        borderColor: '#4e73df',
+                        pointBackgroundColor: '#4e73df',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: '#4e73df',
+                        borderWidth: 3
+                    },
+                    {
+                        label: 'ベンチマーク (市場平均)',
+                        data: benchmarkScores,
+                        backgroundColor: 'transparent',
+                        borderColor: '#858796',
+                        borderDash: [5, 5],
+                        pointRadius: 0,
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    r: {
+                        min: 0,
+                        max: 100,
+                        beginAtZero: true,
+                        ticks: { stepSize: 20, display: false },
+                        grid: { color: '#e3e6f0' },
+                        angleLines: { color: '#e3e6f0' },
+                        pointLabels: { font: { size: 12, weight: 'bold' } }
+                    }
+                },
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => `${context.dataset.label}: ${Math.round(context.raw)}点`
+                        }
+                    }
+                }
+            }
+        });
     }
 
     function calculateWeightedStats(holdings) {
         const totalMarketValue = holdings.reduce((sum, item) => sum + (parseFloat(item.market_value) || 0), 0);
         if (totalMarketValue === 0) return null;
 
-        const metrics = ['per', 'pbr', 'roe', 'yield'];
-        const weightedSums = { per: 0, pbr: 0, roe: 0, yield: 0 };
-        const weightsTotal = { per: 0, pbr: 0, roe: 0, yield: 0 };
+        const metrics = ['per', 'pbr', 'roe', 'yield', 'consecutive_increase_years'];
+        const weightedSums = { per: 0, pbr: 0, roe: 0, yield: 0, consecutive_increase_years: 0 };
+        const weightsTotal = { per: 0, pbr: 0, roe: 0, yield: 0, consecutive_increase_years: 0 };
         const assetMarketValues = {};
 
         holdings.forEach(item => {
@@ -405,6 +508,7 @@ document.addEventListener('DOMContentLoaded', () => {
             weighted_pbr: weightsTotal.pbr > 0 ? weightedSums.pbr / weightsTotal.pbr : null,
             weighted_roe: weightsTotal.roe > 0 ? weightedSums.roe / weightsTotal.roe : null,
             weighted_yield: weightsTotal.yield > 0 ? weightedSums.yield / weightsTotal.yield : null,
+            weighted_years: weightsTotal.consecutive_increase_years > 0 ? weightedSums.consecutive_increase_years / weightsTotal.consecutive_increase_years : null,
             hhi: hhi,
             top5_ratio: top5Ratio,
             style_breakdown: styleBreakdown

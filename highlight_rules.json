@@ -54,5 +54,16 @@
   },
   "system": {
     "update_cooldown_seconds": 10
+  },
+  "radar_chart": {
+    "benchmarks": {
+      "valuation_per": 15.0,
+      "profitability_roe": 9.0,
+      "income_yield": 2.5,
+      "quality_years": 3.0,
+      "diversification_top5": 40.0,
+      "safety_score": 50.0
+    },
+    "labels": ["割安性", "収益性", "インカム", "クオリティ", "分散度", "安全性"]
   }
 }

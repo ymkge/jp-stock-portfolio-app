@@ -231,17 +231,26 @@ class JPStockScraper(BaseScraper):
             profile_url = f"https://finance.yahoo.co.jp/quote/{code}.T/profile"
             profile_response = self._make_request(profile_url)
             if profile_response:
-                match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", profile_response.text)
-                if match:
-                    profile_data = json.loads(match.group(1))
-                    profile_items = profile_data.get("mainStocksProfile", {}).get("items", [])
-                    for item in profile_items:
-                        if item.get("head") == "決算":
-                            date_text = item.get("details", [{}])[0].get("text", "") # "2月末日"
+                soup = BeautifulSoup(profile_response.text, 'html.parser')
+                # "決算" というテキストを持つ th を探す
+                for th in soup.find_all('th'):
+                    if "決算" in th.get_text():
+                        # 隣の td またはそれに類する要素を取得
+                        td = th.find_next_sibling(['td', 'TableCell'])
+                        # Next.js化により構造が変わっている可能性があるため、親の sibling も確認
+                        if not td:
+                            # th の親(tr相当)の隣の td を探すなどのフォールバックが必要な場合もあるが、
+                            # 先程の構造では th の隣に td がある
+                            parent = th.parent
+                            if parent:
+                                td = parent.find_next_sibling('td')
+                        
+                        if td:
+                            date_text = td.get_text()
                             month_match = re.search(r"(\d+)月", date_text)
                             if month_match:
                                 settlement_month = month_match.group(0)
-                            break
+                        break
         except Exception as e:
             logger.warning(f"銘柄 {code} の決算月取得中にエラー: {e}")
         # --------------------
@@ -439,16 +448,33 @@ class USStockScraper(BaseScraper):
             performance_url = f"https://finance.yahoo.co.jp/quote/{code}/performance"
             performance_response = self._make_request(performance_url)
             if performance_response:
+                # まずは JSON 解析を試みる
                 match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", performance_response.text)
                 if match:
-                    performance_data = json.loads(match.group(1))
-                    settlement_items = performance_data.get("mainUsStocksSettlement", {}).get("annualSettlement", {}).get("items", [])
-                    for item in settlement_items:
-                        if item.get("head") == "決算日":
-                            date_text = item.get("details", [""])[0] # "2024年12月31日"
-                            month_match = re.search(r"(\d+)月", date_text)
-                            if month_match:
-                                settlement_month = month_match.group(0)
+                    try:
+                        performance_data = json.loads(match.group(1))
+                        settlement_items = performance_data.get("mainUsStocksSettlement", {}).get("annualSettlement", {}).get("items", [])
+                        for item in settlement_items:
+                            if item.get("head") == "決算日":
+                                date_text = item.get("details", [""])[0]
+                                month_match = re.search(r"(\d+)月", date_text)
+                                if month_match:
+                                    settlement_month = month_match.group(0)
+                                    break
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+
+                # JSON解析で取得できなかった場合、BeautifulSoup でフォールバック
+                if settlement_month == "N/A":
+                    soup = BeautifulSoup(performance_response.text, 'html.parser')
+                    for th in soup.find_all('th'):
+                        if "決算日" in th.get_text():
+                            td = th.find_next_sibling('td')
+                            if td:
+                                date_text = td.get_text()
+                                month_match = re.search(r"(\d+)月", date_text)
+                                if month_match:
+                                    settlement_month = month_match.group(0)
                             break
         except Exception as e:
             logger.warning(f"銘柄 {code} の決算月取得中にエラー: {e}")

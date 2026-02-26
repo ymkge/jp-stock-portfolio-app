@@ -221,7 +221,11 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(jpStock.industry || 'N/A');
             createCell(renderScoreAsStars(jpStock.score, jpStock.score_details, jpStock.asset_type));
             createCell(jpStock.price);
-            createCell(`${jpStock.change} (${jpStock.change_percent || 'N/A'})`);
+            
+            const changePercent = jpStock.change_percent;
+            const displayChangePercent = (changePercent && changePercent !== 'N/A') ? `${changePercent}%` : 'N/A';
+            createCell(`${jpStock.change} (${displayChangePercent})`);
+            
             createCell(formatMarketCap(jpStock.market_cap));
             createCell(jpStock.per, getHighlightClass('per', jpStock.per, jpStock.asset_type));
             createCell(jpStock.pbr, getHighlightClass('pbr', jpStock.pbr, jpStock.asset_type));
@@ -288,7 +292,11 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(fund.code);
             createCell(`<a href="https://finance.yahoo.co.jp/quote/${fund.code}" target="_blank">${fund.name}</a>`);
             createCell(fund.price);
-            createCell(`${fund.change} (${fund.change_percent || 'N/A'})`);
+            
+            const changePercent = fund.change_percent;
+            const displayChangePercent = (changePercent && changePercent !== 'N/A') ? `${changePercent}%` : 'N/A';
+            createCell(`${fund.change} (${displayChangePercent})`);
+            
             createCell(fund.net_assets);
             createCell(fund.trust_fee);
             const manageCell = document.createElement('td');
@@ -332,7 +340,11 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(`<a href="https://finance.yahoo.co.jp/quote/${usStock.code}" target="_blank">${usStock.name}</a>`);
             createCell(usStock.market || 'N/A');
             createCell(usStock.price);
-            createCell(`${usStock.change} (${usStock.change_percent || 'N/A'})`);
+            
+            const changePercent = usStock.change_percent;
+            const displayChangePercent = (changePercent && changePercent !== 'N/A') ? `${changePercent}%` : 'N/A';
+            createCell(`${usStock.change} (${displayChangePercent})`);
+            
             createCell(formatMarketCap(usStock.market_cap));
             createCell(usStock.per, getHighlightClass('per', usStock.per, usStock.asset_type));
             createCell(usStock.yield, getHighlightClass('yield', usStock.yield, usStock.asset_type));

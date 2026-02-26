@@ -427,7 +427,7 @@ class InvestTrustScraper(BaseScraper):
             return {
                 "code": code, "name": price_board.get("name", "N/A"),
                 "price": price_board.get("price", "N/A"), "change": price_board.get("changePrice", "N/A"),
-                "change_percent": f'{rate}%' if rate is not None else "N/A",
+                "change_percent": f'{rate}' if rate is not None else "N/A",
                 "net_assets": f"{net_assets_price}百万円" if net_assets_price != "N/A" else "N/A",
                 "trust_fee": f"{trust_fee_rate}%" if trust_fee_rate != "N/A" else "N/A",
                 "asset_type": "investment_trust", "currency": "JPY"

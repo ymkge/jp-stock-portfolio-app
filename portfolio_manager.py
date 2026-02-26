@@ -283,7 +283,7 @@ def calculate_holding_values(
         "memo": holding.get("memo"),
         "purchase_price": holding.get("purchase_price"),
         "quantity": holding.get("quantity"),
-        "price": price_in_jpy, # 円換算後の現在値を返す
+        "price": current_price_foreign if current_price_foreign is not None else price_in_jpy, # 外貨建て生価格を優先して返す
         "market_value": market_value,
         "profit_loss": profit_loss,
         "profit_loss_rate": profit_loss_rate,

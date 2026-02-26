@@ -405,8 +405,7 @@ document.addEventListener('DOMContentLoaded', () => {
             normalize(stats.weighted_yield, 0, 5),        // インカム (利回り 5%以上で100点)
             normalize(stats.weighted_years, 0, 10),       // クオリティ (増配10年以上で100点)
             100 - (stats.top5_ratio || 0),                // 分散度 (Top5占有率が低いほど高得点)
-            (safeGet(stats, 'style_breakdown.cyclicality.defensive') * 0.7) + 
-            (safeGet(stats, 'style_breakdown.marketCap.large') * 0.3) // 安全性
+            Math.min(100, (safeGet(stats, 'style_breakdown.safetyScore', 0) * (stats.hhi > 2500 ? 0.9 : 1.0))) // 安全性 (統合スコア × 分散ペナルティ)
         ];
 
         // ベンチマーク（市場平均）のスコアリング
@@ -538,25 +537,27 @@ document.addEventListener('DOMContentLoaded', () => {
             style: { value: 0, growth: 0, blend: 0 },
             marketCap: { large: 0, midSmall: 0 }
         };
+        let totalSafetyWeightedScore = 0;
 
         holdings.forEach(item => {
             const mv = parseFloat(item.market_value) || 0;
             if (mv <= 0) return;
 
-            // 1. 景気特性
+            // --- 1. 景気特性 ---
             const industry = item.industry || "その他";
             if (defensiveIndustries.includes(industry)) breakdown.cyclicality.defensive += mv;
             else if (cyclicalIndustries.includes(industry)) breakdown.cyclicality.cyclical += mv;
             else breakdown.cyclicality.other += mv;
 
-            // 2. バリュー/グロース
-            let per = null, pbr = null;
+            // --- 2. バリュー/グロース ---
+            let per = null, pbr = null, roe = null;
             const parseVal = (v) => {
                 if (typeof v === 'string') return parseFloat(v.replace(/,/g, '').replace('倍', '').replace('%', '').trim());
                 return (typeof v === 'number' && !isNaN(v)) ? v : null;
             };
             per = parseVal(item.per);
             pbr = parseVal(item.pbr);
+            roe = parseVal(item.roe);
 
             if (per !== null && pbr !== null) {
                 if (per < 15.0 && pbr < 1.0) breakdown.style.value += mv;
@@ -566,7 +567,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 breakdown.style.blend += mv;
             }
 
-            // 3. 時価総額区分 (大型: 1兆円以上)
+            // --- 3. 時価総額区分 (大型: 1兆円以上) ---
             let mcap = 0;
             const mcapVal = item.market_cap;
             if (typeof mcapVal === 'string') {
@@ -579,6 +580,33 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (mcap >= 1000000000000) breakdown.marketCap.large += mv;
             else breakdown.marketCap.midSmall += mv;
+
+            // --- 4. 安全性スコアの計算 (統合版ロジック) ---
+            let assetSafetyScore = 0;
+            if (item.asset_type === 'investment_trust') {
+                // 投資信託（インデックス等）は高い安全性を付与
+                assetSafetyScore = 100;
+            } else if (item.asset_type === 'us_stock') {
+                // 米国個別株はユーザーポリシーによりリスク資産（10点）として扱う
+                assetSafetyScore = 10;
+            } else if (item.asset_type === 'jp_stock') {
+                // 国内個別株は多角的に判定
+                let jpPoints = 0;
+                if (defensiveIndustries.includes(industry)) jpPoints += 25; // 業種
+                if (mcap >= 1000000000000) jpPoints += 25; // 大型
+                else if (mcap >= 300000000000) jpPoints += 12.5; // 中堅も半分評価
+                
+                const incYears = parseInt(item.consecutive_increase_years || 0);
+                if (incYears >= 3) jpPoints += 25; // 連続増配
+
+                if (pbr !== null && pbr <= 1.2) jpPoints += 25; // 低PBR（資産の安全性）
+
+                // 収益性補正（赤字ならスコア半減）
+                if (roe !== null && roe < 0) jpPoints *= 0.5;
+                
+                assetSafetyScore = jpPoints;
+            }
+            totalSafetyWeightedScore += assetSafetyScore * mv;
         });
 
         const toPct = (val) => (val / totalMv) * 100;
@@ -596,7 +624,8 @@ document.addEventListener('DOMContentLoaded', () => {
             marketCap: {
                 large: toPct(breakdown.marketCap.large),
                 midSmall: toPct(breakdown.marketCap.midSmall)
-            }
+            },
+            safetyScore: totalSafetyWeightedScore / totalMv
         };
     }
 

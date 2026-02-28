@@ -297,7 +297,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const profitLossRateClass = isNaN(profitLossRate) ? '' : (profitLossRate >= 0 ? 'profit' : 'loss');
 
             createCell(item.code);
-            createCell(item.name);
+            
+            // 銘柄名と購入シグナルの表示
+            let nameHtml = item.name;
+            if (item.buy_signal) {
+                nameHtml += renderBuySignalBadge(item.buy_signal);
+            }
+            createCell(nameHtml);
+
             createCell(item.industry || 'N/A');
             createCell(item.asset_type === 'jp_stock' ? '国内株式' : (item.asset_type === 'investment_trust' ? '投資信託' : (item.asset_type === 'us_stock' ? '米国株式' : 'N/A')));
             createCell(item.security_company || '-'); 
@@ -905,6 +912,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (retryTimer) clearInterval(retryTimer);
     });
 
+    function renderBuySignalBadge(signal) {
+        if (!signal) return '';
+        const reasons = signal.reasons.join('\n');
+        const levelClass = `buy-signal-level-${signal.level}`;
+        const diamondClass = signal.is_diamond ? 'buy-signal-diamond' : '';
+
+        return `
+            <span class="buy-signal-badge ${levelClass} ${diamondClass}" title="判定理由:\n${reasons}">
+                <span class="buy-signal-icon-inner">${signal.icon}</span>
+                ${signal.label}
+            </span>
+        `;
+    }
+
     fetchHighlightRules();
     fetchAndRenderAnalysisData();
-});
+    });

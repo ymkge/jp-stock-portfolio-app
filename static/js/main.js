@@ -212,9 +212,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // 銘柄名と購入シグナルの表示
             let nameHtml = `<a href="https://finance.yahoo.co.jp/quote/${jpStock.code}.T" target="_blank">${jpStock.name}</a>`;
             if (jpStock.buy_signal) {
-                const signal = jpStock.buy_signal;
-                const reasons = signal.reasons.join('\n');
-                nameHtml += ` <span class="buy-signal-icon" title="判定理由:\n${reasons}">${signal.icon}</span>`;
+                nameHtml += renderBuySignalBadge(jpStock.buy_signal);
             }
             createCell(nameHtml);
 
@@ -429,6 +427,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!history || Object.keys(history).length === 0) return 'N/A';
         return Object.keys(history).sort((a, b) => b - a).map(year => `${year}年: ${history[year]}円`).join(' | ');
     }
+    function renderBuySignalBadge(signal) {
+        if (!signal) return '';
+        const reasons = signal.reasons.join('\n');
+        const levelClass = `buy-signal-level-${signal.level}`;
+        const diamondClass = signal.is_diamond ? 'buy-signal-diamond' : '';
+        
+        return `
+            <span class="buy-signal-badge ${levelClass} ${diamondClass}" title="判定理由:\n${reasons}">
+                <span class="buy-signal-icon-inner">${signal.icon}</span>
+                ${signal.label}
+            </span>
+        `;
+    }
+
     function renderScoreAsStars(score, details, assetType) {
         if (assetType !== 'jp_stock') return 'N/A';
         if (score === -1) return `<span class="score-na" title="評価指標なし">N/A</span>`;

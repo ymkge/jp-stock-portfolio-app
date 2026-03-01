@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const industryFilterSelect = document.getElementById('industry-filter');
     const accountTypeFilterSelect = document.getElementById('account-type-filter');
     const securityCompanyFilterSelect = document.getElementById('security-company-filter');
+    const buySignalFilterSelect = document.getElementById('buy-signal-filter');
     const downloadAnalysisCsvButton = document.getElementById('download-analysis-csv-button');
     const chartToggleBtns = document.querySelectorAll('.chart-toggle-btn');
     const loadingIndicator = document.getElementById('loading-indicator');
@@ -256,6 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const selectedIndustry = industryFilterSelect.value;
         const selectedAccountType = accountTypeFilterSelect.value;
         const selectedSecurityCompany = securityCompanyFilterSelect.value;
+        const selectedBuySignal = buySignalFilterSelect.value;
 
         filteredHoldingsData = allHoldingsData.filter(item => {
             const matchesText = String(item.code).toLowerCase().includes(filterText) ||
@@ -263,7 +265,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const matchesIndustry = !selectedIndustry || item.industry === selectedIndustry || (selectedIndustry === 'N/A' && !item.industry);
             const matchesAccountType = !selectedAccountType || item.account_type === selectedAccountType;
             const matchesSecurityCompany = !selectedSecurityCompany || (item.security_company || '-') === selectedSecurityCompany;
-            return matchesText && matchesIndustry && matchesAccountType && matchesSecurityCompany;
+            
+            const matchesBuySignal = !selectedBuySignal || (
+                item.buy_signal && (
+                    (selectedBuySignal === 'attention' && item.buy_signal.level >= 1) ||
+                    (selectedBuySignal === 'chance' && item.buy_signal.level >= 2) ||
+                    (selectedBuySignal === 'diamond' && item.buy_signal.is_diamond)
+                )
+            );
+
+            return matchesText && matchesIndustry && matchesAccountType && matchesSecurityCompany && matchesBuySignal;
         });
 
         sortHoldings(filteredHoldingsData);
@@ -882,6 +893,7 @@ document.addEventListener('DOMContentLoaded', () => {
     industryFilterSelect.addEventListener('change', filterAndRender);
     accountTypeFilterSelect.addEventListener('change', filterAndRender);
     securityCompanyFilterSelect.addEventListener('change', filterAndRender);
+    buySignalFilterSelect.addEventListener('change', filterAndRender);
     document.querySelector('#analysis-table thead').addEventListener('click', (event) => {
         const header = event.target.closest('.sortable');
         if (!header) return;

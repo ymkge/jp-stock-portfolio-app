@@ -559,11 +559,11 @@ def create_analysis_csv_data(data: list[dict]) -> str:
 
     headers = [
         "code", "name", "asset_type", "market", "currency", "security_company", "account_type", "industry", "quantity", "purchase_price", "price",
-        "fibonacci", "rci_26", "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend", "estimated_annual_dividend_after_tax", "dividend_contribution", "memo"
+        "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend", "estimated_annual_dividend_after_tax", "dividend_contribution", "memo"
     ]
     display_headers = [
         "コード", "名称", "資産タイプ", "市場", "通貨", "証券会社", "口座種別", "業種", "数量", "取得単価", "現在値",
-        "フィボナッチ(%)", "RCI(26)", "評価額", "損益", "損益率(%)", "年間配当", "年間配当(税引後)", "配当構成比 (%)", "備考"
+        "評価額", "損益", "損益率(%)", "年間配当", "年間配当(税引後)", "配当構成比 (%)", "備考"
     ]
     writer.writerow(display_headers)
 
@@ -587,18 +587,6 @@ def create_analysis_csv_data(data: list[dict]) -> str:
                 value = item.get("currency", "")
             elif h == "industry" and item.get("asset_type") == "investment_trust":
                 value = "投資信託" # 投資信託の業種は「投資信託」とする
-            elif h == 'fibonacci' and item.get("asset_type") == "jp_stock":
-                fib = item.get("fibonacci")
-                if fib and isinstance(fib, dict) and fib.get("retracement") is not None:
-                    value = f"{fib['retracement']:.1f}"
-                else:
-                    value = "-"
-            elif h == 'rci_26' and item.get("asset_type") == "jp_stock":
-                rci = item.get("rci_26")
-                if rci is not None:
-                    value = f"{rci:.1f}"
-                else:
-                    value = "-"
             elif h in ["estimated_annual_dividend", "estimated_annual_dividend_after_tax"] and item.get("asset_type") == "investment_trust":
                 value = "" # 投資信託には年間配当は表示しない
             else:

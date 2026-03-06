@@ -403,23 +403,32 @@ document.addEventListener('DOMContentLoaded', () => {
             return path.split('.').reduce((acc, part) => acc && acc[part], obj) || def;
         };
 
-        // 各軸のスコアリング
+        // 各軸のスコアリング (7軸)
         const scores = [
-            normalize(stats.weighted_per, 10, 40, true),   // 割安性 (PER 10倍で100点, 40倍で0点)
-            normalize(stats.weighted_roe, 0, 20),         // 収益性 (ROE 20%以上で100点)
-            normalize(stats.weighted_yield, 0, 5),        // インカム (利回り 5%以上で100点)
-            normalize(stats.weighted_years, 0, 10),       // クオリティ (増配10年以上で100点)
-            100 - (stats.top5_ratio || 0),                // 分散度 (Top5占有率が低いほど高得点)
-            Math.min(100, (safeGet(stats, 'style_breakdown.safetyScore', 0) * (stats.hhi > 2500 ? 0.9 : 1.0))) // 安全性 (統合スコア × 分散ペナルティ)
+            // 1. 割安性 (PER + PBR の平均)
+            (normalize(stats.weighted_per, 10, 40, true) + normalize(stats.weighted_pbr, 0.7, 2.5, true)) / 2,
+            // 2. 収益性 (ROE 20%以上で100点)
+            normalize(stats.weighted_roe, 0, 20),
+            // 3. インカム (利回り 5%以上で100点)
+            normalize(stats.weighted_yield, 0, 5),
+            // 4. クオリティ (増配10年以上で100点)
+            normalize(stats.weighted_years, 0, 10),
+            // 5. モメンタム (トレンド星数: 5個で100点)
+            normalize(stats.weighted_momentum, 0, 5),
+            // 6. 分散度 (Top5占有率 + HHI の平均)
+            (normalize(stats.top5_ratio, 20, 60, true) + normalize(stats.hhi, 1000, 3000, true)) / 2,
+            // 7. 安全性 (統合スコア × 分散ペナルティ)
+            Math.min(100, (safeGet(stats, 'style_breakdown.safetyScore', 0) * (stats.hhi > 2500 ? 0.9 : 1.0)))
         ];
 
         // ベンチマーク（市場平均）のスコアリング
         const benchmarkScores = [
-            normalize(bm.valuation_per, 10, 40, true),
+            (normalize(bm.valuation_per, 10, 40, true) + normalize(bm.valuation_pbr, 0.7, 2.5, true)) / 2,
             normalize(bm.profitability_roe, 0, 20),
             normalize(bm.income_yield, 0, 5),
             normalize(bm.quality_years, 0, 10),
-            100 - (bm.diversification_top5 || 40),
+            normalize(bm.momentum_score, 0, 5),
+            (normalize(bm.diversification_top5, 20, 60, true) + normalize(bm.diversification_hhi, 1000, 3000, true)) / 2,
             bm.safety_score || 50
         ];
 
@@ -480,9 +489,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalMarketValue = holdings.reduce((sum, item) => sum + (parseFloat(item.market_value) || 0), 0);
         if (totalMarketValue === 0) return null;
 
-        const metrics = ['per', 'pbr', 'roe', 'yield', 'consecutive_increase_years'];
-        const weightedSums = { per: 0, pbr: 0, roe: 0, yield: 0, consecutive_increase_years: 0 };
-        const weightsTotal = { per: 0, pbr: 0, roe: 0, yield: 0, consecutive_increase_years: 0 };
+        const metrics = ['per', 'pbr', 'roe', 'yield', 'consecutive_increase_years', 'momentum'];
+        const weightedSums = { per: 0, pbr: 0, roe: 0, yield: 0, consecutive_increase_years: 0, momentum: 0 };
+        const weightsTotal = { per: 0, pbr: 0, roe: 0, yield: 0, consecutive_increase_years: 0, momentum: 0 };
         const assetMarketValues = {};
 
         holdings.forEach(item => {
@@ -494,6 +503,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             metrics.forEach(m => {
                 let val = item[m];
+                
+                // モメンタム（テクニカル星数）の集計
+                if (m === 'momentum' && item.score_details) {
+                    const d = item.score_details;
+                    val = (d.trend_short || 0) + (d.trend_medium || 0) + (d.trend_signal || 0) + (d.fibonacci || 0) + (d.rci || 0);
+                }
+
                 if (typeof val === 'string') {
                     val = parseFloat(val.replace(/,/g, '').replace('倍', '').replace('%', '').trim());
                 }
@@ -525,6 +541,7 @@ document.addEventListener('DOMContentLoaded', () => {
             weighted_roe: weightsTotal.roe > 0 ? weightedSums.roe / weightsTotal.roe : null,
             weighted_yield: weightsTotal.yield > 0 ? weightedSums.yield / weightsTotal.yield : null,
             weighted_years: weightsTotal.consecutive_increase_years > 0 ? weightedSums.consecutive_increase_years / weightsTotal.consecutive_increase_years : null,
+            weighted_momentum: weightsTotal.momentum > 0 ? weightedSums.momentum / weightsTotal.momentum : null,
             hhi: hhi,
             top5_ratio: top5Ratio,
             style_breakdown: styleBreakdown

@@ -230,10 +230,10 @@ def calculate_sell_signal(stock_data: dict) -> Optional[dict]:
             is_level2 = True
             reasons.append("RSIピークアウト")
 
-    # --- Level 3: 損切検討 (トレンド崩壊) ---
+    # --- Level 3: 長期調整 (トレンド崩壊) ---
     if price > 0 and ma_75 and price < ma_75:
         is_level3 = True
-        reasons.append("75日線割れ(トレンド崩壊)")
+        reasons.append("75日線割れ(長期調整)")
 
     # レベルの決定 (高い方を優先)
     level = 0

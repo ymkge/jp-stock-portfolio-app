@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const showOnlyManagedAssetsCheckbox = document.getElementById('show-only-managed-assets-checkbox');
     const showOnlyAttentionAssetsCheckbox = document.getElementById('show-only-attention-assets-checkbox');
     const showOnlyOpportunityAssetsCheckbox = document.getElementById('show-only-opportunity-assets-checkbox');
+    const showOnlyOverheatedAssetsCheckbox = document.getElementById('show-only-overheated-assets-checkbox');
     const tabNav = document.querySelector('.tab-nav');
 
     // --- モーダル関連DOM要素 ---
@@ -135,8 +136,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function filterAndRender() {
         const filterText = filterInput.value.toLowerCase();
         const showOnlyManaged = showOnlyManagedAssetsCheckbox.checked;
-        const showOnlyAttention = showOnlyAttentionAssetsCheckbox.checked;
-        const showOnlyOpportunity = showOnlyOpportunityAssetsCheckbox.checked;
+        const showStrictDip = showOnlyAttentionAssetsCheckbox.checked;
+        const showStrictLow = showOnlyOpportunityAssetsCheckbox.checked;
+        const showOverheated = showOnlyOverheatedAssetsCheckbox.checked;
         
         let filteredAssets = allAssetsData.filter(asset => asset.asset_type === activeTab);
 
@@ -144,12 +146,25 @@ document.addEventListener('DOMContentLoaded', () => {
             filteredAssets = filteredAssets.filter(asset => asset.holdings && asset.holdings.length > 0);
         }
 
-        if (showOnlyAttention) {
-            filteredAssets = filteredAssets.filter(asset => asset.buy_signal && asset.buy_signal.level >= 1);
+        if (showStrictDip) {
+            // 厳選・押し目: 💎 かつ 購入シグナル(レベル1以上)
+            filteredAssets = filteredAssets.filter(asset => 
+                asset.buy_signal && asset.buy_signal.is_diamond && asset.buy_signal.level >= 1
+            );
         }
 
-        if (showOnlyOpportunity) {
-            filteredAssets = filteredAssets.filter(asset => asset.buy_signal && asset.buy_signal.level >= 2);
+        if (showStrictLow) {
+            // 厳選・安値圏: 💎 かつ 長期調整(レベル3)
+            filteredAssets = filteredAssets.filter(asset => 
+                asset.buy_signal && asset.buy_signal.is_diamond && asset.sell_signal && asset.sell_signal.level === 3
+            );
+        }
+
+        if (showOverheated) {
+            // 過熱・見送り: 過熱シグナル(レベル1 or 2)
+            filteredAssets = filteredAssets.filter(asset => 
+                asset.sell_signal && (asset.sell_signal.level === 1 || asset.sell_signal.level === 2)
+            );
         }
 
         if (filterText) {
@@ -688,6 +703,7 @@ document.addEventListener('DOMContentLoaded', () => {
     showOnlyManagedAssetsCheckbox.addEventListener('input', filterAndRender);
     showOnlyAttentionAssetsCheckbox.addEventListener('input', filterAndRender);
     showOnlyOpportunityAssetsCheckbox.addEventListener('input', filterAndRender);
+    showOnlyOverheatedAssetsCheckbox.addEventListener('input', filterAndRender);
     
     document.querySelectorAll('.select-all-assets').forEach(checkbox => {
         checkbox.addEventListener('change', (event) => {

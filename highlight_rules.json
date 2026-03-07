@@ -62,15 +62,15 @@
     "display": {
       "level_1": {
         "icon": "⚠️",
-        "label": "利確注意"
+        "label": "過熱気味"
       },
       "level_2": {
         "icon": "🚨",
-        "label": "利確推奨"
+        "label": "ピークアウト"
       },
       "level_3": {
-        "icon": "📉",
-        "label": "損切検討"
+        "icon": "🌀",
+        "label": "長期調整"
       }
     }
   },

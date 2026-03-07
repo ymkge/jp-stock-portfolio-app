@@ -267,11 +267,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const matchesSecurityCompany = !selectedSecurityCompany || (item.security_company || '-') === selectedSecurityCompany;
             
             const matchesBuySignal = !selectedBuySignal || (
-                item.buy_signal && (
-                    (selectedBuySignal === 'attention' && item.buy_signal.level >= 1) ||
-                    (selectedBuySignal === 'chance' && item.buy_signal.level >= 2) ||
-                    (selectedBuySignal === 'diamond' && item.buy_signal.is_diamond)
-                )
+                (selectedBuySignal === 'strict-dip' && item.buy_signal && item.buy_signal.is_diamond && item.buy_signal.level >= 1) ||
+                (selectedBuySignal === 'strict-low' && item.buy_signal && item.buy_signal.is_diamond && item.sell_signal && item.sell_signal.level === 3) ||
+                (selectedBuySignal === 'overheated' && item.sell_signal && (item.sell_signal.level === 1 || item.sell_signal.level === 2))
             );
 
             return matchesText && matchesIndustry && matchesAccountType && matchesSecurityCompany && matchesBuySignal;

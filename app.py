@@ -150,6 +150,111 @@ BUY_SIGNAL_DISPLAY = get_config("buy_signal.display", {
     }
 })
 
+# --- 売却シグナルの表示設定 ---
+SELL_SIGNAL_DISPLAY = get_config("sell_signal.display", {
+    "level_1": {
+        "icon": "⚠️",
+        "label": "利確注意",
+    },
+    "level_2": {
+        "icon": "🚨",
+        "label": "利確推奨",
+    },
+    "level_3": {
+        "icon": "📉",
+        "label": "損切検討",
+    }
+})
+
+def calculate_sell_signal(stock_data: dict) -> Optional[dict]:
+    """
+    売却シグナル（利確・損切フラグ）を判定する。
+    """
+    if stock_data.get("asset_type") != "jp_stock":
+        return None
+
+    reasons = []
+    is_level1 = False # 利確注意
+    is_level2 = False # 利確推奨
+    is_level3 = False # 損切検討
+
+    # --- 共通データの取得 ---
+    rsi_14 = stock_data.get("rsi_14")
+    rsi_14_prev = stock_data.get("rsi_14_prev")
+    rci_26 = stock_data.get("rci_26")
+    
+    # 価格と移動平均
+    price = 0.0
+    try:
+        price_val = stock_data.get("price")
+        if isinstance(price_val, str): price_val = price_val.replace(',', '')
+        price = float(price_val or 0)
+    except (ValueError, TypeError): pass
+
+    ma_5 = stock_data.get("moving_average_5")
+    ma_25 = stock_data.get("moving_average_25")
+    ma_75 = stock_data.get("moving_average_75")
+
+    # 25日乖離率 (計算済みのものを使用、なければ計算)
+    # scraper.py を見ると price_25d_deviation は返されていないが、
+    # _calculate_moving_average の結果 ma_25 はある。
+    deviation_25 = 0.0
+    if price > 0 and ma_25:
+        deviation_25 = (price - ma_25) / ma_25 * 100
+
+    # --- Level 1: 利確注意 (過熱感) ---
+    rsi_overbought = get_config("sell_signal.thresholds.rsi_overbought", 75.0)
+    if rsi_14 is not None and rsi_14 >= rsi_overbought:
+        is_level1 = True
+        reasons.append(f"RSI買われすぎ({rsi_14:.1f})")
+
+    rci_top = get_config("sell_signal.thresholds.rci_top", 85.0)
+    if rci_26 is not None and rci_26 >= rci_top:
+        is_level1 = True
+        reasons.append(f"RCI高値圏({rci_26:.1f})")
+
+    dev_overbought = get_config("sell_signal.thresholds.deviation_overbought", 15.0)
+    if deviation_25 >= dev_overbought:
+        is_level1 = True
+        reasons.append(f"25日乖離過大({deviation_25:.1f}%)")
+
+    # --- Level 2: 利確推奨 (過熱からの反転) ---
+    if is_level1:
+        # 5日線が25日線を下回る（デッドクロス）または5日線を価格が下回る
+        if price > 0 and ma_5 and price < ma_5:
+            is_level2 = True
+            reasons.append("5日線割れ")
+        
+        # RSIが前日比で低下
+        if rsi_14 is not None and rsi_14_prev is not None and rsi_14 < rsi_14_prev:
+            is_level2 = True
+            reasons.append("RSIピークアウト")
+
+    # --- Level 3: 損切検討 (トレンド崩壊) ---
+    if price > 0 and ma_75 and price < ma_75:
+        is_level3 = True
+        reasons.append("75日線割れ(トレンド崩壊)")
+
+    # レベルの決定 (高い方を優先)
+    level = 0
+    if is_level3:
+        level = 3
+    elif is_level2:
+        level = 2
+    elif is_level1:
+        level = 1
+
+    if level == 0:
+        return None
+
+    config = SELL_SIGNAL_DISPLAY[f"level_{level}"]
+    return {
+        "level": level,
+        "icon": config["icon"],
+        "label": config["label"],
+        "reasons": reasons
+    }
+
 def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     """
     購入シグナル（注目フラグ）を判定する。
@@ -380,8 +485,9 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
                 score, details = calculate_score(merged_data)
                 merged_data["score"] = score
                 merged_data["score_details"] = details
-                # 購入シグナルの判定を追加
+                # シグナルの判定を追加
                 merged_data["buy_signal"] = calculate_buy_signal(merged_data)
+                merged_data["sell_signal"] = calculate_sell_signal(merged_data)
         
         processed_data.append(merged_data)
         

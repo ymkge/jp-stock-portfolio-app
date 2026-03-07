@@ -309,10 +309,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             createCell(item.code);
             
-            // 銘柄名と購入シグナルの表示
+            // 銘柄名とシグナルの表示
             let nameHtml = item.name;
             if (item.buy_signal) {
                 nameHtml += renderBuySignalBadge(item.buy_signal);
+            }
+            if (item.sell_signal) {
+                nameHtml += renderSellSignalBadge(item.sell_signal);
             }
             createCell(nameHtml);
 
@@ -936,6 +939,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         return `
             <span class="buy-signal-badge ${levelClass} ${diamondClass}" title="判定理由:\n${reasons}">
+                <span class="buy-signal-icon-inner">${signal.icon}</span>
+                ${signal.label}
+            </span>
+        `;
+    }
+
+    function renderSellSignalBadge(signal) {
+        if (!signal) return '';
+        const reasons = signal.reasons.join('\n');
+        const levelClass = `sell-signal-level-${signal.level}`;
+
+        return `
+            <span class="sell-signal-badge ${levelClass}" title="判定理由:\n${reasons}">
                 <span class="buy-signal-icon-inner">${signal.icon}</span>
                 ${signal.label}
             </span>

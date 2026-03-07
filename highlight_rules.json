@@ -52,6 +52,28 @@
       }
     }
   },
+  "sell_signal": {
+    "thresholds": {
+      "rsi_overbought": 75.0,
+      "rci_top": 85.0,
+      "deviation_overbought": 15.0,
+      "ma_days_dead_cross": 25
+    },
+    "display": {
+      "level_1": {
+        "icon": "⚠️",
+        "label": "利確注意"
+      },
+      "level_2": {
+        "icon": "🚨",
+        "label": "利確推奨"
+      },
+      "level_3": {
+        "icon": "📉",
+        "label": "損切検討"
+      }
+    }
+  },
   "system": {
     "update_cooldown_seconds": 10
   },

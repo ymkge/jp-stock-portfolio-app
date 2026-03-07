@@ -435,6 +435,50 @@ button {
     font-size: 1.1em;
 }
 
+/* --- 売却注目フラグのスタイル --- */
+.sell-signal-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.85em;
+    font-weight: bold;
+    margin-left: 6px;
+    cursor: help;
+    white-space: nowrap;
+    vertical-align: middle;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+
+.sell-signal-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+/* Level 1: 利確注意 (⚠️) */
+.sell-signal-level-1 {
+    background-color: #fff3cd;
+    color: #856404;
+    border-color: #ffeeba;
+}
+
+/* Level 2: 利確推奨 (🚨) */
+.sell-signal-level-2 {
+    background-color: #f8d7da;
+    color: #721c24;
+    border-color: #f5c6cb;
+    animation: pulse-red 2.5s infinite ease-in-out;
+}
+
+/* Level 3: 損切検討 (📉) */
+.sell-signal-level-3 {
+    background-color: #e9ecef;
+    color: #495057;
+    border-color: #ced4da;
+}
+
 @keyframes pulse-red {
     0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4); }
     70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }

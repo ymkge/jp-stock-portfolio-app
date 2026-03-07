@@ -148,16 +148,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (showStrictDip) {
             // 厳選・押し目: 💎 かつ 購入シグナル(レベル1以上)
-            filteredAssets = filteredAssets.filter(asset => 
-                asset.buy_signal && asset.buy_signal.is_diamond && asset.buy_signal.level >= 1
-            );
+            filteredAssets = filteredAssets.filter(asset => {
+                const isDiamond = asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true);
+                return isDiamond && asset.buy_signal && asset.buy_signal.level >= 1;
+            });
         }
 
         if (showStrictLow) {
             // 厳選・安値圏: 💎 かつ 長期調整(レベル3)
-            filteredAssets = filteredAssets.filter(asset => 
-                asset.buy_signal && asset.buy_signal.is_diamond && asset.sell_signal && asset.sell_signal.level === 3
-            );
+            filteredAssets = filteredAssets.filter(asset => {
+                const isDiamond = asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true);
+                return isDiamond && asset.sell_signal && asset.sell_signal.level === 3;
+            });
         }
 
         if (showOverheated) {
@@ -226,11 +228,12 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // 銘柄名とシグナルの表示
             let nameHtml = `<a href="https://finance.yahoo.co.jp/quote/${jpStock.code}.T" target="_blank">${jpStock.name}</a>`;
+            const isDiamond = jpStock.is_diamond || (jpStock.buy_signal && jpStock.buy_signal.is_diamond);
             if (jpStock.buy_signal) {
-                nameHtml += renderBuySignalBadge(jpStock.buy_signal);
+                nameHtml += renderBuySignalBadge(jpStock.buy_signal, isDiamond);
             }
             if (jpStock.sell_signal) {
-                nameHtml += renderSellSignalBadge(jpStock.sell_signal);
+                nameHtml += renderSellSignalBadge(jpStock.sell_signal, isDiamond);
             }
             createCell(nameHtml);
 
@@ -445,11 +448,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!history || Object.keys(history).length === 0) return 'N/A';
         return Object.keys(history).sort((a, b) => b - a).map(year => `${year}年: ${history[year]}円`).join(' | ');
     }
-    function renderBuySignalBadge(signal) {
+    function renderBuySignalBadge(signal, isDiamond = false) {
         if (!signal) return '';
         const reasons = signal.reasons.join('\n');
         const levelClass = `buy-signal-level-${signal.level}`;
-        const diamondClass = signal.is_diamond ? 'buy-signal-diamond' : '';
+        const diamondClass = isDiamond ? 'buy-signal-diamond' : '';
         
         return `
             <span class="buy-signal-badge ${levelClass} ${diamondClass}" title="判定理由:\n${reasons}">
@@ -459,13 +462,14 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
     }
 
-    function renderSellSignalBadge(signal) {
+    function renderSellSignalBadge(signal, isDiamond = false) {
         if (!signal) return '';
         const reasons = signal.reasons.join('\n');
         const levelClass = `sell-signal-level-${signal.level}`;
+        const diamondClass = isDiamond ? 'buy-signal-diamond' : ''; // 売却側にもダイヤモンドの装飾を適用可能にする
         
         return `
-            <span class="sell-signal-badge ${levelClass}" title="判定理由:\n${reasons}">
+            <span class="sell-signal-badge ${levelClass} ${diamondClass}" title="判定理由:\n${reasons}">
                 <span class="buy-signal-icon-inner">${signal.icon}</span>
                 ${signal.label}
             </span>

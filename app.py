@@ -485,6 +485,15 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
                 score, details = calculate_score(merged_data)
                 merged_data["score"] = score
                 merged_data["score_details"] = details
+                
+                # ダイヤモンド（優良銘柄）判定を独立して保持
+                f_score = details.get("per", 0) + details.get("pbr", 0) + details.get("roe", 0) + \
+                          details.get("yield", 0) + details.get("consecutive_increase", 0)
+                f_diamond = get_config("buy_signal.thresholds.fundamental_diamond", 4)
+                merged_data["is_diamond"] = f_score >= f_diamond
+                
+                logger.debug(f"銘柄 {code} ({merged_data.get('name')}): ファンダスコア={f_score}, ダイヤモンド判定={merged_data['is_diamond']}")
+
                 # シグナルの判定を追加
                 merged_data["buy_signal"] = calculate_buy_signal(merged_data)
                 merged_data["sell_signal"] = calculate_sell_signal(merged_data)

@@ -266,9 +266,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const matchesAccountType = !selectedAccountType || item.account_type === selectedAccountType;
             const matchesSecurityCompany = !selectedSecurityCompany || (item.security_company || '-') === selectedSecurityCompany;
             
+            const isDiamond = item.is_diamond === true || (item.buy_signal && item.buy_signal.is_diamond === true);
             const matchesBuySignal = !selectedBuySignal || (
-                (selectedBuySignal === 'strict-dip' && item.buy_signal && item.buy_signal.is_diamond && item.buy_signal.level >= 1) ||
-                (selectedBuySignal === 'strict-low' && item.buy_signal && item.buy_signal.is_diamond && item.sell_signal && item.sell_signal.level === 3) ||
+                (selectedBuySignal === 'strict-dip' && isDiamond && item.buy_signal && item.buy_signal.level >= 1) ||
+                (selectedBuySignal === 'strict-low' && isDiamond && item.sell_signal && item.sell_signal.level === 3) ||
                 (selectedBuySignal === 'overheated' && item.sell_signal && (item.sell_signal.level === 1 || item.sell_signal.level === 2))
             );
 
@@ -309,11 +310,12 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // 銘柄名とシグナルの表示
             let nameHtml = item.name;
+            const isDiamond = item.is_diamond || (item.buy_signal && item.buy_signal.is_diamond);
             if (item.buy_signal) {
-                nameHtml += renderBuySignalBadge(item.buy_signal);
+                nameHtml += renderBuySignalBadge(item.buy_signal, isDiamond);
             }
             if (item.sell_signal) {
-                nameHtml += renderSellSignalBadge(item.sell_signal);
+                nameHtml += renderSellSignalBadge(item.sell_signal, isDiamond);
             }
             createCell(nameHtml);
 
@@ -929,11 +931,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (retryTimer) clearInterval(retryTimer);
     });
 
-    function renderBuySignalBadge(signal) {
+    function renderBuySignalBadge(signal, isDiamond = false) {
         if (!signal) return '';
         const reasons = signal.reasons.join('\n');
         const levelClass = `buy-signal-level-${signal.level}`;
-        const diamondClass = signal.is_diamond ? 'buy-signal-diamond' : '';
+        const diamondClass = isDiamond ? 'buy-signal-diamond' : '';
 
         return `
             <span class="buy-signal-badge ${levelClass} ${diamondClass}" title="判定理由:\n${reasons}">
@@ -943,13 +945,14 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
     }
 
-    function renderSellSignalBadge(signal) {
+    function renderSellSignalBadge(signal, isDiamond = false) {
         if (!signal) return '';
         const reasons = signal.reasons.join('\n');
         const levelClass = `sell-signal-level-${signal.level}`;
+        const diamondClass = isDiamond ? 'buy-signal-diamond' : '';
 
         return `
-            <span class="sell-signal-badge ${levelClass}" title="判定理由:\n${reasons}">
+            <span class="sell-signal-badge ${levelClass} ${diamondClass}" title="判定理由:\n${reasons}">
                 <span class="buy-signal-icon-inner">${signal.icon}</span>
                 ${signal.label}
             </span>

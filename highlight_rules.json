@@ -33,7 +33,7 @@
   "buy_signal": {
     "thresholds": {
       "fundamental_min": 3,
-      "fundamental_diamond": 6,
+      "fundamental_diamond": 4,
       "rsi_oversold": 30.0,
       "rci_bottom": -80.0,
       "fibonacci_min": 61.8,

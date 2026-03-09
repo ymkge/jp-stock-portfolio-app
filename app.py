@@ -154,35 +154,35 @@ BUY_SIGNAL_DISPLAY = get_config("buy_signal.display", {
 SELL_SIGNAL_DISPLAY = get_config("sell_signal.display", {
     "level_1": {
         "icon": "⚠️",
-        "label": "利確注意",
+        "label": "過熱気味",
     },
     "level_2": {
         "icon": "🚨",
-        "label": "利確推奨",
+        "label": "ピークアウト",
     },
     "level_3": {
-        "icon": "📉",
-        "label": "損切検討",
+        "icon": "🌀",
+        "label": "長期調整",
     }
 })
 
 def calculate_sell_signal(stock_data: dict) -> Optional[dict]:
     """
-    売却シグナル（利確・損切フラグ）を判定する。
+    売却シグナル（過熱・調整フラグ）を判定する。
     """
     if stock_data.get("asset_type") != "jp_stock":
         return None
 
     reasons = []
-    is_level1 = False # 利確注意
-    is_level2 = False # 利確推奨
-    is_level3 = False # 損切検討
+    is_level1 = False # 過熱気味
+    is_level2 = False # ピークアウト
+    is_level3 = False # 長期調整
 
     # --- 共通データの取得 ---
     rsi_14 = stock_data.get("rsi_14")
     rsi_14_prev = stock_data.get("rsi_14_prev")
     rci_26 = stock_data.get("rci_26")
-    
+
     # 価格と移動平均
     price = 0.0
     try:
@@ -202,7 +202,7 @@ def calculate_sell_signal(stock_data: dict) -> Optional[dict]:
     if price > 0 and ma_25:
         deviation_25 = (price - ma_25) / ma_25 * 100
 
-    # --- Level 1: 利確注意 (過熱感) ---
+    # --- Level 1: 過熱気味 (買われすぎ) ---
     rsi_overbought = get_config("sell_signal.thresholds.rsi_overbought", 75.0)
     if rsi_14 is not None and rsi_14 >= rsi_overbought:
         is_level1 = True
@@ -218,13 +218,13 @@ def calculate_sell_signal(stock_data: dict) -> Optional[dict]:
         is_level1 = True
         reasons.append(f"25日乖離過大({deviation_25:.1f}%)")
 
-    # --- Level 2: 利確推奨 (過熱からの反転) ---
+    # --- Level 2: ピークアウト (過熱からの反転) ---
     if is_level1:
         # 5日線が25日線を下回る（デッドクロス）または5日線を価格が下回る
         if price > 0 and ma_5 and price < ma_5:
             is_level2 = True
             reasons.append("5日線割れ")
-        
+
         # RSIが前日比で低下
         if rsi_14 is not None and rsi_14_prev is not None and rsi_14 < rsi_14_prev:
             is_level2 = True
@@ -269,7 +269,7 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
 
     # 閾値を設定から取得
     f_min = get_config("buy_signal.thresholds.fundamental_min", 3)
-    f_diamond = get_config("buy_signal.thresholds.fundamental_diamond", 6)
+    f_diamond = get_config("buy_signal.thresholds.fundamental_diamond", 4)
 
     # 共通条件：ファンダメンタルズ最小スコア
     if f_score < f_min:
@@ -277,10 +277,10 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
 
     is_diamond = f_score >= f_diamond
     reasons = []
-    
+
     # --- Level 1 判定条件 (売られすぎ) ---
     is_level1 = False
-    
+
     rsi_threshold = get_config("buy_signal.thresholds.rsi_oversold", 30.0)
     rsi_14 = stock_data.get("rsi_14")
     if rsi_14 is not None and rsi_14 <= rsi_threshold:
@@ -308,7 +308,7 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     # --- Level 2 判定条件 (反転確認) ---
     is_level2 = False
     level2_reasons = []
-    
+
     # 5日線突破
     try:
         price_val = stock_data.get("price")
@@ -328,10 +328,10 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
 
     level = 2 if is_level2 else 1
     config = BUY_SIGNAL_DISPLAY[f"level_{level}"]
-    
+
     # ダイヤモンド判定を理由に追加
     if is_diamond:
-        reasons.insert(0, "高確信(ファンダ6点以上)")
+        reasons.insert(0, f"高確信(ファンダ{f_diamond}点以上)")
 
     return {
         "level": level,
@@ -340,7 +340,6 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
         "label": config["label"],
         "reasons": reasons + level2_reasons
     }
-
 # --- 計算ヘルパー関数 ---
 def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
     if not dividend_history or len(dividend_history) < 2: return 0

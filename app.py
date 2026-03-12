@@ -244,14 +244,14 @@ def calculate_sell_signal(stock_data: dict) -> Optional[dict]:
         is_level3 = True
         reasons.append("75日線割れ(長期調整)")
 
-    # レベルの決定 (高い方を優先)
+    # レベルの決定 (緊急度・判断の明確さを優先)
     level = 0
-    if is_level3:
-        level = 3
-    elif is_level2:
+    if is_level2:   # ピークアウト (反転下落) を最優先
         level = 2
-    elif is_level1:
+    elif is_level1: # 加熱気味 (買われすぎ)
         level = 1
+    elif is_level3: # 長期調整 (トレンド崩壊)
+        level = 3
 
     if level == 0:
         return None
@@ -528,6 +528,11 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
                 # シグナルの判定を追加
                 merged_data["buy_signal"] = calculate_buy_signal(merged_data)
                 merged_data["sell_signal"] = calculate_sell_signal(merged_data)
+
+                # 重複・相反シグナルの抑制
+                if merged_data.get("buy_signal") and merged_data.get("sell_signal"):
+                    if merged_data["sell_signal"]["level"] == 3: # 長期調整(売り)
+                        merged_data["sell_signal"] = None
         
         processed_data.append(merged_data)
         
@@ -605,8 +610,14 @@ async def get_single_stock(code: str):
         score, details = calculate_score(merged_data)
         merged_data["score"] = score
         merged_data["score_details"] = details
-        # 購入シグナルの判定を追加
+        # シグナルの判定を追加
         merged_data["buy_signal"] = calculate_buy_signal(merged_data)
+        merged_data["sell_signal"] = calculate_sell_signal(merged_data)
+        
+        # 重複・相反シグナルの抑制
+        if merged_data.get("buy_signal") and merged_data.get("sell_signal"):
+            if merged_data["sell_signal"]["level"] == 3: # 長期調整(売り)
+                merged_data["sell_signal"] = None
     
     return merged_data
 
@@ -645,8 +656,14 @@ async def add_asset_endpoint(asset: Asset):
             score, details = calculate_score(new_asset_data)
             new_asset_data["score"] = score
             new_asset_data["score_details"] = details
-            # 購入シグナルの判定を追加
+            # シグナルの判定を追加
             new_asset_data["buy_signal"] = calculate_buy_signal(new_asset_data)
+            new_asset_data["sell_signal"] = calculate_sell_signal(new_asset_data)
+            
+            # 重複・相反シグナルの抑制
+            if new_asset_data.get("buy_signal") and new_asset_data.get("sell_signal"):
+                if new_asset_data["sell_signal"]["level"] == 3: # 長期調整(売り)
+                    new_asset_data["sell_signal"] = None
         
         asset_name = new_asset_data.get("name", "")
         return {"status": "success", "message": f"資産 {code} ({asset_name}) を追加しました。", "stock": new_asset_data}

@@ -454,8 +454,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const levelClass = `buy-signal-level-${signal.level}`;
         const diamondClass = isDiamond ? 'buy-signal-diamond' : '';
         
+        // ツールチップの構築
+        let titleText = '';
+        if (signal.recommended_action) {
+            titleText += `【推奨アクション】\n${signal.recommended_action}\n\n`;
+        }
+        if (signal.current_status) {
+            titleText += `【現在の状態】\n${signal.current_status}\n\n`;
+        }
+        titleText += `【判定理由】\n${reasons}`;
+
         return `
-            <span class="buy-signal-badge ${levelClass} ${diamondClass}" title="判定理由:\n${reasons}">
+            <span class="buy-signal-badge ${levelClass} ${diamondClass}" title="${titleText}">
                 <span class="buy-signal-icon-inner">${signal.icon}</span>
                 ${signal.label}
             </span>
@@ -468,8 +478,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const levelClass = `sell-signal-level-${signal.level}`;
         const diamondClass = isDiamond ? 'buy-signal-diamond' : ''; // 売却側にもダイヤモンドの装飾を適用可能にする
         
+        // ツールチップの構築
+        let titleText = '';
+        if (signal.recommended_action) {
+            titleText += `【推奨アクション】\n${signal.recommended_action}\n\n`;
+        }
+        if (signal.current_status) {
+            titleText += `【現在の状態】\n${signal.current_status}\n\n`;
+        }
+        titleText += `【判定理由】\n${reasons}`;
+
         return `
-            <span class="sell-signal-badge ${levelClass} ${diamondClass}" title="判定理由:\n${reasons}">
+            <span class="sell-signal-badge ${levelClass} ${diamondClass}" title="${titleText}">
                 <span class="buy-signal-icon-inner">${signal.icon}</span>
                 ${signal.label}
             </span>

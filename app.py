@@ -137,16 +137,21 @@ class HoldingData(BaseModel):
     memo: Optional[str] = None
 
 # --- 購入注目フラグの表示設定 ---
+# --- 購入注目フラグの表示設定 ---
 BUY_SIGNAL_DISPLAY = get_config("buy_signal.display", {
     "level_1": {
         "icon": "🟡",
         "icon_diamond": "💎🟡",
         "label": "注目",
+        "recommended_action": "監視開始。短期的な底値圏に到達しました。",
+        "current_status": "短期指標が「売られすぎ」の水準に達しており、反転の準備段階にあります。"
     },
     "level_2": {
         "icon": "🔥",
         "icon_diamond": "💎🔥",
         "label": "チャンス",
+        "recommended_action": "打診買い・追撃買い。短期リバウンドの初動です。",
+        "current_status": "短期的な売られすぎから、トレンドが上向き始めた兆候があります。"
     }
 })
 
@@ -155,14 +160,20 @@ SELL_SIGNAL_DISPLAY = get_config("sell_signal.display", {
     "level_1": {
         "icon": "⚠️",
         "label": "過熱気味",
+        "recommended_action": "新規買い自粛・一部利確。利益確定の出口戦略を検討すべきです。",
+        "current_status": "短期的な「買われすぎ」の状態です。いつ調整が入ってもおかしくない過熱感があります。"
     },
     "level_2": {
         "icon": "🚨",
         "label": "ピークアウト",
+        "recommended_action": "利益確定を最優先。欲張らずに利益を確保しましょう。",
+        "current_status": "上昇トレンドが折れた可能性が高いです。下落転換の初期サインと考えられます。"
     },
     "level_3": {
         "icon": "🌀",
         "label": "長期調整",
+        "recommended_action": "逆張り・仕込み検討。業績が良ければ将来の仕込み場です。",
+        "current_status": "75日移動平均線から大きく下方乖離しており、中長期的に売られすぎの状態です。"
     }
 })
 
@@ -195,9 +206,7 @@ def calculate_sell_signal(stock_data: dict) -> Optional[dict]:
     ma_25 = stock_data.get("moving_average_25")
     ma_75 = stock_data.get("moving_average_75")
 
-    # 25日乖離率 (計算済みのものを使用、なければ計算)
-    # scraper.py を見ると price_25d_deviation は返されていないが、
-    # _calculate_moving_average の結果 ma_25 はある。
+    # 25日乖離率
     deviation_25 = 0.0
     if price > 0 and ma_25:
         deviation_25 = (price - ma_25) / ma_25 * 100
@@ -220,7 +229,7 @@ def calculate_sell_signal(stock_data: dict) -> Optional[dict]:
 
     # --- Level 2: ピークアウト (過熱からの反転) ---
     if is_level1:
-        # 5日線が25日線を下回る（デッドクロス）または5日線を価格が下回る
+        # 5日線を価格が下回る
         if price > 0 and ma_5 and price < ma_5:
             is_level2 = True
             reasons.append("5日線割れ")
@@ -252,6 +261,8 @@ def calculate_sell_signal(stock_data: dict) -> Optional[dict]:
         "level": level,
         "icon": config["icon"],
         "label": config["label"],
+        "recommended_action": config.get("recommended_action", ""),
+        "current_status": config.get("current_status", ""),
         "reasons": reasons
     }
 
@@ -310,6 +321,7 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     level2_reasons = []
 
     # 5日線突破
+    price = 0.0
     try:
         price_val = stock_data.get("price")
         if isinstance(price_val, str): price_val = price_val.replace(',', '')
@@ -333,11 +345,31 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     if is_diamond:
         reasons.insert(0, f"高確信(ファンダ{f_diamond}点以上)")
 
+    # --- 長期調整の追加判定 ---
+    label = config["label"]
+    recommended_action = config.get("recommended_action", "")
+    current_status = config.get("current_status", "")
+    
+    try:
+        ma_75 = stock_data.get("moving_average_75")
+        ma_75_threshold = get_config("buy_signal.thresholds.ma_75_diff_threshold", -10.0)
+        if price > 0 and ma_75:
+            deviation_75 = (price - ma_75) / ma_75 * 100
+            if deviation_75 <= ma_75_threshold:
+                long_config = get_config("buy_signal.display.long_adjustment", {})
+                label += long_config.get("suffix", "＋長期調整")
+                recommended_action = long_config.get("recommended_action_override", recommended_action)
+                current_status += " " + long_config.get("current_status_append", "")
+                reasons.append(f"75日線乖離過大({deviation_75:.1f}%)")
+    except (ValueError, TypeError, KeyError): pass
+
     return {
         "level": level,
         "is_diamond": is_diamond,
         "icon": config["icon_diamond"] if is_diamond else config["icon"],
-        "label": config["label"],
+        "label": label,
+        "recommended_action": recommended_action,
+        "current_status": current_status,
         "reasons": reasons + level2_reasons
     }
 # --- 計算ヘルパー関数 ---

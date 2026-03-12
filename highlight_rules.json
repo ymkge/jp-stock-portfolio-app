@@ -37,18 +37,28 @@
       "rsi_oversold": 30.0,
       "rci_bottom": -80.0,
       "fibonacci_min": 61.8,
-      "fibonacci_max": 78.6
+      "fibonacci_max": 78.6,
+      "ma_75_diff_threshold": -10.0
     },
     "display": {
       "level_1": {
         "icon": "🟡",
         "icon_diamond": "💎🟡",
-        "label": "注目"
+        "label": "注目",
+        "recommended_action": "監視開始。短期的な底値圏に到達しました。",
+        "current_status": "短期指標が「売られすぎ」の水準に達しており、反転の準備段階にあります。"
       },
       "level_2": {
         "icon": "🔥",
         "icon_diamond": "💎🔥",
-        "label": "チャンス"
+        "label": "チャンス",
+        "recommended_action": "打診買い・追撃買い。短期リバウンドの初動です。",
+        "current_status": "短期的な売られすぎから、トレンドが上向き始めた兆候があります。"
+      },
+      "long_adjustment": {
+        "suffix": "＋長期調整",
+        "recommended_action_override": "強気で購入検討。リバウンド狙いの絶好の仕込み場（安値圏）です。",
+        "current_status_append": "長期的な調整局面（75日線乖離）にあり、中長期的な割安感が非常に強い状態です。"
       }
     }
   },
@@ -62,15 +72,21 @@
     "display": {
       "level_1": {
         "icon": "⚠️",
-        "label": "過熱気味"
+        "label": "加熱気味",
+        "recommended_action": "新規買い自粛・一部利確。利益確定の出口戦略を検討すべきです。",
+        "current_status": "短期的な「買われすぎ」の状態です。いつ調整が入ってもおかしくない過熱感があります。"
       },
       "level_2": {
         "icon": "🚨",
-        "label": "ピークアウト"
+        "label": "ピークアウト",
+        "recommended_action": "利益確定を最優先。欲張らずに利益を確保しましょう。",
+        "current_status": "上昇トレンドが折れた可能性が高いです。下落転換の初期サインと考えられます。"
       },
       "level_3": {
         "icon": "🌀",
-        "label": "長期調整"
+        "label": "長期調整",
+        "recommended_action": "逆張り・仕込み検討。業績が良ければ将来の仕込み場です。",
+        "current_status": "75日移動平均線から大きく下方乖離しており、中長期的に売られすぎの状態です。"
       }
     }
   },

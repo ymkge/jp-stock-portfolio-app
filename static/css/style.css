@@ -1092,3 +1092,42 @@ button {
 #refresh-all-button:hover {
     background-color: var(--primary-hover-color);
 }
+
+/* --- シグナル強度別の特別色（虹・金・銀） --- */
+.signal-strength-rainbow {
+    background: linear-gradient(45deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #8b00ff) !important;
+    background-size: 200% 200% !important;
+    animation: rainbow-flow 3s linear infinite !important;
+    color: #ffffff !important;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8) !important;
+    border: 1px solid rgba(255,255,255,0.5) !important;
+}
+
+.signal-strength-gold {
+    background: linear-gradient(45deg, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c) !important;
+    background-size: 200% 200% !important;
+    animation: shimmer-gold 3s linear infinite !important;
+    color: #ffffff !important;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8) !important;
+    border: 1px solid #d4af37 !important;
+}
+
+.signal-strength-silver {
+    background: linear-gradient(45deg, #a1a2a3, #e6e7e8, #a1a2a3, #c0c0c0) !important;
+    background-size: 200% 200% !important;
+    animation: shimmer-gold 5s linear infinite !important;
+    color: #333333 !important;
+    text-shadow: 0px 0px 1px rgba(255,255,255,0.5) !important;
+    border: 1px solid #c0c0c0 !important;
+}
+
+@keyframes rainbow-flow {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+@keyframes shimmer-gold {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}

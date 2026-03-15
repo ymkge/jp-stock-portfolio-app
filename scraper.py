@@ -225,36 +225,6 @@ class JPStockScraper(BaseScraper):
 
     @cachedmethod(lambda self: self.cache)
     def fetch_data(self, code: str, num_years_dividend: int = 10) -> Optional[Dict[str, Any]]:
-        # --- 決算月を取得 ---
-        settlement_month = "N/A"
-        try:
-            profile_url = f"https://finance.yahoo.co.jp/quote/{code}.T/profile"
-            profile_response = self._make_request(profile_url)
-            if profile_response:
-                soup = BeautifulSoup(profile_response.text, 'html.parser')
-                # "決算" というテキストを持つ th を探す
-                for th in soup.find_all('th'):
-                    if "決算" in th.get_text():
-                        # 隣の td またはそれに類する要素を取得
-                        td = th.find_next_sibling(['td', 'TableCell'])
-                        # Next.js化により構造が変わっている可能性があるため、親の sibling も確認
-                        if not td:
-                            # th の親(tr相当)の隣の td を探すなどのフォールバックが必要な場合もあるが、
-                            # 先程の構造では th の隣に td がある
-                            parent = th.parent
-                            if parent:
-                                td = parent.find_next_sibling('td')
-                        
-                        if td:
-                            date_text = td.get_text()
-                            month_match = re.search(r"(\d+)月", date_text)
-                            if month_match:
-                                settlement_month = month_match.group(0)
-                        break
-        except Exception as e:
-            logger.warning(f"銘柄 {code} の決算月取得中にエラー: {e}")
-        # --------------------
-
         url = f"https://finance.yahoo.co.jp/quote/{code}.T"
         response = self._make_request(url)
         if not response:
@@ -269,6 +239,23 @@ class JPStockScraper(BaseScraper):
             price_board = data.get("mainStocksPriceBoard", {}).get("priceBoard", {})
             ref_index = data.get("mainStocksDetail", {}).get("referenceIndex", {})
             
+            # --- 決算月を取得 (メインページのデータから抽出) ---
+            settlement_month = "N/A"
+            try:
+                # 指標データ(PER, EPS等)に紐付く日付から決算月を特定
+                # 例: "2026/03" -> "3月"
+                for key in ["shareDividendYield", "eps", "per"]:
+                    item = ref_index.get(key)
+                    if isinstance(item, dict) and item.get("date"):
+                        date_str = item.get("date")
+                        month_match = re.search(r"/(\d{2})", date_str)
+                        if month_match:
+                            settlement_month = f"{int(month_match.group(1))}月"
+                            break
+            except Exception as e:
+                logger.warning(f"銘柄 {code} の決算月解析中にエラー: {e}")
+            # --------------------
+
             # --- トレンド分析用のデータ取得と計算 ---
             ma_25 = None
             ma_75 = None
@@ -441,45 +428,6 @@ class USStockScraper(BaseScraper):
     """米国株式のデータをYahoo!ファイナンス (JP) から取得する"""
     @cachedmethod(lambda self: self.cache)
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
-        # --- 決算月を取得 ---
-        settlement_month = "N/A"
-        try:
-            # 米国株の場合、/performance ページから取得
-            performance_url = f"https://finance.yahoo.co.jp/quote/{code}/performance"
-            performance_response = self._make_request(performance_url)
-            if performance_response:
-                # まずは JSON 解析を試みる
-                match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", performance_response.text)
-                if match:
-                    try:
-                        performance_data = json.loads(match.group(1))
-                        settlement_items = performance_data.get("mainUsStocksSettlement", {}).get("annualSettlement", {}).get("items", [])
-                        for item in settlement_items:
-                            if item.get("head") == "決算日":
-                                date_text = item.get("details", [""])[0]
-                                month_match = re.search(r"(\d+)月", date_text)
-                                if month_match:
-                                    settlement_month = month_match.group(0)
-                                    break
-                    except (json.JSONDecodeError, KeyError):
-                        pass
-
-                # JSON解析で取得できなかった場合、BeautifulSoup でフォールバック
-                if settlement_month == "N/A":
-                    soup = BeautifulSoup(performance_response.text, 'html.parser')
-                    for th in soup.find_all('th'):
-                        if "決算日" in th.get_text():
-                            td = th.find_next_sibling('td')
-                            if td:
-                                date_text = td.get_text()
-                                month_match = re.search(r"(\d+)月", date_text)
-                                if month_match:
-                                    settlement_month = month_match.group(0)
-                            break
-        except Exception as e:
-            logger.warning(f"銘柄 {code} の決算月取得中にエラー: {e}")
-        # --------------------
-
         url = f"https://finance.yahoo.co.jp/quote/{code}"
         response = self._make_request(url)
         if not response:
@@ -494,6 +442,22 @@ class USStockScraper(BaseScraper):
             data = json.loads(match.group(1))
             price_board = data.get("mainUsStocksPriceBoard", {})
             ref_index = data.get("mainUsStocksReferenceIndex", {})
+
+            # --- 決算月を取得 (詳細ページのデータから抽出) ---
+            settlement_month = "N/A"
+            try:
+                # 指標データ(PER, EPS等)の日付から決算月を特定
+                for key in ["per", "eps", "pbr"]:
+                    item = ref_index.get(key)
+                    if isinstance(item, dict) and item.get("date"):
+                        date_str = item.get("date") # 例: "2026/03"
+                        month_match = re.search(r"/(\d{2})", date_str)
+                        if month_match:
+                            settlement_month = f"{int(month_match.group(1))}月"
+                            break
+            except Exception as e:
+                logger.warning(f"米国株 {code} の決算月解析中にエラー: {e}")
+            # --------------------
 
             # 時価総額の整形
             market_cap_data = ref_index.get("totalPrice", {})

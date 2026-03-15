@@ -91,8 +91,14 @@
     }
   },
   "system": {
-    "update_cooldown_seconds": 10
+      "update_cooldown_seconds": 10,
+      "scraping": {
+          "concurrency_limit": 3,
+          "delay_min": 0.5,
+          "delay_max": 1.5
+      }
   },
+
   "radar_chart": {
     "benchmarks": {
       "valuation_per": 15.0,

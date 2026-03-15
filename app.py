@@ -475,6 +475,7 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
     """
     ポートフォリオ内の全資産のデータを並行して取得し、スコア計算などを行う。
     新しいscraperのアーキテクチャに対応。
+    同時実行数を制限するセマフォと待機時間を導入。
     """
     try:
         portfolio = portfolio_manager.load_portfolio()
@@ -487,6 +488,22 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
     
     if not portfolio: return []
 
+    # スクレイピング設定の取得
+    concurrency_limit = get_config("system.scraping.concurrency_limit", 3)
+    delay_min = get_config("system.scraping.delay_min", 0.5)
+    delay_max = get_config("system.scraping.delay_max", 1.5)
+
+    # 同時実行数を制限するセマフォ
+    semaphore = asyncio.Semaphore(concurrency_limit)
+    import random
+
+    async def fetch_with_semaphore(scraper_instance, code):
+        async with semaphore:
+            # 各タスクの開始前にランダム待機を挿入してバーストを避ける
+            wait_time = random.uniform(delay_min, delay_max)
+            await asyncio.sleep(wait_time)
+            return await asyncio.to_thread(scraper_instance.fetch_data, code)
+
     tasks = []
     for asset_info in portfolio:
         code = asset_info['code']
@@ -494,7 +511,7 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
         
         try:
             scraper_instance = scraper.get_scraper(asset_type)
-            tasks.append(asyncio.to_thread(scraper_instance.fetch_data, code))
+            tasks.append(fetch_with_semaphore(scraper_instance, code))
         except ValueError as e:
             logger.warning(f"銘柄 {code} のスクレイパー取得に失敗: {e}")
             async def dummy_task(c=code, at=asset_type): 

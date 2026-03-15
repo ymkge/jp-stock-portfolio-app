@@ -95,8 +95,10 @@
       "scraping": {
           "concurrency_limit": 3,
           "delay_min": 0.5,
-          "delay_max": 1.5
+          "delay_max": 1.5,
+          "failure_threshold": 3
       }
+
   },
 
   "radar_chart": {

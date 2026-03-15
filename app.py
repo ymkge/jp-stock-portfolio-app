@@ -492,17 +492,48 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
     concurrency_limit = get_config("system.scraping.concurrency_limit", 3)
     delay_min = get_config("system.scraping.delay_min", 0.5)
     delay_max = get_config("system.scraping.delay_max", 1.5)
+    failure_threshold = get_config("system.scraping.failure_threshold", 3)
 
     # 同時実行数を制限するセマフォ
     semaphore = asyncio.Semaphore(concurrency_limit)
     import random
 
+    # サーキットブレーカーの状態管理
+    is_circuit_open = False
+    consecutive_failures = 0
+    lock = asyncio.Lock() # 共有変数の保護用
+
     async def fetch_with_semaphore(scraper_instance, code):
+        nonlocal is_circuit_open, consecutive_failures
+        
+        # すでに遮断されている場合は通信せずに即時エラーを返す
+        if is_circuit_open:
+            return {"code": code, "error": "アクセス制限等により更新を中断しました"}
+
         async with semaphore:
-            # 各タスクの開始前にランダム待機を挿入してバーストを避ける
+            # 各タスクの開始前にランダム待機
             wait_time = random.uniform(delay_min, delay_max)
             await asyncio.sleep(wait_time)
-            return await asyncio.to_thread(scraper_instance.fetch_data, code)
+            
+            # 再度チェック (待機中に遮断された可能性があるため)
+            if is_circuit_open:
+                return {"code": code, "error": "アクセス制限等により更新を中断しました"}
+            
+            result = await asyncio.to_thread(scraper_instance.fetch_data, code)
+            
+            # 連続失敗のカウントと遮断判定
+            async with lock:
+                if not result or "error" in result:
+                    consecutive_failures += 1
+                    if consecutive_failures >= failure_threshold:
+                        if not is_circuit_open:
+                            logger.error(f"サーキットブレーカー発動: {failure_threshold}回連続エラーのため更新を中断します。")
+                            is_circuit_open = True
+                else:
+                    # 成功したらカウントをリセット
+                    consecutive_failures = 0
+            
+            return result
 
     tasks = []
     for asset_info in portfolio:

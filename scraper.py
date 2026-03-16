@@ -45,6 +45,10 @@ class BaseScraper(ABC):
         self.session = requests.Session()
         self.session.headers.update(DEFAULT_HEADERS)
 
+    def is_cached(self, code: str) -> bool:
+        """指定されたコードのデータがキャッシュに存在するか確認する"""
+        return code in self.cache
+
     def _make_request(self, url: str, headers: dict = None) -> Optional[requests.Response]:
         """指定されたURLに対してリトライ機能付きでリクエストを送信する"""
         # 個別のヘッダー指定があれば優先し、なければセッションのデフォルトを使用
@@ -236,7 +240,7 @@ class JPStockScraper(BaseScraper):
         except (ValueError, TypeError, ZeroDivisionError):
             return None
 
-    @cachedmethod(lambda self: self.cache)
+    @cachedmethod(lambda self: self.cache, key=lambda self, code, **kwargs: code)
     def fetch_data(self, code: str, num_years_dividend: int = 10) -> Optional[Dict[str, Any]]:
         url = f"https://finance.yahoo.co.jp/quote/{code}.T"
         response = self._make_request(url)
@@ -407,7 +411,7 @@ class JPStockScraper(BaseScraper):
 # --- 投資信託スクレイパー ---
 class InvestTrustScraper(BaseScraper):
     """投資信託のデータをYahoo!ファイナンスから取得する"""
-    @cachedmethod(lambda self: self.cache)
+    @cachedmethod(lambda self: self.cache, key=lambda self, code: code)
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
         url = f"https://finance.yahoo.co.jp/quote/{code}"
         response = self._make_request(url)
@@ -442,7 +446,7 @@ class InvestTrustScraper(BaseScraper):
 # --- 米国株式スクレイパー ---
 class USStockScraper(BaseScraper):
     """米国株式のデータをYahoo!ファイナンス (JP) から取得する"""
-    @cachedmethod(lambda self: self.cache)
+    @cachedmethod(lambda self: self.cache, key=lambda self, code: code)
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
         url = f"https://finance.yahoo.co.jp/quote/{code}"
         response = self._make_request(url)

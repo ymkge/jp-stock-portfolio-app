@@ -510,8 +510,13 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
         if is_circuit_open:
             return {"code": code, "error": "アクセス制限等により更新を中断しました"}
 
+        # キャッシュが既に存在するか確認
+        if scraper_instance.is_cached(code):
+            # キャッシュがある場合は待機もセマフォも不要（ネットワーク通信が発生しないため）
+            return await asyncio.to_thread(scraper_instance.fetch_data, code)
+
         async with semaphore:
-            # 各タスクの開始前にランダム待機
+            # 各タスクの開始前にランダム待機（キャッシュがない場合のみ）
             wait_time = random.uniform(delay_min, delay_max)
             await asyncio.sleep(wait_time)
             

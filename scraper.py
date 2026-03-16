@@ -37,13 +37,18 @@ class BaseScraper(ABC):
     """
     def __init__(self, cache_size=128):
         self.cache = TTLCache(maxsize=cache_size, ttl=CACHE_TTL)
+        # セッションを初期化し、接続を維持 (Keep-Alive) する
+        self.session = requests.Session()
+        self.session.headers.update(DEFAULT_HEADERS)
 
     def _make_request(self, url: str, headers: dict = None) -> Optional[requests.Response]:
         """指定されたURLに対してリトライ機能付きでリクエストを送信する"""
-        final_headers = headers or DEFAULT_HEADERS
+        # 個別のヘッダー指定があれば優先し、なければセッションのデフォルトを使用
+        request_headers = headers or self.session.headers
         for attempt in range(MAX_RETRIES):
             try:
-                response = requests.get(url, headers=final_headers, timeout=10)
+                # requests.get ではなく self.session.get を使用して接続を使い回す
+                response = self.session.get(url, headers=request_headers, timeout=10)
                 response.raise_for_status()
                 return response
             except RequestException as e:

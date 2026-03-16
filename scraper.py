@@ -15,16 +15,26 @@ logger = logging.getLogger(__name__)
 
 # --- 定数 ---
 MAX_RETRIES = 3
-RETRY_DELAY = 2  # seconds
+RETRY_DELAY = 10  # seconds
 DEFAULT_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7"
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+    "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "DNT": "1",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Cache-Control": "max-age=0",
 }
 # 為替レート取得用のヘッダー
 FX_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
 }
-
+# --------------------
 # --- キャッシュ設定 ---
 # 各キャッシュの有効期限を1時間 (3600秒) に設定
 CACHE_TTL = 3600
@@ -79,7 +89,11 @@ class JPStockScraper(BaseScraper):
     def _fetch_dividend_history(self, stock_code: str, num_years: int = 10) -> dict:
         """過去の配当履歴を取得する"""
         dividend_url = f"https://finance.yahoo.co.jp/quote/{stock_code}.T/dividend"
-        response = self._make_request(dividend_url)
+        # Refererを設定してメインページからの遷移を装う
+        headers = self.session.headers.copy()
+        headers["Referer"] = f"https://finance.yahoo.co.jp/quote/{stock_code}.T"
+        
+        response = self._make_request(dividend_url, headers=headers)
         if not response:
             return {}
         try:
@@ -234,6 +248,9 @@ class JPStockScraper(BaseScraper):
         response = self._make_request(url)
         if not response:
             return {"code": code, "name": f"{code}", "error": "ネットワークエラー"}
+
+        # メインページ取得後、配当履歴取得前に1秒待機（バーストアクセス防止）
+        time.sleep(1.0)
 
         try:
             match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", response.text)

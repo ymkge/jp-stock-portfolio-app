@@ -93,9 +93,9 @@
   "system": {
       "update_cooldown_seconds": 10,
       "scraping": {
-          "concurrency_limit": 2,
-          "delay_min": 1.0,
-          "delay_max": 3.0,
+          "concurrency_limit": 1,
+          "delay_min": 1.5,
+          "delay_max": 4.0,
           "failure_threshold": 3
       }
 

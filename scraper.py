@@ -262,7 +262,7 @@ class JPStockScraper(BaseScraper):
             # --- 決算月を取得 (メインページのデータから抽出) ---
             settlement_month = "N/A"
             try:
-                # 指標データ(PER, EPS等)に紐付く日付から決算月を特定
+                # 1. 指標データ(PER, EPS等)に紐付く日付から決算月を特定 (JSONベース)
                 # 例: "2026/03" -> "3月"
                 for key in ["shareDividendYield", "eps", "per"]:
                     item = ref_index.get(key)
@@ -272,6 +272,22 @@ class JPStockScraper(BaseScraper):
                         if month_match:
                             settlement_month = f"{int(month_match.group(1))}月"
                             break
+                
+                # 2. JSONで取れなかった場合、HTMLから直接抽出を試みる (表示されている日付を優先)
+                # <span class="DataListItem__date___6wH">(<!-- -->2026/03<!-- -->)</span> の形式を検索
+                if settlement_month == "N/A":
+                    html_date_match = re.search(r'class="DataListItem__date___6wH">\(<!-- -->(\d{4})/(\d{2})<!-- -->\)', response.text)
+                    if html_date_match:
+                        settlement_month = f"{int(html_date_match.group(2))}月"
+                
+                # 3. それでも取れなかった場合、配当基準日(dpsPeriod)から特定 (メタデータ補完)
+                # "2026-02-01" などの形式を想定
+                if settlement_month == "N/A":
+                    dps_period = price_board.get("dpsPeriod")
+                    if dps_period:
+                        month_match = re.search(r"-(\d{2})", dps_period)
+                        if month_match:
+                            settlement_month = f"{int(month_match.group(1))}月"
             except Exception as e:
                 logger.warning(f"銘柄 {code} の決算月解析中にエラー: {e}")
             # --------------------
@@ -466,7 +482,7 @@ class USStockScraper(BaseScraper):
             # --- 決算月を取得 (詳細ページのデータから抽出) ---
             settlement_month = "N/A"
             try:
-                # 指標データ(PER, EPS等)の日付から決算月を特定
+                # 1. 指標データ(PER, EPS等)の日付から決算月を特定 (JSONベース)
                 for key in ["per", "eps", "pbr"]:
                     item = ref_index.get(key)
                     if isinstance(item, dict) and item.get("date"):
@@ -475,6 +491,18 @@ class USStockScraper(BaseScraper):
                         if month_match:
                             settlement_month = f"{int(month_match.group(1))}月"
                             break
+                
+                # 2. JSONで取れなかった場合、HTMLから日付パターンを探す (フォールバック)
+                if settlement_month == "N/A":
+                    # "(2026/03)" または "2026年12月31日" などの形式を幅広く探す
+                    html_date_match = re.search(r'\(<!-- -->(\d{4})/(\d{2})<!-- -->\)', response.text)
+                    if html_date_match:
+                        settlement_month = f"{int(html_date_match.group(2))}月"
+                    else:
+                        # "2024年12月31日" のような形式を探す
+                        jp_date_match = re.search(r'(\d{4})年(\d{1,2})月(\d{1,2})日', response.text)
+                        if jp_date_match:
+                            settlement_month = f"{int(jp_date_match.group(2))}月"
             except Exception as e:
                 logger.warning(f"米国株 {code} の決算月解析中にエラー: {e}")
             # --------------------

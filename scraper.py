@@ -1,42 +1,40 @@
 import requests
+from bs4 import BeautifulSoup
 import json
 import re
 import time
 import logging
-from typing import Optional, Dict, Any
+import asyncio
+from typing import Dict, Any, Optional, List
 from abc import ABC, abstractmethod
-from requests.exceptions import RequestException
-from bs4 import BeautifulSoup
-from cachetools import cached, TTLCache, cachedmethod
+from cachetools import cachedmethod, TTLCache, cached
 
-# --- ロガー設定 ---
+# ロガーの設定
 logger = logging.getLogger(__name__)
-# --------------------
 
-# --- 定数 ---
+# 定数
 MAX_RETRIES = 3
-RETRY_DELAY = 10  # リトライ間隔
+RETRY_DELAY = 2
+CACHE_TTL = 3600  # 1時間
+
 DEFAULT_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
     "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
-    "DNT": "1",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+    "Upgrade-Insecure-Requests": "1"
 }
-# 為替レート取得用のヘッダー
-FX_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-}
-# --------------------
-# --- キャッシュ設定 ---
-# 各キャッシュの有効期限を1時間 (3600秒) に設定
-CACHE_TTL = 3600
 
-# --- 基底クラス ---
+FX_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Referer": "https://finance.yahoo.co.jp/"
+}
+
+# --- 共通ベースクラス ---
 class BaseScraper(ABC):
     """
-    すべてのスクレイパーの基底クラス。
+    スクレイパークラスのベースとなる抽象クラス。
     共通のリクエスト処理とキャッシュの仕組みを提供する。
     """
     def __init__(self, cache_size=128):
@@ -63,7 +61,7 @@ class BaseScraper(ABC):
                 response = self.session.get(url, headers=request_headers, timeout=10)
                 response.raise_for_status()
                 return response
-            except RequestException as e:
+            except requests.exceptions.RequestException as e:
                 status_code = e.response.status_code if e.response is not None else "N/A"
                 self.last_error = {"status_code": status_code, "url": url, "type": type(e).__name__}
                 
@@ -154,95 +152,61 @@ class JPStockScraper(BaseScraper):
             x_ranks = list(range(1, days + 1))
             
             # 価格の順位 (値が高いほど 1) -> 価格が高い順に 1, 2, ..., n
-            # 同値がある場合は平均順位にするのが一般的だが、簡略化のため出現順で処理
-            sorted_prices = sorted(prices) # 昇順
-            y_ranks = [sorted_prices.index(p) + 1 for p in prices] # 実際は同値対応が必要だが簡易版
+            sorted_prices = sorted(enumerate(prices), key=lambda x: x[1], reverse=True)
+            y_ranks_temp = [0] * days
+            for rank, (original_index, _) in enumerate(sorted_prices, 1):
+                y_ranks_temp[original_index] = rank
             
-            # 同値対応の改善版
-            price_with_index = []
-            for i, p in enumerate(prices):
-                price_with_index.append({'price': p, 'original_idx': i})
-            
-            # 価格の昇順でソート
-            sorted_by_price = sorted(price_with_index, key=lambda x: x['price'])
-            for i, item in enumerate(sorted_by_price):
-                item['rank'] = i + 1
-            
-            # 元の順序に戻す
-            y_ranks = [0] * days
-            for item in sorted_by_price:
-                y_ranks[item['original_idx']] = item['rank']
-            
-            # RCI = (1 - (6 * sum(d^2)) / (n * (n^2 - 1))) * 100
-            # d = 日付順位 - 価格順位
-            # ※一般的には日付順位は「最新がn、最古が1」とする。x_ranksは1...nでOK。
-            d_squared_sum = sum((x - y) ** 2 for x, y in zip(x_ranks, y_ranks))
-            
+            # RCI計算用に日付順（古い順）にする。
+            y_ranks = y_ranks_temp 
+
+            d_squared_sum = sum((x - y)**2 for x, y in zip(x_ranks, y_ranks))
             rci = (1 - (6 * d_squared_sum) / (days * (days**2 - 1))) * 100
             return rci
         except (ValueError, TypeError, ZeroDivisionError):
             return None
 
-    def _calculate_fibonacci(self, sorted_histories: list) -> Optional[Dict[str, float]]:
-        """フィボナッチ・リトレースメントに必要な高値・安値・現在の位置を計算する"""
-        if not sorted_histories or len(sorted_histories) < 2:
-            return None
-        
-        try:
-            prices = [float(item["closePrice"]) for item in sorted_histories if "closePrice" in item]
-            high = max(prices)
-            low = min(prices)
-            current = prices[-1]
-            
-            if high == low:
-                return None
-            
-            # 位置 (0.0 = 安値, 1.0 = 高値)
-            position = (current - low) / (high - low)
-            # リトレースメント（高値からの下落率） 0% = 高値, 100% = 安値
-            retracement = (high - current) / (high - low) * 100
-            
-            return {
-                "high": high,
-                "low": low,
-                "position": position,
-                "retracement": retracement
-            }
-        except (ValueError, TypeError, ZeroDivisionError):
-            return None
-
-    def _calculate_rsi(self, sorted_histories: list, days: int = 14) -> Optional[float]:
+    def _calculate_rsi(self, sorted_histories: list, days: int) -> Optional[float]:
         """RSI (Relative Strength Index) を計算する"""
         if not sorted_histories or len(sorted_histories) < days + 1:
             return None
 
+        recent_data = sorted_histories[-(days + 1):]
         try:
-            # 直近 (days + 1) 日分の終値を取得
-            recent_data = sorted_histories[-(days + 1):]
             prices = [float(item["closePrice"]) for item in recent_data if "closePrice" in item]
+            if len(prices) < days + 1: return None
+
+            diffs = [prices[i+1] - prices[i] for i in range(days)]
+            up = sum(d for d in diffs if d > 0)
+            down = sum(-d for d in diffs if d < 0)
+
+            if up + down == 0: return 50.0
+            return (up / (up + down)) * 100
+        except (ValueError, TypeError, ZeroDivisionError):
+            return None
+
+    def _calculate_fibonacci(self, sorted_histories: list) -> Optional[dict]:
+        """フィボナッチ・リトレースメントを計算する"""
+        if not sorted_histories or len(sorted_histories) < 2:
+            return None
+
+        try:
+            prices = [float(item["closePrice"]) for item in sorted_histories if "closePrice" in item]
+            if not prices: return None
             
-            if len(prices) < days + 1:
-                return None
-
-            deltas = []
-            for i in range(1, len(prices)):
-                deltas.append(prices[i] - prices[i-1])
-
-            gains = [d for d in deltas if d > 0]
-            losses = [abs(d) for d in deltas if d < 0]
-
-            # 簡易移動平均を用いたRSI計算
-            avg_gain = sum(gains) / days
-            avg_loss = sum(losses) / days
-
-            if avg_loss == 0:
-                if avg_gain == 0:
-                    return 50.0
-                return 100.0
+            high = max(prices)
+            low = min(prices)
+            current = prices[-1]
             
-            rs = avg_gain / avg_loss
-            rsi = 100.0 - (100.0 / (1.0 + rs))
-            return rsi
+            if high == low: return None
+            
+            # 下落率 (最高値からの戻し)
+            retracement = (high - current) / (high - low) * 100
+            
+            return {
+                "high": high, "low": low, "current": current,
+                "retracement": retracement
+            }
         except (ValueError, TypeError, ZeroDivisionError):
             return None
 
@@ -253,7 +217,7 @@ class JPStockScraper(BaseScraper):
         if not response:
             error_msg = "銘柄情報の取得に失敗しました（通信エラー）"
             return {"code": code, "name": f"{code}", "error": error_msg, "error_details": self.last_error}
-
+        
         # メインページ取得後、配当履歴取得前に1秒待機（バーストアクセス防止）
         time.sleep(1.0)
 
@@ -261,7 +225,6 @@ class JPStockScraper(BaseScraper):
             match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", response.text)
             if not match:
                 return {"code": code, "name": f"{code}", "error": "銘柄情報が見つかりません", "error_details": {"type": "ParseError", "status_code": 200}}
-
 
             data = json.loads(match.group(1))
             price_board = data.get("mainStocksPriceBoard", {}).get("priceBoard", {})
@@ -430,7 +393,7 @@ class JPStockScraper(BaseScraper):
             }
         except (json.JSONDecodeError, KeyError) as e:
             logger.error(f"銘柄 {code} の株価データ解析中にエラー: {e}", exc_info=True)
-            return {"code": code, "name": f"{code}", "error": "データ解析失敗"}
+            return {"code": code, "name": f"{code}", "error": "データ解析失敗", "error_details": {"type": "ParseError", "status_code": 200}}
 
 # --- 投資信託スクレイパー ---
 class InvestTrustScraper(BaseScraper):
@@ -440,13 +403,13 @@ class InvestTrustScraper(BaseScraper):
         url = f"https://finance.yahoo.co.jp/quote/{code}"
         response = self._make_request(url)
         if not response:
-            return {"code": code, "name": f"{code}", "error": "銘柄情報の取得に失敗しました", "error_details": self.last_error}
+            error_msg = "銘柄情報の取得に失敗しました（通信エラー）"
+            return {"code": code, "name": f"{code}", "error": error_msg, "error_details": self.last_error}
 
         try:
             match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", response.text)
             if not match:
                 return {"code": code, "name": f"{code}", "error": "銘柄情報が見つかりません", "error_details": {"type": "ParseError", "status_code": 200}}
-
 
             data = json.loads(match.group(1))
             price_board = data.get("mainFundPriceBoard", {}).get("fundPrices", {})
@@ -466,7 +429,7 @@ class InvestTrustScraper(BaseScraper):
             }
         except (json.JSONDecodeError, KeyError) as e:
             logger.error(f"投資信託 {code} のデータ解析中にエラー: {e}", exc_info=True)
-            return {"code": code, "name": f"{code}", "error": "データ解析失敗"}
+            return {"code": code, "name": f"{code}", "error": "データ解析失敗", "error_details": {"type": "ParseError", "status_code": 200}}
 
 # --- 米国株式スクレイパー ---
 class USStockScraper(BaseScraper):
@@ -476,13 +439,13 @@ class USStockScraper(BaseScraper):
         url = f"https://finance.yahoo.co.jp/quote/{code}"
         response = self._make_request(url)
         if not response:
-            logger.error(f"米国株 {code}: ネットワークエラーにより情報を取得できませんでした。")
-            return {"code": code, "name": f"{code}", "error": "ネットワークエラー"}
+            error_msg = "銘柄情報の取得に失敗しました（通信エラー）"
+            return {"code": code, "name": f"{code}", "error": error_msg, "error_details": self.last_error}
 
         try:
             match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", response.text)
             if not match:
-                return {"code": code, "name": f"{code}", "error": "銘柄情報が見つかりません"}
+                return {"code": code, "name": f"{code}", "error": "銘柄情報が見つかりません", "error_details": {"type": "ParseError", "status_code": 200}}
 
             data = json.loads(match.group(1))
             price_board = data.get("mainUsStocksPriceBoard", {})
@@ -576,7 +539,7 @@ class USStockScraper(BaseScraper):
             }
         except (json.JSONDecodeError, KeyError, AttributeError) as e:
             logger.error(f"米国株 {code} のデータ解析中にエラー: {e}", exc_info=True)
-            return {"code": code, "name": f"{code}", "error": "データ解析失敗"}
+            return {"code": code, "name": f"{code}", "error": "データ解析失敗", "error_details": {"type": "ParseError", "status_code": 200}}
 
 # --- 為替レート取得 ---
 @cached(TTLCache(maxsize=10, ttl=CACHE_TTL))
@@ -652,11 +615,3 @@ if __name__ == '__main__':
     # 為替レート
     print("\n--- 為替レート ---")
     usd_jpy = get_exchange_rate('USDJPY=X')
-    print(f"USD/JPY: {usd_jpy}")
-
-    # エラーケース
-    test_scraper(jp_scraper, "99999", "存在しない国内株式")
-    test_scraper(us_scraper, "INVALID", "存在しない米国株式")
-
-    # 問題の銘柄をテスト
-    test_scraper(jp_scraper, "8130", "国内株式 (問題の銘柄)")

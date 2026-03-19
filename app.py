@@ -639,6 +639,26 @@ async def download_csv(cooldown_check: None = Depends(check_update_cooldown)):
     last_full_update_time = datetime.now()
     return response
 
+def generate_error_message(scraped_data: dict) -> str:
+    """スクレイピング結果のエラー情報からユーザー向けのヒント付きメッセージを生成する"""
+    error_msg = scraped_data.get("error", "データ取得に失敗しました")
+    details = scraped_data.get("error_details")
+    
+    if not details:
+        return error_msg
+        
+    status_code = details.get("status_code")
+    if status_code == 403:
+        return f"{error_msg}<br><small>原因: Yahoo!ファイナンスからのアクセス制限(403)が発生しました。10分〜15分ほど時間を置いてから再度お試しください。</small>"
+    elif status_code == 404:
+        return f"{error_msg}<br><small>原因: 銘柄コードが正しくないか、Yahoo!ファイナンスにデータが存在しません(404)。</small>"
+    elif isinstance(status_code, int) and status_code >= 500:
+        return f"{error_msg}<br><small>原因: Yahoo!ファイナンス側のサーバーエラー(500系)が発生しています。しばらく待ってから再度お試しください。</small>"
+    elif details.get("type") == "ParseError":
+        return f"{error_msg}<br><small>原因: ページの構造が変更された可能性があります。アプリのアップデートを確認してください。</small>"
+        
+    return f"{error_msg} (Status: {status_code})"
+
 @app.get("/api/stocks/{code}")
 async def get_single_stock(code: str):
     asset_info = portfolio_manager.get_stock_info(code)
@@ -654,7 +674,8 @@ async def get_single_stock(code: str):
         raise HTTPException(status_code=400, detail=str(e))
 
     if not scraped_data or "error" in scraped_data:
-        raise HTTPException(status_code=404, detail=scraped_data.get("error", f"資産 {code} のデータ取得に失敗しました。"))
+        detail_msg = generate_error_message(scraped_data or {})
+        raise HTTPException(status_code=404, detail=detail_msg)
 
     merged_data = {**asset_info, **scraped_data}
     

@@ -463,18 +463,21 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderBuySignalBadge(signal, isDiamond = false) {
         if (!signal) return '';
         const reasons = signal.reasons.join('\n');
-        const levelClass = `buy-signal-level-${signal.level}`;
+        const level = signal.level !== undefined ? signal.level : 1;
+        const levelClass = `buy-signal-level-${level}`;
         const diamondClass = isDiamond ? 'buy-signal-diamond' : '';
         const isLongAdjustment = signal.label.includes('長期調整');
 
-        // シグナル強度の判定
+        // シグナル強度の判定 (Level 1, 2のみ)
         let strengthClass = '';
-        if (isDiamond && signal.level === 2 && isLongAdjustment) {
-            strengthClass = 'signal-strength-rainbow';
-        } else if (isDiamond && signal.level === 2) {
-            strengthClass = 'signal-strength-gold';
-        } else if ((signal.level === 2 && isLongAdjustment) || (isDiamond && signal.level === 1 && isLongAdjustment)) {
-            strengthClass = 'signal-strength-silver';
+        if (level >= 1) {
+            if (isDiamond && level === 2 && isLongAdjustment) {
+                strengthClass = 'signal-strength-rainbow';
+            } else if (isDiamond && level === 2) {
+                strengthClass = 'signal-strength-gold';
+            } else if ((level === 2 && isLongAdjustment) || (isDiamond && level === 1 && isLongAdjustment)) {
+                strengthClass = 'signal-strength-silver';
+            }
         }
         
         // ツールチップの構築

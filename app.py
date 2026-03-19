@@ -274,6 +274,9 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
         return None
 
     details = stock_data["score_details"]
+    is_reliable = details.get("is_reliable", True)
+    missing_items = details.get("missing_items", [])
+
     # ファンダメンタルズスコアの合計（10点満点）
     f_score = details.get("per", 0) + details.get("pbr", 0) + details.get("roe", 0) + \
               details.get("yield", 0) + details.get("consecutive_increase", 0)
@@ -281,6 +284,19 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     # 閾値を設定から取得
     f_min = get_config("buy_signal.thresholds.fundamental_min", 3)
     f_diamond = get_config("buy_signal.thresholds.fundamental_diamond", 4)
+
+    # 判定不能シグナルの早期返却 (データ欠損があり、かつスコアが低い場合)
+    if not is_reliable and f_score < f_min:
+        return {
+            "level": 0,
+            "is_diamond": False,
+            "is_unreliable": True,
+            "icon": "🔘",
+            "label": "判定不能",
+            "recommended_action": "データ不足のため判定をスキップしました。",
+            "current_status": f"以下の項目が取得できなかったため、正しく評価できていない可能性があります: {', '.join(missing_items)}",
+            "reasons": ["重要データ欠損"]
+        }
 
     # 共通条件：ファンダメンタルズ最小スコア
     if f_score < f_min:
@@ -314,6 +330,15 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
             reasons.append(f"フィボナッチ押し目({ret:.1f}%)")
 
     if not is_level1:
+        # スコアは高いがテクニカル指標が取れないためにレベル1にならない場合も「判定不能」を検討
+        if not is_reliable:
+            return {
+                "level": 0, "is_diamond": is_diamond, "is_unreliable": True,
+                "icon": "🔘", "label": "判定不能",
+                "recommended_action": "テクニカル指標の一部が取得できませんでした。",
+                "current_status": f"ファンダメンタルズは良好ですが、以下の指標が欠損しています: {', '.join(missing_items)}",
+                "reasons": ["テクニカル欠損"]
+            }
         return None
 
     # --- Level 2 判定条件 (反転確認) ---
@@ -347,8 +372,13 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
 
     # --- 長期調整の追加判定 ---
     label = config["label"]
+    if not is_reliable:
+        label += " (判定不完全)"
+
     recommended_action = config.get("recommended_action", "")
     current_status = config.get("current_status", "")
+    if not is_reliable:
+        current_status += f" 【注意】以下の項目が取得できていません: {', '.join(missing_items)}"
     
     try:
         ma_75 = stock_data.get("moving_average_75")
@@ -366,6 +396,7 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     return {
         "level": level,
         "is_diamond": is_diamond,
+        "is_unreliable": not is_reliable,
         "icon": config["icon_diamond"] if is_diamond else config["icon"],
         "label": label,
         "recommended_action": recommended_action,
@@ -393,33 +424,62 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
         "trend_short": 0, "trend_medium": 0, "trend_signal": 0,
         "fibonacci": 0, "rci": 0
     }
+    missing_items = []
     is_calculable = False
     
     # --- 既存のファンダメンタルズ評価 ---
     try:
-        per = float(str(stock_data.get("per", "inf")).replace('倍', '').replace(',', ''))
-        is_calculable = True
-        if per <= get_config("per.undervalued", 15.0): details["per"] += 1
-        if per <= 10.0: details["per"] += 1
-    except (ValueError, TypeError): pass
+        per_raw = stock_data.get("per", "N/A")
+        if per_raw in [None, "N/A", "--", ""]:
+            missing_items.append("PER")
+            per = float("inf")
+        else:
+            per = float(str(per_raw).replace('倍', '').replace(',', ''))
+            is_calculable = True
+            if per <= get_config("per.undervalued", 15.0): details["per"] += 1
+            if per <= 10.0: details["per"] += 1
+    except (ValueError, TypeError): 
+        missing_items.append("PER")
+
     try:
-        pbr = float(str(stock_data.get("pbr", "inf")).replace('倍', '').replace(',', ''))
-        is_calculable = True
-        if pbr <= get_config("pbr.undervalued", 1.0): details["pbr"] += 1
-        if pbr <= 0.7: details["pbr"] += 1
-    except (ValueError, TypeError): pass
+        pbr_raw = stock_data.get("pbr", "N/A")
+        if pbr_raw in [None, "N/A", "--", ""]:
+            missing_items.append("PBR")
+            pbr = float("inf")
+        else:
+            pbr = float(str(pbr_raw).replace('倍', '').replace(',', ''))
+            is_calculable = True
+            if pbr <= get_config("pbr.undervalued", 1.0): details["pbr"] += 1
+            if pbr <= 0.7: details["pbr"] += 1
+    except (ValueError, TypeError):
+        missing_items.append("PBR")
+
     try:
-        roe = float(str(stock_data.get("roe", "0")).replace('%', '').replace(',', ''))
-        is_calculable = True
-        if roe >= get_config("roe.undervalued", 10.0): details["roe"] += 1
-        if roe >= 15.0: details["roe"] += 1
-    except (ValueError, TypeError): pass
+        roe_raw = stock_data.get("roe", "N/A")
+        if roe_raw in [None, "N/A", "--", ""]:
+            missing_items.append("ROE")
+            roe = 0.0
+        else:
+            roe = float(str(roe_raw).replace('%', '').replace(',', ''))
+            is_calculable = True
+            if roe >= get_config("roe.undervalued", 10.0): details["roe"] += 1
+            if roe >= 15.0: details["roe"] += 1
+    except (ValueError, TypeError):
+        missing_items.append("ROE")
+
     try:
-        yield_val = float(str(stock_data.get("yield", "0")).replace('%', '').replace(',', ''))
-        is_calculable = True
-        if yield_val >= get_config("yield.undervalued", 3.0): details["yield"] += 1
-        if yield_val >= 4.0: details["yield"] += 1
-    except (ValueError, TypeError): pass
+        yield_raw = stock_data.get("yield", "N/A")
+        if yield_raw in [None, "N/A", "--", ""]:
+            missing_items.append("配当利回り")
+            yield_val = 0.0
+        else:
+            yield_val = float(str(yield_raw).replace('%', '').replace(',', ''))
+            is_calculable = True
+            if yield_val >= get_config("yield.undervalued", 3.0): details["yield"] += 1
+            if yield_val >= 4.0: details["yield"] += 1
+    except (ValueError, TypeError):
+        missing_items.append("配当利回り")
+
     try:
         increase_years = int(stock_data.get("consecutive_increase_years", 0))
         is_calculable = True
@@ -427,7 +487,7 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
         if increase_years >= get_config("consecutive_increase.excellent", 7): details["consecutive_increase"] += 1
     except (ValueError, TypeError): pass
 
-    # --- トレンド評価 (既存 + 新規指標) ---
+    # --- トレンド評価 ---
     if get_config("trend.enabled", False):
         try:
             price_val = stock_data.get("price")
@@ -457,6 +517,8 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
                 if retracement is not None and min_ret <= retracement <= max_ret:
                     is_calculable = True
                     details["fibonacci"] += 1
+            elif get_config("trend.fibonacci.enabled", True):
+                missing_items.append("フィボナッチ")
 
             # --- RCI判定 ---
             rci_val = stock_data.get("rci_26")
@@ -465,10 +527,19 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
                 if rci_val <= threshold:
                     is_calculable = True
                     details["rci"] += 1
+            elif get_config("trend.rci.enabled", True):
+                missing_items.append("RCI")
 
         except (ValueError, TypeError): pass
 
+    # 重要項目 (PER, PBR, 利回り) のいずれかが欠損している場合は信頼性が低いとみなす
+    important_missing = [item for item in ["PER", "PBR", "配当利回り"] if item in missing_items]
+    is_reliable = len(important_missing) == 0
+
     total_score = sum(details.values())
+    details["missing_items"] = missing_items
+    details["is_reliable"] = is_reliable
+    
     return total_score if is_calculable else -1, details
 
 async def _get_processed_asset_data() -> List[Dict[str, Any]]:
@@ -508,7 +579,7 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
         
         # すでに遮断されている場合は通信せずに即時エラーを返す
         if is_circuit_open:
-            return {"code": code, "error": "アクセス制限等により更新を中断しました"}
+            return {"code": code, "error": "アクセス制限等により更新を中断しました", "error_details": {"status_code": 403, "type": "CircuitBreaker"}}
 
         # キャッシュが既に存在するか確認
         if scraper_instance.is_cached(code):
@@ -522,7 +593,7 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
             
             # 再度チェック (待機中に遮断された可能性があるため)
             if is_circuit_open:
-                return {"code": code, "error": "アクセス制限等により更新を中断しました"}
+                return {"code": code, "error": "アクセス制限等により更新を中断しました", "error_details": {"status_code": 403, "type": "CircuitBreaker"}}
             
             result = await asyncio.to_thread(scraper_instance.fetch_data, code)
             
@@ -530,6 +601,13 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
             async with lock:
                 if not result or "error" in result:
                     consecutive_failures += 1
+                    status_code = result.get("error_details", {}).get("status_code") if result else None
+                    
+                    # 403 (Forbidden) の場合は即座に遮断
+                    if status_code == 403:
+                        is_circuit_open = True
+                        logger.error(f"403エラーを検知したため、即座に更新を中断します。 (コード: {code})")
+                    
                     if consecutive_failures >= failure_threshold:
                         if not is_circuit_open:
                             logger.error(f"サーキットブレーカー発動: {failure_threshold}回連続エラーのため更新を中断します。")

@@ -200,7 +200,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const createCell = (html, className = '') => {
                 const cell = row.insertCell();
                 cell.innerHTML = html;
-                if (className) cell.className = className;
+                let finalClassName = className;
+                if (html === 'N/A' || html === '--' || html === '-') {
+                    finalClassName = (finalClassName ? finalClassName + ' ' : '') + 'na-value';
+                }
+                if (finalClassName) cell.className = finalClassName;
                 return cell;
             };
             const createCellWithTooltip = (html, className = '', tooltipText = '', externalLink = '') => {
@@ -294,7 +298,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const createCell = (html, className = '') => {
                 const cell = row.insertCell();
                 cell.innerHTML = html;
-                if (className) cell.className = className;
+                let finalClassName = className;
+                if (html === 'N/A' || html === '--' || html === '-') {
+                    finalClassName = (finalClassName ? finalClassName + ' ' : '') + 'na-value';
+                }
+                if (finalClassName) cell.className = finalClassName;
                 return cell;
             };
             if (fund.error) {
@@ -341,7 +349,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const createCell = (html, className = '') => {
                 const cell = row.insertCell();
                 cell.innerHTML = html;
-                if (className) cell.className = className;
+                let finalClassName = className;
+                if (html === 'N/A' || html === '--' || html === '-') {
+                    finalClassName = (finalClassName ? finalClassName + ' ' : '') + 'na-value';
+                }
+                if (finalClassName) cell.className = finalClassName;
                 return cell;
             };
             if (usStock.error) {
@@ -542,7 +554,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         let tooltip = `合計: ${score}/15 (PER: ${details.per||0}/2, PBR: ${details.pbr||0}/2, ROE: ${details.roe||0}/2, 利回り: ${details.yield||0}/2, 連続増配: ${details.consecutive_increase||0}/2, トレンド短期: ${details.trend_short||0}/1, トレンド中期: ${details.trend_medium||0}/1, 上昇基調: ${details.trend_signal||0}/1, フィボナッチ: ${details.fibonacci||0}/1, RCI: ${details.rci||0}/1)`;
-        return `<span class="score-container" title="${tooltip}">${starsHtml}</span>`;
+        
+        let warningIcon = '';
+        if (details.is_reliable === false) {
+            const missing = details.missing_items ? details.missing_items.join(', ') : '不明';
+            warningIcon = `<span class="score-unreliable-icon" title="判定不完全: 以下のデータが取得できていないため、正しく評価できていない可能性があります。\n欠損: ${missing}">⚠️</span>`;
+        }
+
+        return `<span class="score-container" title="${tooltip}">${starsHtml}</span>${warningIcon}`;
     }
     function getHighlightClass(key, value, assetType) {
         if (assetType !== 'jp_stock') return '';

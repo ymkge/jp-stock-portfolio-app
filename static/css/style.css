@@ -1131,3 +1131,16 @@ button {
     0% { background-position: -200% 0; }
     100% { background-position: 200% 0; }
 }
+
+/* 判定不能・欠損値用スタイル (Phase 3) */
+.na-value {
+    color: #adb5bd !important;
+    font-style: italic;
+}
+
+.score-unreliable-icon {
+    font-size: 0.9em;
+    margin-left: 2px;
+    cursor: help;
+    color: #ffc107; /* warning color */
+}

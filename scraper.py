@@ -44,6 +44,7 @@ class BaseScraper(ABC):
         # セッションを初期化し、接続を維持 (Keep-Alive) する
         self.session = requests.Session()
         self.session.headers.update(DEFAULT_HEADERS)
+        self.last_error = None
 
     def is_cached(self, code: str) -> bool:
         """指定されたコードのデータがキャッシュに存在するか確認する"""
@@ -51,6 +52,9 @@ class BaseScraper(ABC):
 
     def _make_request(self, url: str, headers: dict = None) -> Optional[requests.Response]:
         """指定されたURLに対してリトライ機能付きでリクエストを送信する"""
+        # 直近のエラー情報をクリア
+        self.last_error = None
+        
         # 個別のヘッダー指定があれば優先し、なければセッションのデフォルトを使用
         request_headers = headers or self.session.headers
         for attempt in range(MAX_RETRIES):
@@ -61,6 +65,8 @@ class BaseScraper(ABC):
                 return response
             except RequestException as e:
                 status_code = e.response.status_code if e.response is not None else "N/A"
+                self.last_error = {"status_code": status_code, "url": url, "type": type(e).__name__}
+                
                 logger.warning(f"リクエスト失敗 (試行 {attempt + 1}/{MAX_RETRIES}): {url} - ステータスコード: {status_code}")
                 if attempt < MAX_RETRIES - 1:
                     time.sleep(RETRY_DELAY)
@@ -245,7 +251,8 @@ class JPStockScraper(BaseScraper):
         url = f"https://finance.yahoo.co.jp/quote/{code}.T"
         response = self._make_request(url)
         if not response:
-            return {"code": code, "name": f"{code}", "error": "ネットワークエラー"}
+            error_msg = "銘柄情報の取得に失敗しました（通信エラー）"
+            return {"code": code, "name": f"{code}", "error": error_msg, "error_details": self.last_error}
 
         # メインページ取得後、配当履歴取得前に1秒待機（バーストアクセス防止）
         time.sleep(1.0)
@@ -253,7 +260,8 @@ class JPStockScraper(BaseScraper):
         try:
             match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", response.text)
             if not match:
-                return {"code": code, "name": f"{code}", "error": "銘柄情報が見つかりません"}
+                return {"code": code, "name": f"{code}", "error": "銘柄情報が見つかりません", "error_details": {"type": "ParseError", "status_code": 200}}
+
 
             data = json.loads(match.group(1))
             price_board = data.get("mainStocksPriceBoard", {}).get("priceBoard", {})
@@ -432,12 +440,13 @@ class InvestTrustScraper(BaseScraper):
         url = f"https://finance.yahoo.co.jp/quote/{code}"
         response = self._make_request(url)
         if not response:
-            return {"code": code, "name": f"{code}", "error": "ネットワークエラー"}
+            return {"code": code, "name": f"{code}", "error": "銘柄情報の取得に失敗しました", "error_details": self.last_error}
 
         try:
             match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", response.text)
             if not match:
-                return {"code": code, "name": f"{code}", "error": "投信情報が見つかりません"}
+                return {"code": code, "name": f"{code}", "error": "銘柄情報が見つかりません", "error_details": {"type": "ParseError", "status_code": 200}}
+
 
             data = json.loads(match.group(1))
             price_board = data.get("mainFundPriceBoard", {}).get("fundPrices", {})

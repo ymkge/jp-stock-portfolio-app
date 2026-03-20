@@ -403,6 +403,29 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
         "current_status": current_status,
         "reasons": reasons + level2_reasons
     }
+
+def reconcile_signals(buy_signal: Optional[dict], sell_signal: Optional[dict]) -> tuple[Optional[dict], Optional[dict]]:
+    """
+    購入シグナルと売却シグナルが同時に発生した場合の優先順位を調整し、
+    ユーザーの混乱を避けるために適切な方を一つに絞り込む。
+    """
+    if not buy_signal or not sell_signal:
+        return buy_signal, sell_signal
+
+    # 1. 売却側が「ピークアウト (Lv2)」または「過熱気味 (Lv1)」の場合
+    # これらはテクニカル的な買われすぎからの反転リスクを示しており、
+    # たとえ押し目買いの条件（フィボナッチ等）を満たしていても、短期的には警戒が勝る。
+    if sell_signal.get("level") in [1, 2]:
+        # 売却側（警告）を優先し、購入側を非表示にする。
+        return None, sell_signal
+
+    # 2. 売却側が「長期調整 (Lv3: 75日線割れ)」の場合
+    # 購入シグナル（注目・チャンス）が出ているなら、売却側を非表示にする。
+    # ※購入シグナルのラベルに「＋長期調整」として統合されるため、情報の欠落はない。
+    if sell_signal.get("level") == 3:
+        return buy_signal, None
+
+    return buy_signal, sell_signal
 # --- 計算ヘルパー関数 ---
 def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
     if not dividend_history or len(dividend_history) < 2: return 0
@@ -661,9 +684,9 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
                 merged_data["sell_signal"] = calculate_sell_signal(merged_data)
 
                 # 重複・相反シグナルの抑制
-                if merged_data.get("buy_signal") and merged_data.get("sell_signal"):
-                    if merged_data["sell_signal"]["level"] == 3: # 長期調整(売り)
-                        merged_data["sell_signal"] = None
+                merged_data["buy_signal"], merged_data["sell_signal"] = reconcile_signals(
+                    merged_data.get("buy_signal"), merged_data.get("sell_signal")
+                )
         
         processed_data.append(merged_data)
         
@@ -767,9 +790,9 @@ async def get_single_stock(code: str):
         merged_data["sell_signal"] = calculate_sell_signal(merged_data)
         
         # 重複・相反シグナルの抑制
-        if merged_data.get("buy_signal") and merged_data.get("sell_signal"):
-            if merged_data["sell_signal"]["level"] == 3: # 長期調整(売り)
-                merged_data["sell_signal"] = None
+        merged_data["buy_signal"], merged_data["sell_signal"] = reconcile_signals(
+            merged_data.get("buy_signal"), merged_data.get("sell_signal")
+        )
     
     return merged_data
 
@@ -813,9 +836,9 @@ async def add_asset_endpoint(asset: Asset):
             new_asset_data["sell_signal"] = calculate_sell_signal(new_asset_data)
             
             # 重複・相反シグナルの抑制
-            if new_asset_data.get("buy_signal") and new_asset_data.get("sell_signal"):
-                if new_asset_data["sell_signal"]["level"] == 3: # 長期調整(売り)
-                    new_asset_data["sell_signal"] = None
+            new_asset_data["buy_signal"], new_asset_data["sell_signal"] = reconcile_signals(
+                new_asset_data.get("buy_signal"), new_asset_data.get("sell_signal")
+            )
         
         asset_name = new_asset_data.get("name", "")
         return {"status": "success", "message": f"資産 {code} ({asset_name}) を追加しました。", "stock": new_asset_data}

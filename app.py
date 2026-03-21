@@ -8,6 +8,7 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import re
+import time
 
 import scraper
 import portfolio_manager
@@ -582,6 +583,8 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
     
     if not portfolio: return []
 
+    start_time = time.perf_counter()
+
     # スクレイピング設定の取得
     concurrency_limit = get_config("system.scraping.concurrency_limit", 3)
     delay_min = get_config("system.scraping.delay_min", 0.5)
@@ -690,6 +693,19 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
         
         processed_data.append(merged_data)
         
+    end_time = time.perf_counter()
+    duration = end_time - start_time
+    
+    total_count = len(portfolio)
+    jp_count = sum(1 for a in portfolio if a.get('asset_type', 'jp_stock') == 'jp_stock')
+    it_count = sum(1 for a in portfolio if a.get('asset_type') == 'investment_trust')
+    us_count = sum(1 for a in portfolio if a.get('asset_type') == 'us_stock')
+    
+    success_count = sum(1 for r in scraped_results if r and "error" not in r)
+    fail_count = total_count - success_count
+    
+    logger.info(f"[Summary] 銘柄情報の一括取得完了 | 所要時間: {duration:.2f}秒 | 対象: {total_count}件 (成功: {success_count}, 失敗: {fail_count}) | 内訳: 国内株 {jp_count}, 投信 {it_count}, 米国株 {us_count}")
+
     return processed_data
 
 # --- APIエンドポイント ---

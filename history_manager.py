@@ -1,17 +1,25 @@
 import sqlite3
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 
 DB_FILE = "portfolio_history.db"
 logger = logging.getLogger(__name__)
+
+# JST (UTC+9) の定義
+JST = timezone(timedelta(hours=9))
+
+def get_now_jst() -> datetime:
+    """現在のJST時刻を取得する"""
+    return datetime.now(timezone.utc).astimezone(JST)
 
 def init_db():
     """データベースとテーブルを初期化する"""
     try:
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
+            # 既存の月次履歴テーブル
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS portfolio_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,11 +41,109 @@ def init_db():
                     memo TEXT
                 )
             """)
+            
+            # 日次の時系列・キャッシュ用テーブル
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS daily_stock_history (
+                    date TEXT NOT NULL,
+                    code TEXT NOT NULL,
+                    asset_type TEXT,
+                    data_json TEXT,
+                    updated_at_jst TEXT,
+                    PRIMARY KEY (date, code)
+                )
+            """)
+            
             # インデックス作成（検索高速化）
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_snapshot_month ON portfolio_history (snapshot_month)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_date ON daily_stock_history (date)")
             conn.commit()
     except sqlite3.Error as e:
         logger.error(f"Database initialization failed: {e}")
+
+def save_daily_data(code: str, asset_type: str, data: Dict[str, Any]) -> bool:
+    """
+    スクレイピング結果をDBに保存する（バリデーション付き）。
+    1日1銘柄につき最新の1レコードのみ保持する (INSERT OR REPLACE)。
+    """
+    # 基本的なバリデーション
+    if not data or "error" in data:
+        return False
+    
+    # 必須項目のチェック (現在値と名称が取得できていること)
+    price = data.get("price")
+    name = data.get("name")
+    if price in [None, "N/A", "--", ""] or name in [None, "N/A", "--", ""]:
+        logger.warning(f"Validation failed for {code}: missing price or name. Data not persisted.")
+        return False
+
+    now_jst = get_now_jst()
+    date_str = now_jst.strftime("%Y-%m-%d")
+    updated_at_str = now_jst.strftime("%Y-%m-%d %H:%M:%S")
+    
+    try:
+        data_json = json.dumps(data, ensure_ascii=False)
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO daily_stock_history (date, code, asset_type, data_json, updated_at_jst)
+                VALUES (?, ?, ?, ?, ?)
+            """, (date_str, code, asset_type, data_json, updated_at_str))
+            conn.commit()
+        return True
+    except (sqlite3.Error, TypeError) as e:
+        logger.error(f"Failed to save daily data for {code}: {e}")
+        return False
+
+def get_daily_data(code: str, date_str: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    指定された日付（デフォルトは当日JST）のキャッシュデータをDBから取得する。
+    """
+    if not date_str:
+        date_str = get_now_jst().strftime("%Y-%m-%d")
+        
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT data_json, updated_at_jst FROM daily_stock_history 
+                WHERE date = ? AND code = ?
+            """, (date_str, code))
+            row = cursor.fetchone()
+            if row:
+                data = json.loads(row["data_json"])
+                # 取得したデータに更新日時情報を付与して返す
+                data["_db_updated_at_jst"] = row["updated_at_jst"]
+                return data
+    except (sqlite3.Error, json.JSONDecodeError) as e:
+        logger.error(f"Failed to get daily data for {code}: {e}")
+    return None
+
+def get_all_daily_data_for_date(date_str: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
+    """
+    指定された日付の全データを一括取得し、銘柄コードをキーとした辞書で返す。
+    """
+    if not date_str:
+        date_str = get_now_jst().strftime("%Y-%m-%d")
+        
+    results = {}
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT code, data_json, updated_at_jst FROM daily_stock_history WHERE date = ?", (date_str,))
+            rows = cursor.fetchall()
+            for row in rows:
+                try:
+                    data = json.loads(row["data_json"])
+                    data["_db_updated_at_jst"] = row["updated_at_jst"]
+                    results[row["code"]] = data
+                except json.JSONDecodeError:
+                    continue
+    except sqlite3.Error as e:
+        logger.error(f"Failed to get all daily data for date {date_str}: {e}")
+    return results
 
 def save_snapshot(portfolio_data: List[Dict[str, Any]]):
     """
@@ -47,44 +153,15 @@ def save_snapshot(portfolio_data: List[Dict[str, Any]]):
     if not portfolio_data:
         return
 
-    now = datetime.now()
-    snapshot_date = now.strftime("%Y-%m-%d")
-    snapshot_month = now.strftime("%Y-%m")
+    now_jst = get_now_jst()
+    snapshot_date = now_jst.strftime("%Y-%m-%d")
+    snapshot_month = now_jst.strftime("%Y-%m")
 
     try:
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
-            
-            # トランザクション開始
             conn.execute("BEGIN")
-            
-            # 1. 同月の既存データを削除
             cursor.execute("DELETE FROM portfolio_history WHERE snapshot_month = ?", (snapshot_month,))
-            
-            # 2. 新しいデータを挿入
-            for asset in portfolio_data:
-                # エラーがある資産や、保有情報がない資産はスキップ
-                if "error" in asset or not asset.get("holdings"):
-                    continue
-
-                for holding in asset.get("holdings", []):
-                    # 必要な値を計算・抽出
-                    # portfolio_manager.calculate_holding_values の結果が渡されることを想定していないため
-                    # ここで簡易的な値を抽出するが、本来は計算済みの値を渡すのがベスト。
-                    # 今回は app.py 側で計算済みの値（analysis API相当）を渡す設計にする。
-                    
-                    # analysis相当のフラットなデータ構造か、階層構造かによって処理を分ける必要があるが、
-                    # 簡略化のため、app.py からは「計算済みのフラットなリスト（analysisで使用しているもの）」を渡してもらう想定で実装する。
-                    # しかし、app.pyのget_stocksは階層構造を返す。
-                    # そのため、ここで計算するか、app.py側で整形する必要がある。
-                    # デグレ防止のため、history_manager内で計算ロジックを持たず、
-                    # 呼び出し元で整形されたフラットなデータを受け取る形にするのが安全。
-                    # 引数の portfolio_data は「分析ページ用データの holdings_list」を想定する。
-                    
-                    pass 
-
-            # ここでロジック修正: 引数 portfolio_data は calculate_holding_values 済みのフラットな辞書のリストを受け取る仕様にする
-            # 呼び出し元(app.py)で get_portfolio_analysis 相当の処理結果を渡す。
             
             insert_sql = """
                 INSERT INTO portfolio_history (
@@ -97,10 +174,6 @@ def save_snapshot(portfolio_data: List[Dict[str, Any]]):
             
             records_to_insert = []
             for item in portfolio_data:
-                 # データバリデーション: 必須項目がない、あるいは計算エラー(N/A)のデータは0として扱うか、スキップするか
-                 # ここでは可能な限り保存する方針
-                 
-                 # itemは分析用のフラットな辞書を想定
                  records_to_insert.append((
                      snapshot_date,
                      snapshot_month,
@@ -121,25 +194,17 @@ def save_snapshot(portfolio_data: List[Dict[str, Any]]):
                  ))
 
             cursor.executemany(insert_sql, records_to_insert)
-            
             conn.commit()
             logger.info(f"Snapshot for {snapshot_month} saved/updated with {len(records_to_insert)} records.")
-
     except sqlite3.Error as e:
         logger.error(f"Failed to save snapshot: {e}")
-        # ロールバックはコンテキストマネージャが例外時に自動で行うが、明示的に書いても良い
 
 def get_monthly_summary():
-    """
-    月ごとのサマリー（総資産、総損益、総配当）を取得する。
-    グラフ描画用。
-    """
+    """月ごとのサマリーを取得する"""
     try:
         with sqlite3.connect(DB_FILE) as conn:
-            # row_factoryを設定して辞書形式で取得可能にしてもよい
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            
             cursor.execute("""
                 SELECT 
                     snapshot_month,
@@ -150,7 +215,6 @@ def get_monthly_summary():
                 GROUP BY snapshot_month
                 ORDER BY snapshot_month ASC
             """)
-            
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
     except sqlite3.Error as e:
@@ -158,7 +222,7 @@ def get_monthly_summary():
         return []
 
 def _to_float(value):
-    """安全にfloatに変換するヘルパー。N/AやNoneは0.0にする"""
+    """安全にfloatに変換するヘルパー"""
     if value is None or value == "N/A" or value == "":
         return 0.0
     try:

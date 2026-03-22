@@ -566,11 +566,61 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
     
     return total_score if is_calculable else -1, details
 
+def is_market_closed(asset_type: str, now_jst: datetime, market_times: dict) -> bool:
+    """指定されたアセットタイプの市場が既に閉じているか判定する"""
+    config = market_times.get(asset_type, market_times.get("jp_stock", {}))
+    close_time_str = config.get("close_time_jst", "15:30")
+    try:
+        close_hour, close_minute = map(int, close_time_str.split(":"))
+        close_time = now_jst.replace(hour=close_hour, minute=close_minute, second=0, microsecond=0)
+        return now_jst >= close_time
+    except (ValueError, AttributeError):
+        return now_jst.replace(hour=15, minute=30, second=0, microsecond=0) <= now_jst
+
+async def _fetch_scraped_data_with_cache(code: str, asset_type: str, scraper_instance: Any, db_cache: Optional[dict] = None) -> Dict[str, Any]:
+    """
+    スマートキャッシュロジックを適用して単一の銘柄データを取得する。
+    1. メモリキャッシュ 2. DBキャッシュ 3. スクレイピング の順で試行。
+    """
+    now_jst = history_manager.get_now_jst()
+    market_times = get_config("system.market_times", {})
+
+    # 1. メモリキャッシュ確認
+    if scraper_instance.is_cached(code):
+        return await asyncio.to_thread(scraper_instance.fetch_data, code)
+
+    # 2. DBキャッシュ確認
+    db_data = db_cache or history_manager.get_daily_data(code)
+    if db_data:
+        closed = is_market_closed(asset_type, now_jst, market_times)
+        updated_at_str = db_data.get("_db_updated_at_jst")
+
+        is_fresh = False
+        if updated_at_str:
+            try:
+                updated_at = datetime.fromisoformat(updated_at_str).replace(tzinfo=history_manager.JST)
+                if (now_jst - updated_at).total_seconds() < 3600:
+                    is_fresh = True
+            except ValueError: pass
+
+        if closed or is_fresh:
+            # スクレイパーのメモリキャッシュにも同期
+            scraper_instance.cache[code] = db_data
+            return db_data
+
+    # 3. スクレイピング実行
+    result = await asyncio.to_thread(scraper_instance.fetch_data, code)
+
+    # 成功データをDBに永続化
+    if result and "error" not in result:
+        history_manager.save_daily_data(code, asset_type, result)
+
+    return result
+
 async def _get_processed_asset_data() -> List[Dict[str, Any]]:
     """
     ポートフォリオ内の全資産のデータを並行して取得し、スコア計算などを行う。
-    新しいscraperのアーキテクチャに対応。
-    同時実行数を制限するセマフォと待機時間を導入。
+    JST基準の市場確定時刻に基づき、DBキャッシュをインテリジェントに活用する。
     """
     try:
         portfolio = portfolio_manager.load_portfolio()
@@ -580,16 +630,24 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
             status_code=500,
             detail=f"portfolio.json の形式が不正です。カンマの有無や括弧の対応を確認してください。<br>エラー詳細: {str(e)}<br>ヒント: <a href='https://jsonlint.com/' target='_blank'>JSON Lint</a> などで構文チェックを行ってください。"
         )
-    
+
     if not portfolio: return []
 
     start_time = time.perf_counter()
+    now_jst = history_manager.get_now_jst()
+    today_str = now_jst.strftime("%Y-%m-%d")
+
+    # 当日のDBキャッシュを一括取得
+    db_cache_map = history_manager.get_all_daily_data_for_date(today_str)
 
     # スクレイピング設定の取得
-    concurrency_limit = get_config("system.scraping.concurrency_limit", 3)
-    delay_min = get_config("system.scraping.delay_min", 0.5)
-    delay_max = get_config("system.scraping.delay_max", 1.5)
+    concurrency_limit = get_config("system.scraping.concurrency_limit", 1)
+    delay_min = get_config("system.scraping.delay_min", 1.5)
+    delay_max = get_config("system.scraping.delay_max", 4.0)
     failure_threshold = get_config("system.scraping.failure_threshold", 3)
+
+    # 市場時刻設定の取得
+    market_times = get_config("system.market_times", {})
 
     # 同時実行数を制限するセマフォ
     semaphore = asyncio.Semaphore(concurrency_limit)
@@ -600,58 +658,71 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
     consecutive_failures = 0
     lock = asyncio.Lock() # 共有変数の保護用
 
-    async def fetch_with_semaphore(scraper_instance, code):
+    async def fetch_with_smart_cache_bulk(scraper_instance, code, asset_type):
         nonlocal is_circuit_open, consecutive_failures
-        
-        # すでに遮断されている場合は通信せずに即時エラーを返す
+
+        # 1. メモリキャッシュ確認
+        if scraper_instance.is_cached(code):
+            logger.debug(f"Memory cache hit: {code}")
+            return await asyncio.to_thread(scraper_instance.fetch_data, code)
+
+        # 2. DBキャッシュ確認
+        db_data = db_cache_map.get(code)
+        if db_data:
+            closed = is_market_closed(asset_type, now_jst, market_times)
+            updated_at_str = db_data.get("_db_updated_at_jst")
+
+            is_fresh = False
+            if updated_at_str:
+                try:
+                    updated_at = datetime.fromisoformat(updated_at_str).replace(tzinfo=history_manager.JST)
+                    if (now_jst - updated_at).total_seconds() < 3600:
+                        is_fresh = True
+                except ValueError: pass
+
+            if closed or is_fresh:
+                reason = "Market closed" if closed else "Fresh DB cache"
+                logger.debug(f"DB cache hit ({reason}): {code}")
+                scraper_instance.cache[code] = db_data
+                return db_data
+
+        # 3. スクレイピング実行
         if is_circuit_open:
             return {"code": code, "error": "アクセス制限等により更新を中断しました", "error_details": {"status_code": 403, "type": "CircuitBreaker"}}
 
-        # キャッシュが既に存在するか確認
-        if scraper_instance.is_cached(code):
-            # キャッシュがある場合は待機もセマフォも不要（ネットワーク通信が発生しないため）
-            return await asyncio.to_thread(scraper_instance.fetch_data, code)
-
         async with semaphore:
-            # 各タスクの開始前にランダム待機（キャッシュがない場合のみ）
             wait_time = random.uniform(delay_min, delay_max)
             await asyncio.sleep(wait_time)
-            
-            # 再度チェック (待機中に遮断された可能性があるため)
+
             if is_circuit_open:
                 return {"code": code, "error": "アクセス制限等により更新を中断しました", "error_details": {"status_code": 403, "type": "CircuitBreaker"}}
-            
+
             result = await asyncio.to_thread(scraper_instance.fetch_data, code)
-            
-            # 連続失敗のカウントと遮断判定
+
             async with lock:
                 if not result or "error" in result:
                     consecutive_failures += 1
                     status_code = result.get("error_details", {}).get("status_code") if result else None
-                    
-                    # 403 (Forbidden) の場合は即座に遮断
                     if status_code == 403:
                         is_circuit_open = True
-                        logger.error(f"403エラーを検知したため、即座に更新を中断します。 (コード: {code})")
-                    
+                        logger.error(f"403エラー検知、中断: {code}")
                     if consecutive_failures >= failure_threshold:
-                        if not is_circuit_open:
-                            logger.error(f"サーキットブレーカー発動: {failure_threshold}回連続エラーのため更新を中断します。")
-                            is_circuit_open = True
+                        is_circuit_open = True
+                        logger.error(f"サーキットブレーカー発動: {code}")
                 else:
-                    # 成功したらカウントをリセット
                     consecutive_failures = 0
-            
+                    history_manager.save_daily_data(code, asset_type, result)
+
             return result
 
     tasks = []
     for asset_info in portfolio:
         code = asset_info['code']
         asset_type = asset_info.get('asset_type', 'jp_stock')
-        
+
         try:
             scraper_instance = scraper.get_scraper(asset_type)
-            tasks.append(fetch_with_semaphore(scraper_instance, code))
+            tasks.append(fetch_with_smart_cache_bulk(scraper_instance, code, asset_type))
         except ValueError as e:
             logger.warning(f"銘柄 {code} のスクレイパー取得に失敗: {e}")
             async def dummy_task(c=code, at=asset_type): 
@@ -666,20 +737,20 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
         code = asset_info['code']
         scraped_data = scraped_data_map.get(code)
         merged_data = {**asset_info, **(scraped_data or {"error": "データ取得失敗"})}
-        
+
         if "error" not in merged_data:
             if merged_data.get('asset_type') == 'jp_stock':
                 merged_data["consecutive_increase_years"] = calculate_consecutive_dividend_increase(merged_data.get("dividend_history", {}))
                 score, details = calculate_score(merged_data)
                 merged_data["score"] = score
                 merged_data["score_details"] = details
-                
+
                 # ダイヤモンド（優良銘柄）判定を独立して保持
                 f_score = details.get("per", 0) + details.get("pbr", 0) + details.get("roe", 0) + \
                           details.get("yield", 0) + details.get("consecutive_increase", 0)
                 f_diamond = get_config("buy_signal.thresholds.fundamental_diamond", 4)
                 merged_data["is_diamond"] = f_score >= f_diamond
-                
+
                 logger.debug(f"銘柄 {code} ({merged_data.get('name')}): ファンダスコア={f_score}, ダイヤモンド判定={merged_data['is_diamond']}")
 
                 # シグナルの判定を追加
@@ -690,20 +761,20 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
                 merged_data["buy_signal"], merged_data["sell_signal"] = reconcile_signals(
                     merged_data.get("buy_signal"), merged_data.get("sell_signal")
                 )
-        
+
         processed_data.append(merged_data)
-        
+
     end_time = time.perf_counter()
     duration = end_time - start_time
-    
+
     total_count = len(portfolio)
     jp_count = sum(1 for a in portfolio if a.get('asset_type', 'jp_stock') == 'jp_stock')
     it_count = sum(1 for a in portfolio if a.get('asset_type') == 'investment_trust')
     us_count = sum(1 for a in portfolio if a.get('asset_type') == 'us_stock')
-    
+
     success_count = sum(1 for r in scraped_results if r and "error" not in r)
     fail_count = total_count - success_count
-    
+
     logger.info(f"[Summary] 銘柄情報の一括取得完了 | 所要時間: {duration:.2f}秒 | 対象: {total_count}件 (成功: {success_count}, 失敗: {fail_count}) | 内訳: 国内株 {jp_count}, 投信 {it_count}, 米国株 {us_count}")
 
     return processed_data
@@ -747,12 +818,12 @@ async def download_csv(cooldown_check: None = Depends(check_update_cooldown)):
     data = await _get_processed_asset_data()
     if not data:
         return StreamingResponse(io.StringIO(""), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=portfolio.csv"})
-    
+
     csv_data = portfolio_manager.create_csv_data(data)
     filename = f"portfolio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     response = StreamingResponse(io.StringIO(csv_data), media_type="text/csv")
     response.headers["Content-Disposition"] = f"attachment; filename={filename}"
-    
+
     last_full_update_time = datetime.now()
     return response
 
@@ -760,10 +831,10 @@ def generate_error_message(scraped_data: dict) -> str:
     """スクレイピング結果のエラー情報からユーザー向けのヒント付きメッセージを生成する"""
     error_msg = scraped_data.get("error", "データ取得に失敗しました")
     details = scraped_data.get("error_details")
-    
+
     if not details:
         return error_msg
-        
+
     status_code = details.get("status_code")
     if status_code == 403:
         return f"{error_msg}<br><small>原因: Yahoo!ファイナンスからのアクセス制限(403)が発生しました。10分〜15分ほど時間を置いてから再度お試しください。</small>"
@@ -773,7 +844,7 @@ def generate_error_message(scraped_data: dict) -> str:
         return f"{error_msg}<br><small>原因: Yahoo!ファイナンス側のサーバーエラー(500系)が発生しています。しばらく待ってから再度お試しください。</small>"
     elif details.get("type") == "ParseError":
         return f"{error_msg}<br><small>原因: ページの構造が変更された可能性があります。アプリのアップデートを確認してください。</small>"
-        
+
     return f"{error_msg} (Status: {status_code})"
 
 @app.get("/api/stocks/{code}")
@@ -783,10 +854,10 @@ async def get_single_stock(code: str):
         raise HTTPException(status_code=404, detail=f"資産コード {code} が見つかりません。")
 
     asset_type = asset_info.get('asset_type', 'jp_stock')
-    
+
     try:
         scraper_instance = scraper.get_scraper(asset_type)
-        scraped_data = await asyncio.to_thread(scraper_instance.fetch_data, code)
+        scraped_data = await _fetch_scraped_data_with_cache(code, asset_type, scraper_instance)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -795,7 +866,7 @@ async def get_single_stock(code: str):
         raise HTTPException(status_code=404, detail=detail_msg)
 
     merged_data = {**asset_info, **scraped_data}
-    
+
     if asset_type == 'jp_stock':
         merged_data["consecutive_increase_years"] = calculate_consecutive_dividend_increase(merged_data.get("dividend_history", {}))
         score, details = calculate_score(merged_data)
@@ -804,18 +875,18 @@ async def get_single_stock(code: str):
         # シグナルの判定を追加
         merged_data["buy_signal"] = calculate_buy_signal(merged_data)
         merged_data["sell_signal"] = calculate_sell_signal(merged_data)
-        
+
         # 重複・相反シグナルの抑制
         merged_data["buy_signal"], merged_data["sell_signal"] = reconcile_signals(
             merged_data.get("buy_signal"), merged_data.get("sell_signal")
         )
-    
+
     return merged_data
 
 @app.post("/api/stocks")
 async def add_asset_endpoint(asset: Asset):
     code = asset.code.strip().upper()
-    
+
     # 銘柄コードの形式から asset_type を自動判定
     if re.match(r'^[A-Z]{1,5}(\.[A-Z]{1,2})?$', code): # 米国株ティッカー (例: AAPL, BRK.B)
         asset_type = "us_stock"
@@ -835,7 +906,7 @@ async def add_asset_endpoint(asset: Asset):
 
     try:
         scraper_instance = scraper.get_scraper(asset_type)
-        new_asset_data = await asyncio.to_thread(scraper_instance.fetch_data, code)
+        new_asset_data = await _fetch_scraped_data_with_cache(code, asset_type, scraper_instance)
     except ValueError as e:
         portfolio_manager.delete_stocks([code]) # 追加をロールバック
         raise HTTPException(status_code=400, detail=str(e))
@@ -850,18 +921,19 @@ async def add_asset_endpoint(asset: Asset):
             # シグナルの判定を追加
             new_asset_data["buy_signal"] = calculate_buy_signal(new_asset_data)
             new_asset_data["sell_signal"] = calculate_sell_signal(new_asset_data)
-            
+
             # 重複・相反シグナルの抑制
             new_asset_data["buy_signal"], new_asset_data["sell_signal"] = reconcile_signals(
                 new_asset_data.get("buy_signal"), new_asset_data.get("sell_signal")
             )
-        
+
         asset_name = new_asset_data.get("name", "")
         return {"status": "success", "message": f"資産 {code} ({asset_name}) を追加しました。", "stock": new_asset_data}
     else:
         portfolio_manager.delete_stocks([code]) # 追加をロールバック
         error_message = new_asset_data.get("error", "不明なエラー") if new_asset_data else "不明なエラー"
         return {"status": "error", "message": f"資産 {code} は存在しないか、データの取得に失敗しました: {error_message}", "code": code}
+
 
 @app.delete("/api/stocks/bulk-delete")
 async def bulk_delete_stocks(stock_codes: StockCodesToDelete):

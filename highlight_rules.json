@@ -91,7 +91,21 @@
     }
   },
   "system": {
-      "update_cooldown_seconds": 10,
+      "market_times": {
+          "jp_stock": {
+              "close_time_jst": "15:30",
+              "timezone": "Asia/Tokyo"
+          },
+          "us_stock": {
+              "close_time_jst": "07:00",
+              "timezone": "Asia/Tokyo"
+          },
+          "investment_trust": {
+              "close_time_jst": "18:00",
+              "timezone": "Asia/Tokyo"
+          }
+      },
+      "update_cooldown_seconds": 600,
       "scraping": {
           "concurrency_limit": 1,
           "delay_min": 1.5,

@@ -1,6 +1,17 @@
 // static/js/stateManager.js
 
 /**
+ * HTTPエラーを扱うカスタムエラークラス
+ */
+class HttpError extends Error {
+    constructor(message, status) {
+        super(message);
+        this.name = 'HttpError';
+        this.status = status;
+    }
+}
+
+/**
  * アプリケーション全体の状態を管理するオブジェクト（メモリキャッシュ）
  * - portfolio, analysis: 各ページのデータ領域
  * - global: 全ページ共通の最終取得時刻
@@ -18,51 +29,24 @@ const state = {
 };
 
 // バックエンドのAPIクールダウン設定（秒）
-const API_COOLDOWN_SECONDS = 10;
+// DBキャッシュ導入により、フロントエンドでの制限は不要になりました。
+const API_COOLDOWN_SECONDS = 0; 
 const SESSION_STORAGE_KEY = 'globalLastFetchTime';
 
 /**
  * 全件更新系APIを呼び出してよいかチェックする。
- * 時刻管理は共通の 'global' 領域で行う。
- * @returns {boolean} - API呼び出しが許可される場合はtrue
+ * @returns {boolean} - 常にtrue（DBキャッシュがバックエンドで制御するため）
  */
 function canFetch() {
-    let lastFetchTime = state.global.lastFetchTime;
-    if (!lastFetchTime) {
-        const storedTime = sessionStorage.getItem(SESSION_STORAGE_KEY);
-        if (storedTime) {
-            lastFetchTime = new Date(storedTime);
-            state.global.lastFetchTime = lastFetchTime;
-        }
-    }
-    if (!lastFetchTime) {
-        return true;
-    }
-    const now = new Date();
-    const secondsSinceLastFetch = (now - lastFetchTime) / 1000;
-    return secondsSinceLastFetch > API_COOLDOWN_SECONDS;
+    return true;
 }
 
 /**
  * クールダウンの残り時間をミリ秒単位で取得する。
- * @returns {number} - 残り時間（ミリ秒）。クールダウン中でなければ0。
+ * @returns {number} - 常に0
  */
 function getCooldownRemainingTime() {
-    let lastFetchTime = state.global.lastFetchTime;
-    if (!lastFetchTime) {
-        const storedTime = sessionStorage.getItem(SESSION_STORAGE_KEY);
-        if (storedTime) {
-            lastFetchTime = new Date(storedTime);
-            state.global.lastFetchTime = lastFetchTime;
-        }
-    }
-    if (!lastFetchTime) {
-        return 0;
-    }
-    const now = new Date();
-    const elapsedMilliseconds = now - lastFetchTime;
-    const remainingMilliseconds = (API_COOLDOWN_SECONDS * 1000) - elapsedMilliseconds;
-    return remainingMilliseconds > 0 ? remainingMilliseconds : 0;
+    return 0;
 }
 
 /**
@@ -107,8 +91,9 @@ function clearState() {
 
 // 他のJSファイルからアクセスできるよう、windowオブジェクトに公開する
 window.appState = {
+    HttpError,
     canFetch,
-    getCooldownRemainingTime, // 新しく追加
+    getCooldownRemainingTime,
     updateTimestamp,
     updateState,
     getState,

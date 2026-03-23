@@ -50,12 +50,14 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchController = new AbortController();
         const signal = fetchController.signal;
 
+        const cachedData = window.appState.getState('portfolio');
+        if (cachedData) {
+            allAssetsData = cachedData;
+            filterAndRender();
+        }
+
+        // forceがfalseかつ、フロントエンド側の判定（現在は常にtrue）で取得不要ならスキップ
         if (!force && !window.appState.canFetch()) {
-            const cachedData = window.appState.getState('portfolio');
-            if (cachedData) {
-                allAssetsData = cachedData;
-                filterAndRender();
-            }
             return;
         }
 
@@ -91,12 +93,20 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             if (error.name === 'AbortError') {
                 console.log('Main page fetch aborted.');
+                return;
+            }
+            
+            console.error('Data fetch error:', error);
+            
+            // 429 (Too Many Requests) の場合は、バックエンドのスマートキャッシュによる一時的な制限の可能性があるため、
+            // 警告は出さずに既存のキャッシュ表示を維持する
+            if (error instanceof window.appState.HttpError && error.status === 429) {
+                console.log('Backend is currently throttling or updating. Using cached data.');
             } else {
-                console.error('Data fetch error:', error);
-                // エラーメッセージにHTMLが含まれている可能性があるため、isHtml=trueで呼び出す
-                // ただし、error.message自体が信頼できるソースからのもの（今回の場合はサーバーからの詳細メッセージ）であることを前提とする
                 showAlert(`データ更新に失敗しました: ${error.message}`, 'danger', true);
-                loadAssetsFromStorage();
+                if (!allAssetsData || allAssetsData.length === 0) {
+                    loadAssetsFromStorage();
+                }
             }
         } finally {
             refreshAllButton.disabled = false;
@@ -113,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) {
                 // JSONのパースに失敗した場合
             }
-            throw new Error(errorDetail);
+            throw new window.appState.HttpError(errorDetail, response.status);
         }
         return response.json();
     }

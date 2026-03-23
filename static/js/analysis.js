@@ -1,11 +1,4 @@
-// カスタムエラー
-class HttpError extends Error {
-    constructor(message, status) {
-        super(message);
-        this.name = 'HttpError';
-        this.status = status;
-    }
-}
+// static/js/analysis.js
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- DOM要素の取得 ---
@@ -33,10 +26,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let filteredHoldingsData = [];
     let currentSort = { key: 'market_value', order: 'desc' };
     let isAmountVisible = true;
-    let retryTimer = null;
     let fetchController = null; // AbortControllerを保持
 
-    // --- データ取得とレンダリング (最終修正) ---
+    // --- データ取得とレンダリング ---
     async function fetchHighlightRules() {
         try {
             const response = await fetch('/api/highlight-rules');
@@ -53,10 +45,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function fetchAndRenderAnalysisData() {
-        if (retryTimer) {
-        clearInterval(retryTimer);
-        retryTimer = null;
-    }
         if (fetchController) {
             fetchController.abort(); // 既存のリクエストをキャンセル
         }
@@ -69,14 +57,6 @@ document.addEventListener('DOMContentLoaded', () => {
             fetchAndRenderHistoryData();
         }
 
-        if (!window.appState.canFetch()) {
-            const remainingTime = window.appState.getCooldownRemainingTime();
-            if (remainingTime > 0) {
-                scheduleRetry(remainingTime, cachedData);
-            }
-            return;
-        }
-
         try {
             loadingIndicator.innerHTML = cachedData ? '最新データを取得中...' : 'データを取得中...';
             loadingIndicator.classList.remove('hidden');
@@ -84,7 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/api/portfolio/analysis', { signal });
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-                throw new HttpError(errorData.detail || `HTTP error! status: ${response.status}`, response.status);
+                throw new window.appState.HttpError(errorData.detail || `HTTP error! status: ${response.status}`, response.status);
             }
 
             const analysisData = await response.json();
@@ -101,16 +81,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
-            if (error instanceof HttpError && error.status === 429) {
-                const remainingTime = window.appState.getCooldownRemainingTime() || 10000;
-                scheduleRetry(remainingTime, cachedData);
-            } else {
-                console.error('Analysis fetch error:', error);
-                if (!cachedData) {
-                    showAlert(`分析データの取得に失敗しました。(${error.message})`, 'danger');
-                }
-                loadingIndicator.classList.add('hidden');
+            console.error('Analysis fetch error:', error);
+            // 429 (Too Many Requests) の場合は、バックエンドのスマートキャッシュによる一時的な制限の可能性があるため、
+            // 警告は出さずに既存のキャッシュ表示を維持する（既に processAnalysisData 済み）
+            if (error instanceof window.appState.HttpError && error.status === 429) {
+                console.log('Backend is currently throttling or updating. Using cached data.');
+            } else if (!cachedData) {
+                showAlert(`分析データの取得に失敗しました。(${error.message})`, 'danger');
             }
+            loadingIndicator.classList.add('hidden');
         }
     }
 
@@ -216,32 +195,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     }
-
-    function scheduleRetry(delay, cachedData) {
-    if (retryTimer) {
-        clearInterval(retryTimer);
-    }
-
-    let remainingSeconds = Math.ceil(delay / 1000);
-
-    if (!cachedData) {
-        loadingIndicator.innerHTML = `データ更新中です... (あと ${remainingSeconds} 秒)`;
-        loadingIndicator.classList.remove('hidden');
-    }
-
-    retryTimer = setInterval(() => {
-        remainingSeconds--;
-        if (remainingSeconds >= 0 && !cachedData) {
-            loadingIndicator.innerHTML = `データ更新中です... (あと ${remainingSeconds} 秒)`;
-        }
-        
-        if (remainingSeconds < 0) {
-            clearInterval(retryTimer);
-            retryTimer = null;
-            setTimeout(() => fetchAndRenderAnalysisData(), 200);
-        }
-    }, 1000);
-}
 
     function processAnalysisData(analysisData) {
         fullAnalysisData = analysisData;
@@ -928,7 +881,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.addEventListener('pagehide', () => {
         if (fetchController) fetchController.abort();
-        if (retryTimer) clearInterval(retryTimer);
     });
 
     function renderBuySignalBadge(signal, isDiamond = false) {
@@ -994,4 +946,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
     fetchHighlightRules();
     fetchAndRenderAnalysisData();
-    });
+});

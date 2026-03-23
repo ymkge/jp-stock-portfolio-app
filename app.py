@@ -23,26 +23,21 @@ logger = logging.getLogger(__name__)
 # --------------------
 
 # --- クールダウン設定 ---
+# 以前は過度なスクレイピングを防ぐために10分間の制限を設けていましたが、
+# 現在はDBキャッシュ（スマートキャッシュ）により、必要な時のみスクレイピングを行う仕様に
+# 進化したため、この制限を解除しました。
 last_full_update_time: Optional[datetime] = None
-UPDATE_COOLDOWN = timedelta(seconds=10)
+UPDATE_COOLDOWN = timedelta(seconds=0) # 制限なし
 
 async def check_update_cooldown():
-    """全件更新APIのクールダウンをチェックする依存関係"""
-    global last_full_update_time
-    if last_full_update_time and (datetime.now() - last_full_update_time < UPDATE_COOLDOWN):
-        remaining_time = UPDATE_COOLDOWN - (datetime.now() - last_full_update_time)
-        minutes, seconds = divmod(int(remaining_time.total_seconds()), 60)
-        raise HTTPException(
-            status_code=429,
-            detail=f"リクエストが多すぎます。あと {minutes}分{seconds}秒 お待ちください。"
-        )
+    """全件更新APIのクールダウンをチェックする依存関係（現在は無効化されています）"""
+    pass
 # --------------------
 
 app = FastAPI()
 
 # --- 定数 ---
 ACCOUNT_TYPES = ["特定口座", "一般口座", "新NISA", "旧NISA"]
-# 対応資産タイプにus_stockを追加
 ASSET_TYPES = ["jp_stock", "investment_trust", "us_stock"]
 
 
@@ -74,31 +69,6 @@ def get_config(path: str, default: Any) -> Any:
     except (ValueError, TypeError):
         return default
     return val
-
-# --- システム設定 ---
-UPDATE_COOLDOWN = timedelta(seconds=get_config("system.update_cooldown_seconds", 10))
-
-# --- クールダウン設定 ---
-last_full_update_time: Optional[datetime] = None
-
-async def check_update_cooldown():
-    """全件更新APIのクールダウンをチェックする依存関係"""
-    global last_full_update_time
-    if last_full_update_time and (datetime.now() - last_full_update_time < UPDATE_COOLDOWN):
-        remaining_time = UPDATE_COOLDOWN - (datetime.now() - last_full_update_time)
-        minutes, seconds = divmod(int(remaining_time.total_seconds()), 60)
-        raise HTTPException(
-            status_code=429,
-            detail=f"リクエストが多すぎます。あと {minutes}分{seconds}秒 お待ちください。"
-        )
-# --------------------
-
-app = FastAPI()
-
-# --- 定数 ---
-ACCOUNT_TYPES = ["特定口座", "一般口座", "新NISA", "旧NISA"]
-# 対応資産タイプにus_stockを追加
-ASSET_TYPES = ["jp_stock", "investment_trust", "us_stock"]
 
 # --- 税金設定の読み込み ---
 TAX_CONFIG = {}

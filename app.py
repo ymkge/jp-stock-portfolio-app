@@ -6,7 +6,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 import asyncio
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import re
 import time
 
@@ -587,10 +587,11 @@ async def _fetch_scraped_data_with_cache(code: str, asset_type: str, scraper_ins
 
     return result
 
-async def _get_processed_asset_data() -> List[Dict[str, Any]]:
+async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
     ポートフォリオ内の全資産のデータを並行して取得し、スコア計算などを行う。
     JST基準の市場確定時刻に基づき、DBキャッシュをインテリジェントに活用する。
+    戻り値: (処理済みデータリスト, 統計メタデータ)
     """
     try:
         portfolio = portfolio_manager.load_portfolio()
@@ -745,9 +746,20 @@ async def _get_processed_asset_data() -> List[Dict[str, Any]]:
     success_count = sum(1 for r in scraped_results if r and "error" not in r)
     fail_count = total_count - success_count
 
+    metadata = {
+        "duration": round(duration, 2),
+        "total_count": total_count,
+        "success_count": success_count,
+        "fail_count": fail_count,
+        "jp_count": jp_count,
+        "it_count": it_count,
+        "us_count": us_count,
+        "fetched_at": history_manager.get_now_jst().isoformat()
+    }
+
     logger.info(f"[Summary] 銘柄情報の一括取得完了 | 所要時間: {duration:.2f}秒 | 対象: {total_count}件 (成功: {success_count}, 失敗: {fail_count}) | 内訳: 国内株 {jp_count}, 投信 {it_count}, 米国株 {us_count}")
 
-    return processed_data
+    return processed_data, metadata
 
 # --- APIエンドポイント ---
 
@@ -778,14 +790,14 @@ async def get_recent_stocks():
 @app.get("/api/stocks")
 async def get_stocks(cooldown_check: None = Depends(check_update_cooldown)):
     global last_full_update_time
-    processed_data = await _get_processed_asset_data()
+    processed_data, metadata = await _get_processed_asset_data()
     last_full_update_time = datetime.now()
-    return processed_data
+    return {"data": processed_data, "metadata": metadata}
 
 @app.get("/api/stocks/csv")
 async def download_csv(cooldown_check: None = Depends(check_update_cooldown)):
     global last_full_update_time
-    data = await _get_processed_asset_data()
+    data, _ = await _get_processed_asset_data()
     if not data:
         return StreamingResponse(io.StringIO(""), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=portfolio.csv"})
 
@@ -944,7 +956,7 @@ async def delete_holding_endpoint(holding_id: str):
 async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_cooldown)):
     """保有資産の分析データを返す"""
     global last_full_update_time
-    all_assets = await _get_processed_asset_data()
+    all_assets, metadata = await _get_processed_asset_data()
     
     # 為替レートを取得
     exchange_rates = {}
@@ -1048,6 +1060,7 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
         "total_annual_dividend": total_annual_dividend,
         "total_annual_dividend_after_tax": total_annual_dividend_after_tax,
         "summary_stats": summary_stats,
+        "metadata": metadata,
     }
 
 @app.get("/api/portfolio/analysis/csv")

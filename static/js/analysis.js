@@ -14,19 +14,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const downloadAnalysisCsvButton = document.getElementById('download-analysis-csv-button');
     const chartToggleBtns = document.querySelectorAll('.chart-toggle-btn');
     const loadingIndicator = document.getElementById('loading-indicator');
+    const updateReportContainer = document.getElementById('update-report-container');
 
-    // --- Chart.jsインスタンス ---
-    let industryChart, accountTypeChart, countryChart, securityCompanyChart, dividendIndustryChart;
-    let assetHistoryChart, dividendHistoryChart, radarChart;
-
-    // --- グローバル変数 ---
-    let allHoldingsData = [];
-    let fullAnalysisData = {};
-    let highlightRules = null;
-    let filteredHoldingsData = [];
-    let currentSort = { key: 'market_value', order: 'desc' };
-    let isAmountVisible = true;
-    let fetchController = null; // AbortControllerを保持
+    // ... (中略)
 
     // --- データ取得とレンダリング ---
     async function fetchHighlightRules() {
@@ -54,11 +44,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const cachedData = window.appState.getState('analysis');
         if (cachedData) {
             processAnalysisData(cachedData);
+            if (cachedData.metadata) {
+                renderUpdateReport(cachedData.metadata);
+            }
             fetchAndRenderHistoryData();
         }
 
         try {
-            loadingIndicator.innerHTML = cachedData ? '最新データを取得中...' : 'データを取得中...';
+            let loadingMsg = cachedData ? '最新データを取得中...' : 'データを取得中...';
+            if (cachedData && cachedData.metadata) {
+                loadingMsg += `<br><small class="loading-sub-text">対象: ${cachedData.metadata.total_count}件の銘柄情報を更新しています</small>`;
+            }
+            loadingIndicator.innerHTML = loadingMsg;
             loadingIndicator.classList.remove('hidden');
 
             const response = await fetch('/api/portfolio/analysis', { signal });
@@ -71,6 +68,9 @@ document.addEventListener('DOMContentLoaded', () => {
             window.appState.updateState('analysis', analysisData);
             window.appState.updateTimestamp();
             processAnalysisData(analysisData);
+            if (analysisData.metadata) {
+                renderUpdateReport(analysisData.metadata);
+            }
             loadingIndicator.classList.add('hidden');
 
             // メインデータの更新が終わったら履歴データも取得
@@ -91,6 +91,28 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             loadingIndicator.classList.add('hidden');
         }
+    }
+
+    function renderUpdateReport(metadata) {
+        if (!updateReportContainer || !metadata) return;
+
+        const timeStr = new Date(metadata.fetched_at).toLocaleString();
+        const successClass = metadata.fail_count > 0 ? 'loss' : 'profit';
+        
+        updateReportContainer.innerHTML = `
+            <div class="update-report">
+                <div class="update-report-stats">
+                    <span>対象: <strong>${metadata.total_count}</strong>件</span>
+                    <span>成功: <strong class="profit">${metadata.success_count}</strong></span>
+                    <span>失敗: <strong class="${successClass}">${metadata.fail_count}</strong></span>
+                    <small class="update-report-time">(内訳: 国内株${metadata.jp_count}, 投信${metadata.it_count}, 米国株${metadata.us_count})</small>
+                </div>
+                <div class="update-report-time">
+                    取得時間: ${metadata.duration}s | 更新時刻: ${timeStr}
+                </div>
+            </div>
+        `;
+        updateReportContainer.classList.remove('hidden');
     }
 
     async function fetchAndRenderHistoryData() {

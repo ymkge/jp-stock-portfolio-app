@@ -1150,9 +1150,32 @@ button {
     font-style: italic;
 }
 
-.score-unreliable-icon {
-    font-size: 0.9em;
-    margin-left: 2px;
-    cursor: help;
-    color: #ffc107; /* warning color */
+.update-report {
+    background-color: #e9ecef;
+    padding: 0.6rem 1rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+    color: #495057;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border: 1px solid #dee2e6;
+}
+
+.update-report-stats {
+    display: flex;
+    gap: 15px;
+}
+
+.update-report-time {
+    color: #6c757d;
+    font-size: 0.85rem;
+}
+
+.loading-sub-text {
+    display: block;
+    font-size: 0.9rem;
+    color: #888;
+    margin-top: 5px;
 }

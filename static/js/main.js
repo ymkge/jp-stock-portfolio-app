@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const alertContainer = document.getElementById('alert-container');
     const deleteSelectedStocksButton = document.getElementById('delete-selected-stocks-button');
     const recentStocksList = document.getElementById('recent-stocks-list');
+    const updateReportContainer = document.getElementById('update-report-container');
     const filterInput = document.getElementById('filter-input');
     const showOnlyManagedAssetsCheckbox = document.getElementById('show-only-managed-assets-checkbox');
     const showOnlyAttentionAssetsCheckbox = document.getElementById('show-only-attention-assets-checkbox');
@@ -50,9 +51,13 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchController = new AbortController();
         const signal = fetchController.signal;
 
-        const cachedData = window.appState.getState('portfolio');
-        if (cachedData) {
-            allAssetsData = cachedData;
+        const cachedState = window.appState.getState('portfolio');
+        if (cachedState) {
+            // 防衛的処理: 配列形式(旧)とオブジェクト形式(新)の両方に対応
+            allAssetsData = Array.isArray(cachedState) ? cachedState : (cachedState.data || []);
+            if (cachedState.metadata) {
+                renderUpdateReport(cachedState.metadata);
+            }
             filterAndRender();
         }
 
@@ -63,11 +68,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         refreshAllButton.disabled = true;
         refreshAllButton.textContent = '更新中...';
+        if (updateReportContainer) {
+            updateReportContainer.innerHTML = '<div class="update-report">銘柄情報を取得中...</div>';
+            updateReportContainer.classList.remove('hidden');
+        }
 
         try {
             const apiFetch = (url) => fetch(url, { signal }).then(handleApiResponse);
 
-            const [assets, rules, recent, accTypes, secCompanies] = await Promise.all([
+            const [assetsResponse, rules, recent, accTypes, secCompanies] = await Promise.all([
                 apiFetch('/api/stocks'),
                 apiFetch('/api/highlight-rules'),
                 apiFetch('/api/recent-stocks'),
@@ -75,15 +84,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 apiFetch('/api/security-companies') // 証券会社リスト取得
             ]);
 
-            allAssetsData = assets;
+            // 防衛的処理: APIレスポンスが配列形式(旧)かオブジェクト形式(新)かを判定
+            allAssetsData = Array.isArray(assetsResponse) ? assetsResponse : (assetsResponse.data || []);
             highlightRules = rules;
             accountTypes = accTypes;
             securityCompanies = secCompanies; // グローバル変数にセット
 
-            window.appState.updateState('portfolio', allAssetsData);
+            // stateにはレスポンス全体（メタデータ含む）を保存
+            window.appState.updateState('portfolio', assetsResponse);
             window.appState.updateTimestamp();
             saveAssetsToStorage(); 
             
+            if (assetsResponse.metadata) {
+                renderUpdateReport(assetsResponse.metadata);
+            }
+
             renderRecentStocksList(recent);
             filterAndRender();
             if (force) {
@@ -114,6 +129,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    function renderUpdateReport(metadata) {
+        if (!updateReportContainer || !metadata) return;
+
+        const timeStr = new Date(metadata.fetched_at).toLocaleString();
+        const successClass = metadata.fail_count > 0 ? 'loss' : 'profit';
+        
+        updateReportContainer.innerHTML = `
+            <div class="update-report">
+                <div class="update-report-stats">
+                    <span>対象: <strong>${metadata.total_count}</strong>件</span>
+                    <span>成功: <strong class="profit">${metadata.success_count}</strong></span>
+                    <span>失敗: <strong class="${successClass}">${metadata.fail_count}</strong></span>
+                    <small class="update-report-time">(内訳: 国内株${metadata.jp_count}, 投信${metadata.it_count}, 米国株${metadata.us_count})</small>
+                </div>
+                <div class="update-report-time">
+                    取得時間: ${metadata.duration}s | 更新時刻: ${timeStr}
+                </div>
+            </div>
+        `;
+        updateReportContainer.classList.remove('hidden');
+    }
+
     async function handleApiResponse(response) {
         if (!response.ok) {
             let errorDetail = `HTTP error! status: ${response.status}`;
@@ -137,8 +174,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function loadAssetsFromStorage() {
         const storedAssets = localStorage.getItem(ASSETS_STORAGE_KEY);
         if (storedAssets) {
-            allAssetsData = JSON.parse(storedAssets);
-            filterAndRender();
+            try {
+                const parsed = JSON.parse(storedAssets);
+                // 防衛的処理: 配列形式(旧)とオブジェクト形式(新)の両方に対応
+                allAssetsData = Array.isArray(parsed) ? parsed : (parsed.data || []);
+                filterAndRender();
+            } catch (e) {
+                console.error('Error parsing stored assets:', e);
+            }
         }
     }
 
@@ -840,9 +883,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- 初期実行 ---
-    const cachedData = window.appState.getState('portfolio');
-    if (cachedData) {
-        allAssetsData = cachedData;
+    const initialCachedState = window.appState.getState('portfolio');
+    if (initialCachedState) {
+        // 防衛的処理: 配列形式(旧)とオブジェクト形式(新)の両方に対応
+        allAssetsData = Array.isArray(initialCachedState) ? initialCachedState : (initialCachedState.data || []);
+        if (initialCachedState.metadata) {
+            renderUpdateReport(initialCachedState.metadata);
+        }
         filterAndRender();
     } else {
         loadAssetsFromStorage();

@@ -16,7 +16,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadingIndicator = document.getElementById('loading-indicator');
     const updateReportContainer = document.getElementById('update-report-container');
 
-    // ... (中略)
+    // --- Chart.jsインスタンス ---
+    let industryChart, accountTypeChart, countryChart, securityCompanyChart, dividendIndustryChart;
+    let assetHistoryChart, dividendHistoryChart, radarChart;
+
+    // --- グローバル変数 ---
+    let allHoldingsData = [];
+    let fullAnalysisData = {};
+    let highlightRules = null;
+    let filteredHoldingsData = [];
+    let currentSort = { key: 'market_value', order: 'desc' };
+    let isAmountVisible = true;
+    let fetchController = null; // AbortControllerを保持
 
     // --- データ取得とレンダリング ---
     async function fetchHighlightRules() {
@@ -44,16 +55,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const cachedData = window.appState.getState('analysis');
         if (cachedData) {
             processAnalysisData(cachedData);
-            if (cachedData.metadata) {
-                renderUpdateReport(cachedData.metadata);
+            // 防衛的メタデータ取得
+            const cachedMetadata = cachedData.metadata || (cachedData.data && cachedData.data.metadata);
+            if (cachedMetadata) {
+                renderUpdateReport(cachedMetadata);
             }
             fetchAndRenderHistoryData();
         }
 
         try {
+            const currentMetadata = cachedData ? (cachedData.metadata || (cachedData.data && cachedData.data.metadata)) : null;
             let loadingMsg = cachedData ? '最新データを取得中...' : 'データを取得中...';
-            if (cachedData && cachedData.metadata) {
-                loadingMsg += `<br><small class="loading-sub-text">対象: ${cachedData.metadata.total_count}件の銘柄情報を更新しています</small>`;
+            if (currentMetadata) {
+                loadingMsg += `<br><small class="loading-sub-text">対象: ${currentMetadata.total_count}件の銘柄情報を更新しています</small>`;
             }
             loadingIndicator.innerHTML = loadingMsg;
             loadingIndicator.classList.remove('hidden');
@@ -219,8 +233,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function processAnalysisData(analysisData) {
-        fullAnalysisData = analysisData;
-        allHoldingsData = analysisData.holdings_list || [];
+        if (!analysisData) return;
+
+        // 防衛的処理: 
+        // 1. analysisData 自体が {"data": { holdings_list: ... }, "metadata": ...} のようにラップされている場合
+        // 2. analysisData 直下に holdings_list がある場合
+        const actualData = analysisData.holdings_list ? analysisData : (analysisData.data || {});
+        
+        fullAnalysisData = actualData;
+        allHoldingsData = actualData.holdings_list || [];
+        
         isAmountVisible = !toggleVisibilityCheckbox.checked;
         populateFilters();
         filterAndRender();

@@ -221,6 +221,38 @@ def get_monthly_summary():
         logger.error(f"Failed to get summary: {e}")
         return []
 
+def get_latest_daily_data_all() -> Dict[str, Dict[str, Any]]:
+    """
+    全銘柄の最新のキャッシュデータを、日付を問わず取得する。
+    銘柄コードをキーとした辞書を返す。
+    """
+    results = {}
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            # 各銘柄(code)ごとに最大のdateを持つレコードを取得
+            cursor.execute("""
+                SELECT t1.code, t1.data_json, t1.updated_at_jst
+                FROM daily_stock_history t1
+                INNER JOIN (
+                    SELECT code, MAX(date) as max_date
+                    FROM daily_stock_history
+                    GROUP BY code
+                ) t2 ON t1.code = t2.code AND t1.date = t2.max_date
+            """)
+            rows = cursor.fetchall()
+            for row in rows:
+                try:
+                    data = json.loads(row["data_json"])
+                    data["_db_updated_at_jst"] = row["updated_at_jst"]
+                    results[row["code"]] = data
+                except json.JSONDecodeError:
+                    continue
+    except sqlite3.Error as e:
+        logger.error(f"Failed to get latest daily data for all codes: {e}")
+    return results
+
 def _to_float(value):
     """安全にfloatに変換するヘルパー"""
     if value is None or value == "N/A" or value == "":

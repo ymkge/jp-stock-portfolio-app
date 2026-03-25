@@ -536,16 +536,30 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
     
     return total_score if is_calculable else -1, details
 
-def is_market_closed(asset_type: str, now_jst: datetime, market_times: dict) -> bool:
-    """指定されたアセットタイプの市場が既に閉じているか判定する"""
+def get_last_market_close_time(asset_type: str, now_jst: datetime, market_times: dict) -> datetime:
+    """
+    指定されたアセットタイプの、現在時刻から見て「直近の市場確定（クローズ）時刻」を算出する。
+    土日（および将来的な祝日）を考慮する。
+    """
     config = market_times.get(asset_type, market_times.get("jp_stock", {}))
     close_time_str = config.get("close_time_jst", "15:30")
-    try:
-        close_hour, close_minute = map(int, close_time_str.split(":"))
-        close_time = now_jst.replace(hour=close_hour, minute=close_minute, second=0, microsecond=0)
-        return now_jst >= close_time
-    except (ValueError, AttributeError):
-        return now_jst.replace(hour=15, minute=30, second=0, microsecond=0) <= now_jst
+    close_hour, close_minute = map(int, close_time_str.split(":"))
+
+    # 現在のJST時刻から、まず当日の確定時刻を作成
+    target_time = now_jst.replace(hour=close_hour, minute=close_minute, second=0, microsecond=0)
+
+    # 現在が当日の確定時刻前なら、1日遡る
+    if now_jst < target_time:
+        target_time -= timedelta(days=1)
+
+    # 土日を考慮して遡る (土曜->金曜、日曜->金曜)
+    # 0:月, 1:火, 2:水, 3:木, 4:金, 5:土, 6:日
+    while target_time.weekday() >= 5: # 土日
+        target_time -= timedelta(days=1)
+    
+    # 将来的に祝日リスト(JAPAN_HOLIDAYSなど)があれば、ここでもう一段遡るループを追加可能
+    
+    return target_time
 
 async def _fetch_scraped_data_with_cache(code: str, asset_type: str, scraper_instance: Any, db_cache: Optional[dict] = None) -> Dict[str, Any]:
     """
@@ -562,18 +576,20 @@ async def _fetch_scraped_data_with_cache(code: str, asset_type: str, scraper_ins
     # 2. DBキャッシュ確認
     db_data = db_cache or history_manager.get_daily_data(code)
     if db_data:
-        closed = is_market_closed(asset_type, now_jst, market_times)
+        last_close = get_last_market_close_time(asset_type, now_jst, market_times)
         updated_at_str = db_data.get("_db_updated_at_jst")
 
         is_fresh = False
         if updated_at_str:
             try:
                 updated_at = datetime.fromisoformat(updated_at_str).replace(tzinfo=history_manager.JST)
-                if (now_jst - updated_at).total_seconds() < 3600:
+                # 判定: DBの更新時刻が直近のクローズ時刻以降であれば「最新」
+                # または、更新から1時間以内であれば「最新」
+                if updated_at >= last_close or (now_jst - updated_at).total_seconds() < 3600:
                     is_fresh = True
             except ValueError: pass
 
-        if closed or is_fresh:
+        if is_fresh:
             # スクレイパーのメモリキャッシュにも同期
             scraper_instance.cache[code] = db_data
             return db_data
@@ -606,10 +622,9 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
 
     start_time = time.perf_counter()
     now_jst = history_manager.get_now_jst()
-    today_str = now_jst.strftime("%Y-%m-%d")
 
-    # 当日のDBキャッシュを一括取得
-    db_cache_map = history_manager.get_all_daily_data_for_date(today_str)
+    # 全銘柄の最新DBキャッシュを一括取得 (日付不問)
+    db_cache_map = history_manager.get_latest_daily_data_all()
 
     # スクレイピング設定の取得
     concurrency_limit = get_config("system.scraping.concurrency_limit", 1)
@@ -632,36 +647,46 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
     async def fetch_with_smart_cache_bulk(scraper_instance, code, asset_type):
         nonlocal is_circuit_open, consecutive_failures
 
-        # 1. メモリキャッシュ確認
+        # 1. データの特定 (メモリ または DB)
+        cached_data = None
+        is_fresh = False
+        source = None
+
+        # 1a. メモリキャッシュ確認
         if scraper_instance.is_cached(code):
-            logger.debug(f"Memory cache hit: {code}")
-            return await asyncio.to_thread(scraper_instance.fetch_data, code)
+            cached_data = await asyncio.to_thread(scraper_instance.fetch_data, code)
+            source = "Memory"
+            is_fresh = True # メモリにあるなら最新とみなす
 
-        # 2. DBキャッシュ確認
-        db_data = db_cache_map.get(code)
-        if db_data:
-            closed = is_market_closed(asset_type, now_jst, market_times)
-            updated_at_str = db_data.get("_db_updated_at_jst")
+        # 1b. DBキャッシュ確認 (メモリにない場合)
+        if not cached_data:
+            db_data = db_cache_map.get(code)
+            if db_data:
+                last_close = get_last_market_close_time(asset_type, now_jst, market_times)
+                updated_at_str = db_data.get("_db_updated_at_jst")
+                if updated_at_str:
+                    try:
+                        updated_at = datetime.fromisoformat(updated_at_str).replace(tzinfo=history_manager.JST)
+                        if updated_at >= last_close or (now_jst - updated_at).total_seconds() < 3600:
+                            is_fresh = True
+                            cached_data = db_data
+                            source = "DB"
+                    except ValueError: pass
 
-            is_fresh = False
-            if updated_at_str:
-                try:
-                    updated_at = datetime.fromisoformat(updated_at_str).replace(tzinfo=history_manager.JST)
-                    if (now_jst - updated_at).total_seconds() < 3600:
-                        is_fresh = True
-                except ValueError: pass
+        # 鮮度が高いキャッシュがあれば、セマフォを確保して即座に返す (待機なし)
+        if is_fresh and cached_data:
+            async with semaphore:
+                logger.debug(f"{source} cache hit: {code}")
+                # スクレイパーのメモリキャッシュを同期
+                scraper_instance.cache[code] = cached_data
+                return cached_data
 
-            if closed or is_fresh:
-                reason = "Market closed" if closed else "Fresh DB cache"
-                logger.debug(f"DB cache hit ({reason}): {code}")
-                scraper_instance.cache[code] = db_data
-                return db_data
-
-        # 3. スクレイピング実行
+        # 2. スクレイピング実行
         if is_circuit_open:
             return {"code": code, "error": "アクセス制限等により更新を中断しました", "error_details": {"status_code": 403, "type": "CircuitBreaker"}}
 
         async with semaphore:
+            # スクレイピングが必要な場合のみ待機
             wait_time = random.uniform(delay_min, delay_max)
             await asyncio.sleep(wait_time)
 

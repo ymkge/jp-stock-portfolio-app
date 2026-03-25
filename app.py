@@ -539,7 +539,6 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
 def get_last_market_close_time(asset_type: str, now_jst: datetime, market_times: dict) -> datetime:
     """
     指定されたアセットタイプの、現在時刻から見て「直近の市場確定（クローズ）時刻」を算出する。
-    土日（および将来的な祝日）を考慮する。
     """
     config = market_times.get(asset_type, market_times.get("jp_stock", {}))
     close_time_str = config.get("close_time_jst", "15:30")
@@ -552,12 +551,16 @@ def get_last_market_close_time(asset_type: str, now_jst: datetime, market_times:
     if now_jst < target_time:
         target_time -= timedelta(days=1)
 
-    # 土日を考慮して遡る (土曜->金曜、日曜->金曜)
-    # 0:月, 1:火, 2:水, 3:木, 4:金, 5:土, 6:日
-    while target_time.weekday() >= 5: # 土日
-        target_time -= timedelta(days=1)
-    
-    # 将来的に祝日リスト(JAPAN_HOLIDAYSなど)があれば、ここでもう一段遡るループを追加可能
+    # 市場ごとの休場曜日判定 (0:月, 1:火, 2:水, 3:木, 4:金, 5:土, 6:日)
+    if asset_type == 'us_stock':
+        # 米国株のクローズ(JST 07:00)が発生しないのは 日(6) と 月(0)
+        # ※現地の月〜金 ≒ 日本の火〜土
+        while target_time.weekday() in [0, 6]:
+            target_time -= timedelta(days=1)
+    else:
+        # 日本株・投信のクローズが発生しないのは 土(5) と 日(6)
+        while target_time.weekday() >= 5:
+            target_time -= timedelta(days=1)
     
     return target_time
 

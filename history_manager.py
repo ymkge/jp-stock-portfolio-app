@@ -57,6 +57,7 @@ def init_db():
             # インデックス作成（検索高速化）
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_snapshot_month ON portfolio_history (snapshot_month)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_date ON daily_stock_history (date)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_code_date ON daily_stock_history (code, date)")
             conn.commit()
     except sqlite3.Error as e:
         logger.error(f"Database initialization failed: {e}")

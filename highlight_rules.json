@@ -93,14 +93,17 @@
   "system": {
       "market_times": {
           "jp_stock": {
+              "open_time_jst": "09:00",
               "close_time_jst": "15:30",
               "timezone": "Asia/Tokyo"
           },
           "us_stock": {
+              "open_time_jst": "23:30",
               "close_time_jst": "07:00",
               "timezone": "Asia/Tokyo"
           },
           "investment_trust": {
+              "open_time_jst": "09:00",
               "close_time_jst": "18:00",
               "timezone": "Asia/Tokyo"
           }

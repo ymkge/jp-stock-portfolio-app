@@ -536,33 +536,39 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
     
     return total_score if is_calculable else -1, details
 
-def get_last_market_close_time(asset_type: str, now_jst: datetime, market_times: dict) -> datetime:
+def get_cache_threshold_time(asset_type: str, now_jst: datetime, market_times: dict) -> datetime:
     """
-    指定されたアセットタイプの、現在時刻から見て「直近の市場確定（クローズ）時刻」を算出する。
+    指定されたアセットタイプの、キャッシュが有効であるための「最新の基準時刻」を算出する。
+    「直近の市場開始」と「直近の市場終了」の遅い方を返す。
     """
     config = market_times.get(asset_type, market_times.get("jp_stock", {}))
-    close_time_str = config.get("close_time_jst", "15:30")
-    close_hour, close_minute = map(int, close_time_str.split(":"))
-
-    # 現在のJST時刻から、まず当日の確定時刻を作成
-    target_time = now_jst.replace(hour=close_hour, minute=close_minute, second=0, microsecond=0)
-
-    # 現在が当日の確定時刻前なら、1日遡る
-    if now_jst < target_time:
-        target_time -= timedelta(days=1)
-
-    # 市場ごとの休場曜日判定 (0:月, 1:火, 2:水, 3:木, 4:金, 5:土, 6:日)
-    if asset_type == 'us_stock':
-        # 米国株のクローズ(JST 07:00)が発生しないのは 日(6) と 月(0)
-        # ※現地の月〜金 ≒ 日本の火〜土
-        while target_time.weekday() in [0, 6]:
-            target_time -= timedelta(days=1)
-    else:
-        # 日本株・投信のクローズが発生しないのは 土(5) と 日(6)
-        while target_time.weekday() >= 5:
-            target_time -= timedelta(days=1)
     
-    return target_time
+    def get_last_time(h_m_str, is_open_time=False):
+        hour, minute = map(int, h_m_str.split(":"))
+        t = now_jst.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if now_jst < t:
+            t -= timedelta(days=1)
+        
+        # 市場ごとの休場曜日判定
+        if asset_type == 'us_stock':
+            if is_open_time:
+                # 米国株開始(JST 23:30)が発生しないのは 土(5) と 日(6)
+                while t.weekday() >= 5:
+                    t -= timedelta(days=1)
+            else:
+                # 米国株終了(JST 07:00)が発生しないのは 日(6) と 月(0)
+                while t.weekday() in [0, 6]:
+                    t -= timedelta(days=1)
+        else:
+            # 日本株・投信の開始/終了が発生しないのは 土(5) と 日(6)
+            while t.weekday() >= 5:
+                t -= timedelta(days=1)
+        return t
+
+    last_open = get_last_time(config.get("open_time_jst", "09:00"), True)
+    last_close = get_last_time(config.get("close_time_jst", "15:30"), False)
+
+    return max(last_open, last_close)
 
 async def _fetch_scraped_data_with_cache(code: str, asset_type: str, scraper_instance: Any, db_cache: Optional[dict] = None) -> Dict[str, Any]:
     """
@@ -579,16 +585,16 @@ async def _fetch_scraped_data_with_cache(code: str, asset_type: str, scraper_ins
     # 2. DBキャッシュ確認
     db_data = db_cache or history_manager.get_daily_data(code)
     if db_data:
-        last_close = get_last_market_close_time(asset_type, now_jst, market_times)
+        threshold_time = get_cache_threshold_time(asset_type, now_jst, market_times)
         updated_at_str = db_data.get("_db_updated_at_jst")
 
         is_fresh = False
         if updated_at_str:
             try:
                 updated_at = datetime.fromisoformat(updated_at_str).replace(tzinfo=history_manager.JST)
-                # 判定: DBの更新時刻が直近のクローズ時刻以降であれば「最新」
+                # 判定: DBの更新時刻が「最新の市場イベント」以降であれば「最新」
                 # または、更新から1時間以内であれば「最新」
-                if updated_at >= last_close or (now_jst - updated_at).total_seconds() < 3600:
+                if updated_at >= threshold_time or (now_jst - updated_at).total_seconds() < 3600:
                     is_fresh = True
             except ValueError: pass
 
@@ -665,12 +671,12 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
         if not cached_data:
             db_data = db_cache_map.get(code)
             if db_data:
-                last_close = get_last_market_close_time(asset_type, now_jst, market_times)
+                threshold_time = get_cache_threshold_time(asset_type, now_jst, market_times)
                 updated_at_str = db_data.get("_db_updated_at_jst")
                 if updated_at_str:
                     try:
                         updated_at = datetime.fromisoformat(updated_at_str).replace(tzinfo=history_manager.JST)
-                        if updated_at >= last_close or (now_jst - updated_at).total_seconds() < 3600:
+                        if updated_at >= threshold_time or (now_jst - updated_at).total_seconds() < 3600:
                             is_fresh = True
                             cached_data = db_data
                             source = "DB"

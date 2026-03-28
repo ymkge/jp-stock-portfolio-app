@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Chart.jsインスタンス ---
     let industryChart, accountTypeChart, countryChart, securityCompanyChart, dividendIndustryChart;
-    let assetHistoryChart, dividendHistoryChart, radarChart;
+    let assetHistoryChart, dividendHistoryChart, monthlyDividendChart, radarChart;
 
     // --- グローバル変数 ---
     let allHoldingsData = [];
@@ -812,8 +812,94 @@ document.addEventListener('DOMContentLoaded', () => {
             if (canvas) dividendIndustryChart = new Chart(canvas, { type: 'pie', data: getChartData(dividendIndustryBreakdown), options: chartOptions });
         }
         
+        // 月別配当分布グラフの描画
+        renderMonthlyDividendChart(holdings);
+
         const activeBtn = document.querySelector('.chart-toggle-btn.active');
         updateChart(activeBtn ? activeBtn.dataset.chartType : 'industry');
+    }
+
+    function renderMonthlyDividendChart(holdings) {
+        const monthlyData = new Array(12).fill(0);
+        const months = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+
+        holdings.forEach(item => {
+            const annualDiv = parseFloat(item.estimated_annual_dividend) || 0;
+            if (annualDiv <= 0) return;
+
+            // 決算月の取得 (数値化)
+            let baseMonth = null;
+            if (item.settlement_month && typeof item.settlement_month === 'string') {
+                const match = item.settlement_month.match(/(\d+)/);
+                if (match) baseMonth = parseInt(match[1]);
+            }
+
+            if (baseMonth === null) return;
+
+            // 月を配列のインデックス(0-11)に変換するためのヘルパー
+            const getMonthIdx = (m, shift) => (m + shift - 1) % 12;
+
+            if (item.asset_type === 'jp_stock') {
+                // 国内株: 3ヶ月後(期末) と 9ヶ月後(中間) に 50% ずつ
+                monthlyData[getMonthIdx(baseMonth, 3)] += annualDiv / 2;
+                monthlyData[getMonthIdx(baseMonth, 9)] += annualDiv / 2;
+            } else if (item.asset_type === 'us_stock') {
+                // 米国株: 3ヶ月おきに 25% ずつ
+                monthlyData[getMonthIdx(baseMonth, 3)] += annualDiv / 4;
+                monthlyData[getMonthIdx(baseMonth, 6)] += annualDiv / 4;
+                monthlyData[getMonthIdx(baseMonth, 9)] += annualDiv / 4;
+                monthlyData[getMonthIdx(baseMonth, 12)] += annualDiv / 4;
+            } else {
+                // その他: 3ヶ月後に 100% (暫定)
+                monthlyData[getMonthIdx(baseMonth, 3)] += annualDiv;
+            }
+        });
+
+        const canvas = document.getElementById('monthly-dividend-chart');
+        if (!canvas) return;
+
+        if (monthlyDividendChart) monthlyDividendChart.destroy();
+        const ctx = canvas.getContext('2d');
+
+        monthlyDividendChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: months,
+                datasets: [{
+                    label: '予想受取額',
+                    data: monthlyData,
+                    backgroundColor: '#1cc88a',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) label += ': ';
+                                const formattedValue = isAmountVisible ? formatNumber(context.raw, 0) + '円' : '***円';
+                                label += formattedValue;
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return isAmountVisible ? formatNumber(value, 0) + '円' : '***円';
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
 
     function updateChart(chartType) {

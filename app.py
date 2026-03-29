@@ -397,7 +397,65 @@ def reconcile_signals(buy_signal: Optional[dict], sell_signal: Optional[dict]) -
         return buy_signal, None
 
     return buy_signal, sell_signal
+
+def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    銘柄データに分析（スコア、シグナル）を付与し、必要に応じてDBを更新する。
+    """
+    if merged_data.get('asset_type') != 'jp_stock' or "error" in merged_data:
+        return merged_data
+
+    code = merged_data.get('code')
+
+    # 1. 分析の実行
+    merged_data["consecutive_increase_years"] = calculate_consecutive_dividend_increase(merged_data.get("dividend_history", {}))
+    score, details = calculate_score(merged_data)
+    merged_data["score"] = score
+    merged_data["score_details"] = details
+
+    # ダイヤモンド（優良銘柄）判定を独立して保持
+    f_score = details.get("per", 0) + details.get("pbr", 0) + details.get("roe", 0) + \
+              details.get("yield", 0) + details.get("consecutive_increase", 0)
+    f_diamond = get_config("buy_signal.thresholds.fundamental_diamond", 4)
+    merged_data["is_diamond"] = f_score >= f_diamond
+
+    logger.debug(f"銘柄 {code} ({merged_data.get('name')}): ファンダスコア={f_score}, ダイヤモンド判定={merged_data['is_diamond']}")
+
+    # シグナルの判定
+    merged_data["buy_signal"] = calculate_buy_signal(merged_data)
+    merged_data["sell_signal"] = calculate_sell_signal(merged_data)
+
+    # 重複・相反シグナルの抑制
+    merged_data["buy_signal"], merged_data["sell_signal"] = reconcile_signals(
+        merged_data.get("buy_signal"), merged_data.get("sell_signal")
+    )
+
+    # 2. 分析スナップショットの保存 (DB更新)
+    if scraped_data and "error" not in scraped_data:
+        try:
+            snapshot = {
+                "total_score": merged_data.get("score"),
+                "score_details": merged_data.get("score_details"),
+                "buy_signal": merged_data.get("buy_signal"),
+                "sell_signal": merged_data.get("sell_signal"),
+                "is_reliable": merged_data.get("score_details", {}).get("is_reliable", True)
+            }
+            # 元のスクレイピングデータにスナップショットを注入してDB保存
+            # 注意: ここでscraped_data自体を書き換えるが、これはDB保存用のデータとして扱われる
+            scraped_data["analysis_snapshot"] = snapshot
+            history_manager.save_daily_data(
+                code, 
+                merged_data.get("asset_type", "jp_stock"), 
+                scraped_data
+            )
+            logger.debug(f"銘柄 {code} の分析スナップショットをDBに保存しました。")
+        except Exception as e:
+            logger.error(f"Failed to save analysis snapshot for {code}: {e}")
+
+    return merged_data
+
 # --- 計算ヘルパー関数 ---
+
 def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
     if not dividend_history or len(dividend_history) < 2: return 0
     sorted_years = sorted(dividend_history.keys(), reverse=True)
@@ -743,29 +801,8 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
         scraped_data = scraped_data_map.get(code)
         merged_data = {**asset_info, **(scraped_data or {"error": "データ取得失敗"})}
 
-        if "error" not in merged_data:
-            if merged_data.get('asset_type') == 'jp_stock':
-                merged_data["consecutive_increase_years"] = calculate_consecutive_dividend_increase(merged_data.get("dividend_history", {}))
-                score, details = calculate_score(merged_data)
-                merged_data["score"] = score
-                merged_data["score_details"] = details
-
-                # ダイヤモンド（優良銘柄）判定を独立して保持
-                f_score = details.get("per", 0) + details.get("pbr", 0) + details.get("roe", 0) + \
-                          details.get("yield", 0) + details.get("consecutive_increase", 0)
-                f_diamond = get_config("buy_signal.thresholds.fundamental_diamond", 4)
-                merged_data["is_diamond"] = f_score >= f_diamond
-
-                logger.debug(f"銘柄 {code} ({merged_data.get('name')}): ファンダスコア={f_score}, ダイヤモンド判定={merged_data['is_diamond']}")
-
-                # シグナルの判定を追加
-                merged_data["buy_signal"] = calculate_buy_signal(merged_data)
-                merged_data["sell_signal"] = calculate_sell_signal(merged_data)
-
-                # 重複・相反シグナルの抑制
-                merged_data["buy_signal"], merged_data["sell_signal"] = reconcile_signals(
-                    merged_data.get("buy_signal"), merged_data.get("sell_signal")
-                )
+        # 分析情報の付与とDB更新（国内株のみ）
+        merged_data = _enrich_stock_data(merged_data, scraped_data)
 
         processed_data.append(merged_data)
 
@@ -883,19 +920,8 @@ async def get_single_stock(code: str):
 
     merged_data = {**asset_info, **scraped_data}
 
-    if asset_type == 'jp_stock':
-        merged_data["consecutive_increase_years"] = calculate_consecutive_dividend_increase(merged_data.get("dividend_history", {}))
-        score, details = calculate_score(merged_data)
-        merged_data["score"] = score
-        merged_data["score_details"] = details
-        # シグナルの判定を追加
-        merged_data["buy_signal"] = calculate_buy_signal(merged_data)
-        merged_data["sell_signal"] = calculate_sell_signal(merged_data)
-
-        # 重複・相反シグナルの抑制
-        merged_data["buy_signal"], merged_data["sell_signal"] = reconcile_signals(
-            merged_data.get("buy_signal"), merged_data.get("sell_signal")
-        )
+    # 分析情報の付与とDB更新（国内株のみ）
+    merged_data = _enrich_stock_data(merged_data, scraped_data)
 
     return merged_data
 
@@ -929,22 +955,13 @@ async def add_asset_endpoint(asset: Asset):
 
     if new_asset_data and "error" not in new_asset_data:
         recent_stocks_manager.add_recent_code(code)
-        if asset_type == 'jp_stock':
-            new_asset_data["consecutive_increase_years"] = calculate_consecutive_dividend_increase(new_asset_data.get("dividend_history", {}))
-            score, details = calculate_score(new_asset_data)
-            new_asset_data["score"] = score
-            new_asset_data["score_details"] = details
-            # シグナルの判定を追加
-            new_asset_data["buy_signal"] = calculate_buy_signal(new_asset_data)
-            new_asset_data["sell_signal"] = calculate_sell_signal(new_asset_data)
+        
+        merged_data = {**portfolio_manager.get_stock_info(code), **new_asset_data}
+        # 分析情報の付与とDB更新（国内株のみ）
+        merged_data = _enrich_stock_data(merged_data, new_asset_data)
 
-            # 重複・相反シグナルの抑制
-            new_asset_data["buy_signal"], new_asset_data["sell_signal"] = reconcile_signals(
-                new_asset_data.get("buy_signal"), new_asset_data.get("sell_signal")
-            )
-
-        asset_name = new_asset_data.get("name", "")
-        return {"status": "success", "message": f"資産 {code} ({asset_name}) を追加しました。", "stock": new_asset_data}
+        asset_name = merged_data.get("name", "")
+        return {"status": "success", "message": f"資産 {code} ({asset_name}) を追加しました。", "stock": merged_data}
     else:
         portfolio_manager.delete_stocks([code]) # 追加をロールバック
         error_message = new_asset_data.get("error", "不明なエラー") if new_asset_data else "不明なエラー"

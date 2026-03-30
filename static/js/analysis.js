@@ -1000,6 +1000,7 @@ document.addEventListener('DOMContentLoaded', () => {
         isAmountVisible = !event.target.checked;
         renderAnalysisTable(filteredHoldingsData);
         renderSummary(filteredHoldingsData);
+        renderCharts(filteredHoldingsData);
         fetchAndRenderHistoryData();
     });
     downloadAnalysisCsvButton.addEventListener('click', () => { window.location.href = '/api/portfolio/analysis/csv'; });

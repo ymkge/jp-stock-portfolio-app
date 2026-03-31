@@ -402,55 +402,64 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
     """
     銘柄データに分析（スコア、シグナル）を付与し、必要に応じてDBを更新する。
     """
-    if merged_data.get('asset_type') != 'jp_stock' or "error" in merged_data:
+    if "error" in merged_data:
         return merged_data
 
     code = merged_data.get('code')
+    asset_type = merged_data.get('asset_type', 'jp_stock')
 
-    # 1. 分析の実行
-    merged_data["consecutive_increase_years"] = calculate_consecutive_dividend_increase(merged_data.get("dividend_history", {}))
-    score, details = calculate_score(merged_data)
-    merged_data["score"] = score
-    merged_data["score_details"] = details
+    # 1. 分析の実行 (国内株式のみ)
+    if asset_type == 'jp_stock':
+        merged_data["consecutive_increase_years"] = calculate_consecutive_dividend_increase(merged_data.get("dividend_history", {}))
+        score, details = calculate_score(merged_data)
+        merged_data["score"] = score
+        merged_data["score_details"] = details
 
-    # ダイヤモンド（優良銘柄）判定を独立して保持
-    f_score = details.get("per", 0) + details.get("pbr", 0) + details.get("roe", 0) + \
-              details.get("yield", 0) + details.get("consecutive_increase", 0)
-    f_diamond = get_config("buy_signal.thresholds.fundamental_diamond", 4)
-    merged_data["is_diamond"] = f_score >= f_diamond
+        # ダイヤモンド（優良銘柄）判定を独立して保持
+        f_score = details.get("per", 0) + details.get("pbr", 0) + details.get("roe", 0) + \
+                  details.get("yield", 0) + details.get("consecutive_increase", 0)
+        f_diamond = get_config("buy_signal.thresholds.fundamental_diamond", 4)
+        merged_data["is_diamond"] = f_score >= f_diamond
 
-    logger.debug(f"銘柄 {code} ({merged_data.get('name')}): ファンダスコア={f_score}, ダイヤモンド判定={merged_data['is_diamond']}")
+        logger.debug(f"銘柄 {code} ({merged_data.get('name')}): ファンダスコア={f_score}, ダイヤモンド判定={merged_data['is_diamond']}")
 
-    # シグナルの判定
-    merged_data["buy_signal"] = calculate_buy_signal(merged_data)
-    merged_data["sell_signal"] = calculate_sell_signal(merged_data)
+        # シグナルの判定
+        merged_data["buy_signal"] = calculate_buy_signal(merged_data)
+        merged_data["sell_signal"] = calculate_sell_signal(merged_data)
 
-    # 重複・相反シグナルの抑制
-    merged_data["buy_signal"], merged_data["sell_signal"] = reconcile_signals(
-        merged_data.get("buy_signal"), merged_data.get("sell_signal")
-    )
+        # 重複・相反シグナルの抑制
+        merged_data["buy_signal"], merged_data["sell_signal"] = reconcile_signals(
+            merged_data.get("buy_signal"), merged_data.get("sell_signal")
+        )
 
-    # 2. 分析スナップショットの保存 (DB更新)
+    # 2. スナップショットの保存 (DB更新) - 全アセットタイプ対象
     if scraped_data and "error" not in scraped_data:
         try:
-            snapshot = {
-                "total_score": merged_data.get("score"),
-                "score_details": merged_data.get("score_details"),
-                "buy_signal": merged_data.get("buy_signal"),
-                "sell_signal": merged_data.get("sell_signal"),
-                "is_reliable": merged_data.get("score_details", {}).get("is_reliable", True)
-            }
-            # 元のスクレイピングデータにスナップショットを注入してDB保存
-            # 注意: ここでscraped_data自体を書き換えるが、これはDB保存用のデータとして扱われる
-            scraped_data["analysis_snapshot"] = snapshot
+            # A. 分析スナップショット (国内株のみ)
+            if asset_type == 'jp_stock':
+                scraped_data["analysis_snapshot"] = {
+                    "total_score": merged_data.get("score"),
+                    "score_details": merged_data.get("score_details"),
+                    "buy_signal": merged_data.get("buy_signal"),
+                    "sell_signal": merged_data.get("sell_signal"),
+                    "is_reliable": merged_data.get("score_details", {}).get("is_reliable", True)
+                }
+
+            # B. 保有情報スナップショット (全アセット共通)
+            # portfolio.json から読み込まれた保有情報のリスト（買付単価、数量、メモ等）を保存
+            holdings = merged_data.get("holdings", [])
+            if holdings:
+                scraped_data["holdings_snapshot"] = holdings
+            
+            # DB保存実行 (INSERT OR REPLACE)
             history_manager.save_daily_data(
                 code, 
-                merged_data.get("asset_type", "jp_stock"), 
+                asset_type, 
                 scraped_data
             )
-            logger.debug(f"銘柄 {code} の分析スナップショットをDBに保存しました。")
+            logger.debug(f"銘柄 {code} のスナップショット（分析/保有）をDBに保存しました。")
         except Exception as e:
-            logger.error(f"Failed to save analysis snapshot for {code}: {e}")
+            logger.error(f"Failed to save snapshot for {code}: {e}")
 
     return merged_data
 

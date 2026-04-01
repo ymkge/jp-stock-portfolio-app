@@ -823,6 +823,68 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
     it_count = sum(1 for a in portfolio if a.get('asset_type') == 'investment_trust')
     us_count = sum(1 for a in portfolio if a.get('asset_type') == 'us_stock')
 
+    # --- 市場指標の取得と過去比較の算出 ---
+    market_indices_config = get_config("market_indices", [])
+    market_indices_results = []
+    
+    if market_indices_config:
+        index_tasks = []
+        index_scraper = scraper.get_scraper('market_index')
+        for idx_info in market_indices_config:
+            code = idx_info["code"]
+            index_tasks.append(fetch_with_smart_cache_bulk(index_scraper, code, 'market_index'))
+        
+        index_scraped_results = await asyncio.gather(*index_tasks)
+        
+        for i, idx_result in enumerate(index_scraped_results):
+            if not idx_result or "error" in idx_result:
+                market_indices_results.append({
+                    "name": market_indices_config[i]["name"],
+                    "code": market_indices_config[i]["code"],
+                    "error": idx_result.get("error") if idx_result else "取得失敗"
+                })
+                continue
+            
+            code = idx_result["code"]
+            current_price_str = str(idx_result.get("price", "0")).replace(',', '')
+            try:
+                current_price = float(current_price_str)
+            except ValueError:
+                current_price = 0.0
+            
+            # 過去データの取得 (DoDはYahooから、WoWは7日前、MoMは30日前)
+            # WoW
+            date_wow = (now_jst - timedelta(days=7)).strftime("%Y-%m-%d")
+            hist_wow = history_manager.get_historical_data_before(code, date_wow)
+            wow_percent = "N/A"
+            if hist_wow and current_price > 0:
+                try:
+                    old_price = float(str(hist_wow.get("price", "0")).replace(',', ''))
+                    if old_price > 0:
+                        wow_percent = round((current_price - old_price) / old_price * 100, 2)
+                except ValueError: pass
+                
+            # MoM
+            date_mom = (now_jst - timedelta(days=30)).strftime("%Y-%m-%d")
+            hist_mom = history_manager.get_historical_data_before(code, date_mom)
+            mom_percent = "N/A"
+            if hist_mom and current_price > 0:
+                try:
+                    old_price = float(str(hist_mom.get("price", "0")).replace(',', ''))
+                    if old_price > 0:
+                        mom_percent = round((current_price - old_price) / old_price * 100, 2)
+                except ValueError: pass
+
+            market_indices_results.append({
+                "name": idx_result.get("name", market_indices_config[i]["name"]),
+                "code": code,
+                "price": idx_result.get("price"),
+                "change": idx_result.get("change"),
+                "change_percent": idx_result.get("change_percent"),
+                "wow_percent": wow_percent,
+                "mom_percent": mom_percent
+            })
+
     success_count = sum(1 for r in scraped_results if r and "error" not in r)
     fail_count = total_count - success_count
 
@@ -834,7 +896,8 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
         "jp_count": jp_count,
         "it_count": it_count,
         "us_count": us_count,
-        "fetched_at": history_manager.get_now_jst().isoformat()
+        "fetched_at": history_manager.get_now_jst().isoformat(),
+        "market_indices": market_indices_results # 指標データを追加
     }
 
     logger.info(f"[Summary] 銘柄情報の一括取得完了 | 所要時間: {duration:.2f}秒 | 対象: {total_count}件 (成功: {success_count}, 失敗: {fail_count}) | 内訳: 国内株 {jp_count}, 投信 {it_count}, 米国株 {us_count}")

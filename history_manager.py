@@ -121,6 +121,31 @@ def get_daily_data(code: str, date_str: Optional[str] = None) -> Optional[Dict[s
         logger.error(f"Failed to get daily data for {code}: {e}")
     return None
 
+def get_historical_data_before(code: str, date_str: str) -> Optional[Dict[str, Any]]:
+    """
+    指定された日付（date_str）以前で、最も新しいキャッシュデータをDBから取得する。
+    休業日などを考慮し、指定日にデータがない場合に過去に遡って最新のものを取得する。
+    """
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT data_json, updated_at_jst, date FROM daily_stock_history 
+                WHERE code = ? AND date <= ?
+                ORDER BY date DESC
+                LIMIT 1
+            """, (code, date_str))
+            row = cursor.fetchone()
+            if row:
+                data = json.loads(row["data_json"])
+                data["_db_updated_at_jst"] = row["updated_at_jst"]
+                data["_db_date"] = row["date"]
+                return data
+    except (sqlite3.Error, json.JSONDecodeError) as e:
+        logger.error(f"Failed to get historical data for {code} before {date_str}: {e}")
+    return None
+
 def get_all_daily_data_for_date(date_str: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
     """
     指定された日付の全データを一括取得し、銘柄コードをキーとした辞書で返す。

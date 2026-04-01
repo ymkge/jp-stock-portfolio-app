@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const timeStr = new Date(metadata.fetched_at).toLocaleString();
         const successClass = metadata.fail_count > 0 ? 'loss' : 'profit';
-        
+
         updateReportContainer.innerHTML = `
             <div class="update-report">
                 <div class="update-report-stats">
@@ -127,8 +127,77 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
         updateReportContainer.classList.remove('hidden');
+
+        // 市場サマリーの描画
+        if (metadata.market_indices) {
+            renderMarketSummary(metadata.market_indices);
+        }
     }
 
+    /**
+     * 市場指標サマリーをレンダリングする
+     */
+    function renderMarketSummary(indices) {
+        const container = document.getElementById('market-summary-container');
+        if (!container || !indices) return;
+
+        let html = '';
+        indices.forEach(idx => {
+            const price = idx.price || '--';
+            const change = idx.change || '--';
+            const changePercent = idx.change_percent || '--';
+            const wow = idx.wow_percent || '--';
+            const mom = idx.mom_percent || '--';
+
+            const getChangeClass = (val) => {
+                if (typeof val === 'string') {
+                    if (val.startsWith('+')) return 'price-up';
+                    if (val.startsWith('-')) return 'price-down';
+                } else if (typeof val === 'number') {
+                    if (val > 0) return 'price-up';
+                    if (val < 0) return 'price-down';
+                }
+                return '';
+            };
+
+            const formatPercent = (val) => {
+                if (val === '--' || val === 'N/A') return '--';
+                if (typeof val === 'number') {
+                    const sign = val > 0 ? '+' : '';
+                    return `${sign}${val.toFixed(2)}%`;
+                }
+                return `${val}%`;
+            };
+
+            html += `
+                <a href="https://finance.yahoo.co.jp/quote/${idx.code}" target="_blank" class="market-index-link">
+                    <div class="market-index-card">
+                        <div class="market-index-header">
+                            <span class="market-index-name">${idx.name}</span>
+                            <span class="market-index-code" style="font-size: 0.7rem; color: var(--text-muted);">${idx.code}</span>
+                        </div>
+                        <div class="market-index-price">${price}</div>
+                        <div class="market-index-changes">
+                            <div class="market-index-row">
+                                <span class="change-label">前日比:</span>
+                                <span class="${getChangeClass(change)}">${change} (${formatPercent(changePercent)})</span>
+                            </div>
+                            <div class="market-index-row">
+                                <span class="change-label">前週比:</span>
+                                <span class="${getChangeClass(wow)}">${formatPercent(wow)}</span>
+                            </div>
+                            <div class="market-index-row">
+                                <span class="change-label">前月比:</span>
+                                <span class="${getChangeClass(mom)}">${formatPercent(mom)}</span>
+                            </div>
+                        </div>
+                    </div>
+                </a>
+            `;
+        });
+        container.innerHTML = html;
+        container.classList.remove('hidden');
+    }
     async function fetchAndRenderHistoryData() {
         try {
             const response = await fetch('/api/history/summary');

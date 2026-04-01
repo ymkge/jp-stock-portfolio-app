@@ -541,6 +541,61 @@ class USStockScraper(BaseScraper):
             logger.error(f"米国株 {code} のデータ解析中にエラー: {e}", exc_info=True)
             return {"code": code, "name": f"{code}", "error": "データ解析失敗", "error_details": {"type": "ParseError", "status_code": 200}}
 
+# --- 市場指標スクレイパー ---
+class IndexScraper(BaseScraper):
+    """市場指標（日経平均、TOPIX、先物等）のデータをYahoo!ファイナンスから取得する"""
+    @cachedmethod(lambda self: self.cache, key=lambda self, code: code)
+    def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
+        # 指標・先物の場合はコードをそのままURLに使用（.Tを付加しない）
+        url = f"https://finance.yahoo.co.jp/quote/{code}"
+        response = self._make_request(url)
+        if not response:
+            error_msg = "指標情報の取得に失敗しました（通信エラー）"
+            return {"code": code, "name": f"{code}", "error": error_msg, "error_details": self.last_error}
+
+        try:
+            match = re.search(r"window.__PRELOADED_STATE__\s*=\s*(\{.*\})", response.text)
+            if not match:
+                return {"code": code, "name": f"{code}", "error": "指標情報が見つかりません", "error_details": {"type": "ParseError", "status_code": 200}}
+
+            data = json.loads(match.group(1))
+            
+            # 探索順序: 国内指数(現物・先物) -> インデックスリスト
+            price_board = None
+            
+            # 1. mainDomesticIndexPriceBoard (日経平均, TOPIX, 先物等)
+            domestic_board = data.get("mainDomesticIndexPriceBoard", {})
+            if domestic_board:
+                price_board = domestic_board.get("indexPrices")
+            
+            # 2. mainIndicesPriceBoard (複数の指標が並ぶページ)
+            if not price_board:
+                indices = data.get("mainIndicesPriceBoard", {}).get("indices", [])
+                for idx in indices:
+                    if idx.get("code") == code:
+                        price_board = idx
+                        break
+            
+            if not price_board:
+                return {"code": code, "name": f"{code}", "error": "指標データ構造の解析に失敗しました", "error_details": {"type": "ParseError", "status_code": 200}}
+
+            # 前日比（%）の正規化
+            rate = price_board.get("changePriceRate")
+            change_percent = f"{rate}" if rate is not None else "N/A"
+
+            return {
+                "code": code,
+                "name": price_board.get("name", "N/A"),
+                "price": price_board.get("price", "N/A"),
+                "change": price_board.get("changePrice", "N/A"),
+                "change_percent": change_percent,
+                "asset_type": "market_index",
+                "currency": "JPY"
+            }
+        except (json.JSONDecodeError, KeyError, AttributeError) as e:
+            logger.error(f"指標 {code} のデータ解析中にエラー: {e}", exc_info=True)
+            return {"code": code, "name": f"{code}", "error": "データ解析失敗", "error_details": {"type": "ParseError", "status_code": 200}}
+
 # --- 為替レート取得 ---
 @cached(TTLCache(maxsize=10, ttl=CACHE_TTL))
 def get_exchange_rate(pair: str = 'USDJPY=X') -> Optional[float]:
@@ -586,6 +641,8 @@ def get_scraper(asset_type: str) -> BaseScraper:
             _scraper_instances[asset_type] = InvestTrustScraper()
         elif asset_type == 'us_stock':
             _scraper_instances[asset_type] = USStockScraper()
+        elif asset_type == 'market_index':
+            _scraper_instances[asset_type] = IndexScraper()
         else:
             raise ValueError(f"Unsupported asset type: {asset_type}")
     return _scraper_instances[asset_type]
@@ -610,8 +667,14 @@ if __name__ == '__main__':
     # 米国株
     us_scraper = get_scraper('us_stock')
     test_scraper(us_scraper, "AAPL", "米国株式")
-    test_scraper(us_scraper, "NVDA", "米国株式 (NVDA)") # NVDAのテストを追加
+    test_scraper(us_scraper, "NVDA", "米国株式 (NVDA)")
+
+    # 指標
+    index_scraper = get_scraper('market_index')
+    test_scraper(index_scraper, "998407.O", "日経平均")
+    test_scraper(index_scraper, "5040469.O", "日経先物")
 
     # 為替レート
     print("\n--- 為替レート ---")
     usd_jpy = get_exchange_rate('USDJPY=X')
+    print(f"USD/JPY: {usd_jpy}")

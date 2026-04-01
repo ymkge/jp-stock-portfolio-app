@@ -617,13 +617,13 @@ def get_cache_threshold_time(asset_type: str, now_jst: datetime, market_times: d
             t -= timedelta(days=1)
         
         # 市場ごとの休場曜日判定
-        if asset_type == 'us_stock':
+        if asset_type in ['us_stock', 'market_index']:
             if is_open_time:
-                # 米国株開始(JST 23:30)が発生しないのは 土(5) と 日(6)
+                # 米国株/指標開始(JST 23:30/09:00)が発生しないのは 土(5) と 日(6)
                 while t.weekday() >= 5:
                     t -= timedelta(days=1)
             else:
-                # 米国株終了(JST 07:00)が発生しないのは 日(6) と 月(0)
+                # 米国株/指標終了(JST 07:00/06:00)が発生しないのは 日(6) と 月(0)
                 while t.weekday() in [0, 6]:
                     t -= timedelta(days=1)
         else:

@@ -404,6 +404,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderSummary(holdings) {
+        // 現在の計算値 (フィルタ後の holdings に基づく)
         const totalMarketValue = holdings.reduce((sum, item) => sum + (parseFloat(item.market_value) || 0), 0);
         const totalProfitLoss = holdings.reduce((sum, item) => sum + (parseFloat(item.profit_loss) || 0), 0);
         const totalInvestment = totalMarketValue - totalProfitLoss;
@@ -426,14 +427,42 @@ document.addEventListener('DOMContentLoaded', () => {
         const summaryProfitLossClass = totalProfitLoss >= 0 ? 'profit' : 'loss';
         const summaryProfitLossRateClass = totalProfitLossRate >= 0 ? 'profit' : 'loss';
 
+        // --- 先月比 (MoM) の計算 ---
+        // フィルタ適用時は不正確になるため、全データ(allHoldingsData)の合計値を基準にするか、
+        // あるいは現在の表示内容に対する比較とするか。
+        // ここでは「ポートフォリオ全体」の変動を知りたいため、全データの合計を再計算する。
+        const currentTotalMV = allHoldingsData.reduce((sum, item) => sum + (parseFloat(item.market_value) || 0), 0);
+        const currentTotalPL = allHoldingsData.reduce((sum, item) => sum + (parseFloat(item.profit_loss) || 0), 0);
+        const currentTotalDiv = allHoldingsData.reduce((sum, item) => sum + (parseFloat(item.estimated_annual_dividend) || 0), 0);
+
+        const prev = fullAnalysisData.previous_summary;
+        
+        const calcDiff = (current, previous) => {
+            if (!previous || previous === 0) return null;
+            return ((current - previous) / previous) * 100;
+        };
+
+        const formatDiff = (diff) => {
+            if (diff === null) return '';
+            const cls = diff >= 0 ? 'profit' : 'loss';
+            const sign = diff >= 0 ? '+' : '';
+            return `<small class="${cls}" style="margin-left: 8px; font-weight: bold;">(${sign}${diff.toFixed(2)}%)</small>`;
+        };
+
+        // フィルタ適用中かどうかの判定
+        const isFiltered = holdings.length !== allHoldingsData.length;
+        const momSuffixMV = !isFiltered ? formatDiff(calcDiff(currentTotalMV, prev ? prev.total_market_value : 0)) : '';
+        const momSuffixPL = !isFiltered ? formatDiff(calcDiff(currentTotalPL, prev ? prev.total_profit_loss : 0)) : '';
+        const momSuffixDiv = !isFiltered ? formatDiff(calcDiff(currentTotalDiv, prev ? prev.total_dividend : 0)) : '';
+
         // --- サマリー表示の更新 ---
         const summaryContent = document.getElementById('summary-content');
         if (summaryContent) {
             summaryContent.innerHTML = `
-                <p>総評価額: <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalMarketValue, 0)}円</span></p>
-                <p>総損益: <span class="${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossClass}">${formatNumber(totalProfitLoss, 0)}円</span></p>
+                <p>総評価額: <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalMarketValue, 0)}円</span>${momSuffixMV}</p>
+                <p>総損益: <span class="${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossClass}">${formatNumber(totalProfitLoss, 0)}円</span>${momSuffixPL}</p>
                 <p>総損益率: <span class="${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossRateClass}">${formatNumber(totalProfitLossRate, 2)}%</span></p>
-                <p>年間配当合計: <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalEstimatedAnnualDividend, 0)}円</span></p>
+                <p>年間配当合計: <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalEstimatedAnnualDividend, 0)}円</span>${momSuffixDiv}</p>
                 <p>年間配当合計(税引後): <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalEstimatedAnnualDividendAfterTax, 0)}円</span></p>
                 <hr>
                 <p title="配当が発生する資産（投資信託等を除く）の評価額合計です">配当対象資産の評価額: <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(mvOfDividendPaying, 0)}円</span></p>

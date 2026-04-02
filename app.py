@@ -1161,13 +1161,18 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
                 item[key] = "N/A"
 
     # --- 履歴データの保存 (半自動: 分析ページアクセス時に保存) ---
+    previous_summary = None
     try:
         # 非同期で実行するのが理想だが、SQLiteへの書き込みは高速なため、
         # 簡易的に同期処理で行う（デグレリスク低減のため複雑な非同期処理は避ける）。
         # N/A変換前の生データ(raw_holdings_list)を渡す
         history_manager.save_snapshot(raw_holdings_list)
+        
+        # 保存後に直近の過去データを取得
+        snapshot_month = history_manager.get_now_jst().strftime("%Y-%m")
+        previous_summary = history_manager.get_previous_summary(snapshot_month)
     except Exception as e:
-        logger.error(f"Error saving history snapshot: {e}")
+        logger.error(f"Error saving history snapshot or getting previous summary: {e}")
     # -------------------------------------------------------
 
     # --- ポートフォリオの統計情報(加重平均など)を計算 ---
@@ -1184,6 +1189,7 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
         "total_annual_dividend_after_tax": total_annual_dividend_after_tax,
         "summary_stats": summary_stats,
         "metadata": metadata,
+        "previous_summary": previous_summary, # 過去サマリーを追加
     }
 
 @app.get("/api/portfolio/analysis/csv")

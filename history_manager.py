@@ -58,6 +58,33 @@ def init_db():
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_snapshot_month ON portfolio_history (snapshot_month)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_date ON daily_stock_history (date)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_code_date ON daily_stock_history (code, date)")
+
+            # ポートフォリオ全体の集計履歴テーブル（新設）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS portfolio_summary_history (
+                    snapshot_month TEXT PRIMARY KEY,
+                    total_market_value REAL,
+                    total_profit_loss REAL,
+                    total_dividend REAL,
+                    updated_at_jst TEXT
+                )
+            """)
+            
+            # 既存データからのマイグレーション（サマリーテーブルが空の場合のみ実行）
+            cursor.execute("SELECT COUNT(*) FROM portfolio_summary_history")
+            if cursor.fetchone()[0] == 0:
+                logger.info("Migrating existing portfolio_history to portfolio_summary_history...")
+                cursor.execute("""
+                    INSERT INTO portfolio_summary_history (snapshot_month, total_market_value, total_profit_loss, total_dividend, updated_at_jst)
+                    SELECT 
+                        snapshot_month,
+                        SUM(market_value),
+                        SUM(profit_loss),
+                        SUM(estimated_annual_dividend),
+                        MAX(snapshot_date) || ' 00:00:00'
+                    FROM portfolio_history
+                    GROUP BY snapshot_month
+                """)
             conn.commit()
     except sqlite3.Error as e:
         logger.error(f"Database initialization failed: {e}")
@@ -174,7 +201,7 @@ def get_all_daily_data_for_date(date_str: Optional[str] = None) -> Dict[str, Dic
 def save_snapshot(portfolio_data: List[Dict[str, Any]]):
     """
     ポートフォリオのスナップショットを保存する。
-    同月(YYYY-MM)のデータが既に存在する場合は、一度削除してから保存し直す（月内上書き更新）。
+    銘柄詳細(portfolio_history)と全体サマリー(portfolio_summary_history)の両方を保存する。
     """
     if not portfolio_data:
         return
@@ -182,14 +209,17 @@ def save_snapshot(portfolio_data: List[Dict[str, Any]]):
     now_jst = get_now_jst()
     snapshot_date = now_jst.strftime("%Y-%m-%d")
     snapshot_month = now_jst.strftime("%Y-%m")
+    updated_at_str = now_jst.strftime("%Y-%m-%d %H:%M:%S")
 
     try:
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
             conn.execute("BEGIN")
+            
+            # 1. 銘柄詳細の保存
             cursor.execute("DELETE FROM portfolio_history WHERE snapshot_month = ?", (snapshot_month,))
             
-            insert_sql = """
+            insert_detail_sql = """
                 INSERT INTO portfolio_history (
                     snapshot_date, snapshot_month, code, name, asset_type,
                     account_type, security_company, quantity, purchase_price,
@@ -199,7 +229,19 @@ def save_snapshot(portfolio_data: List[Dict[str, Any]]):
             """
             
             records_to_insert = []
+            total_market_value = 0.0
+            total_profit_loss = 0.0
+            total_dividend = 0.0
+
             for item in portfolio_data:
+                 mv = _to_float(item.get("market_value"))
+                 pl = _to_float(item.get("profit_loss"))
+                 div = _to_float(item.get("estimated_annual_dividend"))
+                 
+                 total_market_value += mv
+                 total_profit_loss += pl
+                 total_dividend += div
+
                  records_to_insert.append((
                      snapshot_date,
                      snapshot_month,
@@ -211,19 +253,48 @@ def save_snapshot(portfolio_data: List[Dict[str, Any]]):
                      _to_float(item.get("quantity")),
                      _to_float(item.get("purchase_price")),
                      _to_float(item.get("price")),
-                     _to_float(item.get("market_value")),
-                     _to_float(item.get("profit_loss")),
+                     mv,
+                     pl,
                      _to_float(item.get("profit_loss_rate")),
-                     _to_float(item.get("estimated_annual_dividend")),
+                     div,
                      item.get("industry", ""),
                      item.get("memo", "")
                  ))
 
-            cursor.executemany(insert_sql, records_to_insert)
+            cursor.executemany(insert_detail_sql, records_to_insert)
+            
+            # 2. 全体サマリーの保存 (INSERT OR REPLACE)
+            cursor.execute("""
+                INSERT OR REPLACE INTO portfolio_summary_history (
+                    snapshot_month, total_market_value, total_profit_loss, total_dividend, updated_at_jst
+                ) VALUES (?, ?, ?, ?, ?)
+            """, (snapshot_month, total_market_value, total_profit_loss, total_dividend, updated_at_str))
+            
             conn.commit()
-            logger.info(f"Snapshot for {snapshot_month} saved/updated with {len(records_to_insert)} records.")
+            logger.info(f"Snapshot and Summary for {snapshot_month} saved/updated. Details: {len(records_to_insert)} records.")
     except sqlite3.Error as e:
         logger.error(f"Failed to save snapshot: {e}")
+
+def get_previous_summary(exclude_month: str) -> Optional[Dict[str, Any]]:
+    """
+    指定された月(exclude_month)を除いた、直近の過去サマリーを取得する。
+    """
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM portfolio_summary_history
+                WHERE snapshot_month < ?
+                ORDER BY snapshot_month DESC
+                LIMIT 1
+            """, (exclude_month,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+    except sqlite3.Error as e:
+        logger.error(f"Failed to get previous summary: {e}")
+    return None
 
 def get_monthly_summary():
     """月ごとのサマリーを取得する"""

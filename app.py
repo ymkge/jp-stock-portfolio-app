@@ -421,6 +421,10 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
         f_diamond = get_config("buy_signal.thresholds.fundamental_diamond", 4)
         merged_data["is_diamond"] = f_score >= f_diamond
 
+        # シグナルの判定
+        merged_data["buy_signal"] = calculate_buy_signal(merged_data)
+        merged_data["sell_signal"] = calculate_sell_signal(merged_data)
+
         # 重複・相反シグナルの抑制
         merged_data["buy_signal"], merged_data["sell_signal"] = reconcile_signals(
             merged_data.get("buy_signal"), merged_data.get("sell_signal")

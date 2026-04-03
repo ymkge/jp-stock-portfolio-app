@@ -421,12 +421,6 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
         f_diamond = get_config("buy_signal.thresholds.fundamental_diamond", 4)
         merged_data["is_diamond"] = f_score >= f_diamond
 
-        logger.debug(f"銘柄 {code} ({merged_data.get('name')}): ファンダスコア={f_score}, ダイヤモンド判定={merged_data['is_diamond']}")
-
-        # シグナルの判定
-        merged_data["buy_signal"] = calculate_buy_signal(merged_data)
-        merged_data["sell_signal"] = calculate_sell_signal(merged_data)
-
         # 重複・相反シグナルの抑制
         merged_data["buy_signal"], merged_data["sell_signal"] = reconcile_signals(
             merged_data.get("buy_signal"), merged_data.get("sell_signal")
@@ -435,29 +429,42 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
     # 2. スナップショットの保存 (DB更新) - 全アセットタイプ対象
     if scraped_data and "error" not in scraped_data:
         try:
+            # 変更検知用のフラグ
+            is_changed = False
+            
             # A. 分析スナップショット (国内株のみ)
             if asset_type == 'jp_stock':
-                scraped_data["analysis_snapshot"] = {
+                new_analysis = {
                     "total_score": merged_data.get("score"),
                     "score_details": merged_data.get("score_details"),
                     "buy_signal": merged_data.get("buy_signal"),
                     "sell_signal": merged_data.get("sell_signal"),
                     "is_reliable": merged_data.get("score_details", {}).get("is_reliable", True)
                 }
+                # 既存データと比較 (なければ新規保存)
+                if scraped_data.get("analysis_snapshot") != new_analysis:
+                    scraped_data["analysis_snapshot"] = new_analysis
+                    is_changed = True
 
             # B. 保有情報スナップショット (全アセット共通)
             # portfolio.json から読み込まれた保有情報のリスト（買付単価、数量、メモ等）を保存
             holdings = merged_data.get("holdings", [])
             if holdings:
-                scraped_data["holdings_snapshot"] = holdings
+                # 既存データと比較
+                if scraped_data.get("holdings_snapshot") != holdings:
+                    scraped_data["holdings_snapshot"] = holdings
+                    is_changed = True
             
-            # DB保存実行 (INSERT OR REPLACE)
-            history_manager.save_daily_data(
-                code, 
-                asset_type, 
-                scraped_data
-            )
-            logger.debug(f"銘柄 {code} のスナップショット（分析/保有）をDBに保存しました。")
+            # DB保存実行 (新規取得時、または内容に変更があった場合のみ)
+            # ※新しくスクレイピングされたデータには _db_updated_at_jst がまだない
+            is_newly_scraped = "_db_updated_at_jst" not in scraped_data
+            
+            if is_newly_scraped or is_changed:
+                history_manager.save_daily_data(
+                    code, 
+                    asset_type, 
+                    scraped_data
+                )
         except Exception as e:
             logger.error(f"Failed to save snapshot for {code}: {e}")
 
@@ -752,7 +759,6 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
         # 鮮度が高いキャッシュがあれば、セマフォを確保して即座に返す (待機なし)
         if is_fresh and cached_data:
             async with semaphore:
-                logger.debug(f"{source} cache hit: {code}")
                 # スクレイパーのメモリキャッシュを同期
                 scraper_instance.cache[code] = cached_data
                 return cached_data
@@ -1168,9 +1174,10 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
         # N/A変換前の生データ(raw_holdings_list)を渡す
         history_manager.save_snapshot(raw_holdings_list)
         
-        # 保存後に直近の過去データを取得
-        snapshot_month = history_manager.get_now_jst().strftime("%Y-%m")
-        previous_summary = history_manager.get_previous_summary(snapshot_month)
+        # 保存後に30日前のデータを取得 (なければそれ以前の最新)
+        now_jst = history_manager.get_now_jst()
+        target_date = (now_jst - timedelta(days=30)).strftime("%Y-%m-%d")
+        previous_summary = history_manager.get_summary_before(target_date)
     except Exception as e:
         logger.error(f"Error saving history snapshot or getting previous summary: {e}")
     # -------------------------------------------------------

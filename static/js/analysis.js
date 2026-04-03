@@ -427,10 +427,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const summaryProfitLossClass = totalProfitLoss >= 0 ? 'profit' : 'loss';
         const summaryProfitLossRateClass = totalProfitLossRate >= 0 ? 'profit' : 'loss';
 
-        // --- 先月比 (MoM) の計算 ---
-        // フィルタ適用時は不正確になるため、全データ(allHoldingsData)の合計値を基準にするか、
-        // あるいは現在の表示内容に対する比較とするか。
-        // ここでは「ポートフォリオ全体」の変動を知りたいため、全データの合計を再計算する。
+        // --- 30日前比 (MoM相当) の計算 ---
+        // フィルタ適用時は不正確になるため、全データ(allHoldingsData)の合計値を基準にする。
         const currentTotalMV = allHoldingsData.reduce((sum, item) => sum + (parseFloat(item.market_value) || 0), 0);
         const currentTotalPL = allHoldingsData.reduce((sum, item) => sum + (parseFloat(item.profit_loss) || 0), 0);
         const currentTotalDiv = allHoldingsData.reduce((sum, item) => sum + (parseFloat(item.estimated_annual_dividend) || 0), 0);
@@ -446,7 +444,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (diff === null) return '';
             const cls = diff >= 0 ? 'profit' : 'loss';
             const sign = diff >= 0 ? '+' : '';
-            return `<small class="${cls}" style="margin-left: 8px; font-weight: bold;">(${sign}${diff.toFixed(2)}%)</small>`;
+            return `<small class="${cls}" style="margin-left: 8px; font-weight: bold;" title="30日前（または直近の過去データ）との比較です">(${sign}${diff.toFixed(2)}%)</small>`;
         };
 
         // フィルタ適用中かどうかの判定

@@ -59,31 +59,67 @@ def init_db():
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_date ON daily_stock_history (date)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_code_date ON daily_stock_history (code, date)")
 
-            # ポートフォリオ全体の集計履歴テーブル（新設）
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS portfolio_summary_history (
-                    snapshot_month TEXT PRIMARY KEY,
-                    total_market_value REAL,
-                    total_profit_loss REAL,
-                    total_dividend REAL,
-                    updated_at_jst TEXT
-                )
-            """)
+            # --- ポートフォリオサマリーテーブルの移行処理 (snapshot_month PK -> snapshot_date PK) ---
+            cursor.execute("PRAGMA table_info(portfolio_summary_history)")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            if columns and "snapshot_month" in columns and "snapshot_date" not in columns:
+                logger.info("Migrating portfolio_summary_history to daily schema...")
+                # 1. 新しいテーブルを作成
+                cursor.execute("""
+                    CREATE TABLE portfolio_summary_history_new (
+                        snapshot_date TEXT PRIMARY KEY,
+                        snapshot_month TEXT,
+                        total_market_value REAL,
+                        total_profit_loss REAL,
+                        total_dividend REAL,
+                        updated_at_jst TEXT
+                    )
+                """)
+                # 2. データを移行 (updated_at_jst から日付を抽出して PK にする)
+                cursor.execute("""
+                    INSERT INTO portfolio_summary_history_new (snapshot_date, snapshot_month, total_market_value, total_profit_loss, total_dividend, updated_at_jst)
+                    SELECT 
+                        COALESCE(SUBSTR(updated_at_jst, 1, 10), snapshot_month || '-01'),
+                        snapshot_month,
+                        total_market_value,
+                        total_profit_loss,
+                        total_dividend,
+                        updated_at_jst
+                    FROM portfolio_summary_history
+                """)
+                # 3. 旧テーブルを削除してリネーム
+                cursor.execute("DROP TABLE portfolio_summary_history")
+                cursor.execute("ALTER TABLE portfolio_summary_history_new RENAME TO portfolio_summary_history")
+                logger.info("Migration of portfolio_summary_history completed.")
+            else:
+                # 新規作成用
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS portfolio_summary_history (
+                        snapshot_date TEXT PRIMARY KEY,
+                        snapshot_month TEXT,
+                        total_market_value REAL,
+                        total_profit_loss REAL,
+                        total_dividend REAL,
+                        updated_at_jst TEXT
+                    )
+                """)
             
             # 既存データからのマイグレーション（サマリーテーブルが空の場合のみ実行）
             cursor.execute("SELECT COUNT(*) FROM portfolio_summary_history")
             if cursor.fetchone()[0] == 0:
                 logger.info("Migrating existing portfolio_history to portfolio_summary_history...")
                 cursor.execute("""
-                    INSERT INTO portfolio_summary_history (snapshot_month, total_market_value, total_profit_loss, total_dividend, updated_at_jst)
+                    INSERT INTO portfolio_summary_history (snapshot_date, snapshot_month, total_market_value, total_profit_loss, total_dividend, updated_at_jst)
                     SELECT 
+                        snapshot_date,
                         snapshot_month,
                         SUM(market_value),
                         SUM(profit_loss),
                         SUM(estimated_annual_dividend),
                         MAX(snapshot_date) || ' 00:00:00'
                     FROM portfolio_history
-                    GROUP BY snapshot_month
+                    GROUP BY snapshot_date
                 """)
             conn.commit()
     except sqlite3.Error as e:
@@ -202,6 +238,7 @@ def save_snapshot(portfolio_data: List[Dict[str, Any]]):
     """
     ポートフォリオのスナップショットを保存する。
     銘柄詳細(portfolio_history)と全体サマリー(portfolio_summary_history)の両方を保存する。
+    1日につき最新の1レコードを保持する。
     """
     if not portfolio_data:
         return
@@ -216,8 +253,8 @@ def save_snapshot(portfolio_data: List[Dict[str, Any]]):
             cursor = conn.cursor()
             conn.execute("BEGIN")
             
-            # 1. 銘柄詳細の保存
-            cursor.execute("DELETE FROM portfolio_history WHERE snapshot_month = ?", (snapshot_month,))
+            # 1. 銘柄詳細の保存 (その日の既存データを削除して再挿入)
+            cursor.execute("DELETE FROM portfolio_history WHERE snapshot_date = ?", (snapshot_date,))
             
             insert_detail_sql = """
                 INSERT INTO portfolio_history (
@@ -263,21 +300,21 @@ def save_snapshot(portfolio_data: List[Dict[str, Any]]):
 
             cursor.executemany(insert_detail_sql, records_to_insert)
             
-            # 2. 全体サマリーの保存 (INSERT OR REPLACE)
+            # 2. 全体サマリーの保存 (INSERT OR REPLACE by snapshot_date)
             cursor.execute("""
                 INSERT OR REPLACE INTO portfolio_summary_history (
-                    snapshot_month, total_market_value, total_profit_loss, total_dividend, updated_at_jst
-                ) VALUES (?, ?, ?, ?, ?)
-            """, (snapshot_month, total_market_value, total_profit_loss, total_dividend, updated_at_str))
+                    snapshot_date, snapshot_month, total_market_value, total_profit_loss, total_dividend, updated_at_jst
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            """, (snapshot_date, snapshot_month, total_market_value, total_profit_loss, total_dividend, updated_at_str))
             
             conn.commit()
-            logger.info(f"Snapshot and Summary for {snapshot_month} saved/updated. Details: {len(records_to_insert)} records.")
+            logger.info(f"Snapshot and Summary for {snapshot_date} saved/updated. Details: {len(records_to_insert)} records.")
     except sqlite3.Error as e:
         logger.error(f"Failed to save snapshot: {e}")
 
-def get_previous_summary(exclude_month: str) -> Optional[Dict[str, Any]]:
+def get_summary_before(date_str: str) -> Optional[Dict[str, Any]]:
     """
-    指定された月(exclude_month)を除いた、直近の過去サマリーを取得する。
+    指定された日付(date_str)以前で、最も新しいサマリーを取得する。
     """
     try:
         with sqlite3.connect(DB_FILE) as conn:
@@ -285,23 +322,36 @@ def get_previous_summary(exclude_month: str) -> Optional[Dict[str, Any]]:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT * FROM portfolio_summary_history
-                WHERE snapshot_month < ?
-                ORDER BY snapshot_month DESC
+                WHERE snapshot_date <= ?
+                ORDER BY snapshot_date DESC
                 LIMIT 1
-            """, (exclude_month,))
+            """, (date_str,))
             row = cursor.fetchone()
             if row:
                 return dict(row)
     except sqlite3.Error as e:
-        logger.error(f"Failed to get previous summary: {e}")
+        logger.error(f"Failed to get summary before {date_str}: {e}")
     return None
 
+def get_previous_summary(exclude_month: str) -> Optional[Dict[str, Any]]:
+    """
+    [互換性維持用] 指定された月(exclude_month)の初日以前の直近サマリーを取得する。
+    """
+    first_day_of_month = f"{exclude_month}-01"
+    # 前月末のデータを取得するために、指定月の初日より前を検索
+    try:
+        target_date = (datetime.strptime(first_day_of_month, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+        return get_summary_before(target_date)
+    except ValueError:
+        return None
+
 def get_monthly_summary():
-    """月ごとのサマリーを取得する"""
+    """月ごとのサマリーを取得する（各月の最新日のデータを集計）"""
     try:
         with sqlite3.connect(DB_FILE) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
+            # 各月の最新の snapshot_date を特定し、その日のデータのみを集計
             cursor.execute("""
                 SELECT 
                     snapshot_month,
@@ -309,6 +359,11 @@ def get_monthly_summary():
                     SUM(profit_loss) as total_profit_loss,
                     SUM(estimated_annual_dividend) as total_dividend
                 FROM portfolio_history
+                WHERE snapshot_date IN (
+                    SELECT MAX(snapshot_date)
+                    FROM portfolio_history
+                    GROUP BY snapshot_month
+                )
                 GROUP BY snapshot_month
                 ORDER BY snapshot_month ASC
             """)

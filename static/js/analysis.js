@@ -375,7 +375,20 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(item.code);
             
             // 銘柄名とシグナルの表示
-            let nameHtml = item.name;
+            let nameHtml = `<div class="d-flex flex-wrap align-items-center gap-1">`;
+            if (item.asset_type === 'jp_stock') {
+                const baseUrl = `https://finance.yahoo.co.jp/quote/${item.code}.T`;
+                nameHtml += `<span class="fw-bold me-1">${item.name}</span>`;
+                nameHtml += `
+                    <div class="quick-links d-inline-flex gap-1">
+                        <a href="${baseUrl}/disclosure" target="_blank" class="badge bg-light text-dark border text-decoration-none" title="適時開示を確認" style="font-size: 0.65rem; padding: 0.15rem 0.3rem;">開示</a>
+                        <a href="${baseUrl}/performance" target="_blank" class="badge bg-light text-dark border text-decoration-none" title="業績詳細を確認" style="font-size: 0.65rem; padding: 0.15rem 0.3rem;">業績</a>
+                    </div>
+                `;
+            } else {
+                nameHtml += `<span class="fw-bold me-1">${item.name}</span>`;
+            }
+
             const isDiamond = item.is_diamond || (item.buy_signal && item.buy_signal.is_diamond);
             if (item.buy_signal) {
                 nameHtml += renderBuySignalBadge(item.buy_signal, isDiamond);
@@ -383,6 +396,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (item.sell_signal) {
                 nameHtml += renderSellSignalBadge(item.sell_signal, isDiamond);
             }
+            nameHtml += `</div>`;
             createCell(nameHtml);
 
             createCell(item.industry || 'N/A');

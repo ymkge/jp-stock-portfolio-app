@@ -631,6 +631,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // スタイル分析の計算
         const styleBreakdown = calculateStyleBreakdown(holdings, totalMarketValue);
 
+        // 各指標のカバー率（信頼度）を計算
+        const coverages = {};
+        metrics.forEach(m => {
+            coverages[m] = (weightsTotal[m] / totalMarketValue) * 100;
+        });
+
         return {
             weighted_per: weightsTotal.per > 0 ? weightedSums.per / weightsTotal.per : null,
             weighted_pbr: weightsTotal.pbr > 0 ? weightedSums.pbr / weightsTotal.pbr : null,
@@ -638,6 +644,7 @@ document.addEventListener('DOMContentLoaded', () => {
             weighted_yield: weightsTotal.yield > 0 ? weightedSums.yield / weightsTotal.yield : null,
             weighted_years: weightsTotal.consecutive_increase_years > 0 ? weightedSums.consecutive_increase_years / weightsTotal.consecutive_increase_years : null,
             weighted_momentum: weightsTotal.momentum > 0 ? weightedSums.momentum / weightsTotal.momentum : null,
+            coverages: coverages,
             hhi: hhi,
             top5_ratio: top5Ratio,
             style_breakdown: styleBreakdown
@@ -759,47 +766,107 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const thresholds = highlightRules.radar_chart ? highlightRules.radar_chart.benchmarks : {};
+
+        // --- 1. ポートフォリオDNA (加重平均) ---
         if (dnaContent) {
+            const getColorClass = (val, threshold, type = 'lower_is_better') => {
+                if (val === null || val === undefined) return '';
+                if (type === 'lower_is_better') {
+                    return val <= threshold ? 'profit' : (val <= threshold * 1.5 ? 'warning' : 'loss');
+                } else {
+                    return val >= threshold ? 'profit' : (val >= threshold * 0.7 ? 'warning' : 'loss');
+                }
+            };
+
+            const perClass = getColorClass(stats.weighted_per, thresholds.valuation_per || 15.0, 'lower_is_better');
+            const pbrClass = getColorClass(stats.weighted_pbr, thresholds.valuation_pbr || 1.2, 'lower_is_better');
+            const roeClass = getColorClass(stats.weighted_roe, thresholds.profitability_roe || 9.0, 'higher_is_better');
+            const yieldClass = getColorClass(stats.weighted_yield, thresholds.income_yield || 2.5, 'higher_is_better');
+
+            // カバー率の警告生成
+            const lowCoverageWarning = Object.entries(stats.coverages || {})
+                .filter(([k, v]) => v < 70 && ['per', 'pbr', 'roe', 'yield'].includes(k))
+                .map(([k, v]) => `${k.toUpperCase()}(${Math.round(v)}%)`)
+                .join(', ');
+
             dnaContent.innerHTML = `
-                <p title="時価評価額で加重平均したPERです">平均PER: <span>${formatNumber(stats.weighted_per, 2)}倍</span></p>
-                <p title="時価評価額で加重平均したPBRです">平均PBR: <span>${formatNumber(stats.weighted_pbr, 2)}倍</span></p>
-                <p title="時価評価額で加重平均したROEです">平均ROE: <span>${formatNumber(stats.weighted_roe, 2)}%</span></p>
-                <p title="ポートフォリオ全体の時価に対する予想配当利回りです">平均利回り: <span>${formatNumber(stats.weighted_yield, 2)}%</span></p>
+                <div class="dna-metrics">
+                    <p title="利益に対して株価が割安かを示します（平均PER）">
+                        割安さ(利益): <span class="${perClass}">${formatNumber(stats.weighted_per, 2)}倍</span>
+                    </p>
+                    <p title="持っている資産に対して株価が割安かを示します（平均PBR）">
+                        割安さ(資産): <span class="${pbrClass}">${formatNumber(stats.weighted_pbr, 2)}倍</span>
+                    </p>
+                    <p title="預けたお金をどれだけ効率よく増やせているかを示します（平均ROE）">
+                        稼ぐ力(収益性): <span class="${roeClass}">${formatNumber(stats.weighted_roe, 2)}%</span>
+                    </p>
+                    <p title="投資額に対して、1年間でもらえる配当の割合です（平均配当利回り）">
+                        配当利回り: <span class="${yieldClass}">${formatNumber(stats.weighted_yield, 2)}%</span>
+                    </p>
+                </div>
+                ${lowCoverageWarning ? `<div class="coverage-warning">⚠️ 一部の銘柄データが不明なため、上記数値は参考値です。(${lowCoverageWarning})</div>` : ''}
             `;
         }
 
+        // --- 2. 分散度・リスク分析 ---
         if (riskContent) {
-            let hhiLevel = '良好';
+            let hhiLevel = '分散良好';
             let hhiClass = 'profit';
+            const hhiThreshold = thresholds.diversification_hhi || 1500;
+            
             if (stats.hhi >= 2500) {
                 hhiLevel = '集中リスクあり';
                 hhiClass = 'loss';
-            } else if (stats.hhi >= 1500) {
+            } else if (stats.hhi >= hhiThreshold) {
                 hhiLevel = 'やや集中';
-                hhiClass = '';
+                hhiClass = 'warning';
             }
 
+            const top5Threshold = thresholds.diversification_top5 || 40.0;
+            const top5Class = stats.top5_ratio > top5Threshold ? 'warning' : 'profit';
+
             riskContent.innerHTML = `
-                <p title="上位5銘柄が占める割合です。40%を超えると集中度が高めです。">上位5銘柄占有率: <span>${formatNumber(stats.top5_ratio, 2)}%</span></p>
-                <p title="銘柄の集中度を計る指標(HHI)。1,500未満が分散良好、2,500以上が集中リスクの目安です。">
-                    分散度(HHI): <span class="${hhiClass}">${formatNumber(stats.hhi, 0)} (${hhiLevel})</span>
-                </p>
+                <div class="risk-metrics">
+                    <p title="上位5つの銘柄で全体の何%を占めているか。40%を超えると特定の株の影響を受けやすくなります。">
+                        銘柄の集中度(上位5選): <span class="${top5Class}">${formatNumber(stats.top5_ratio, 1)}%</span>
+                    </p>
+                    <p title="銘柄の分散具合を計算した数値(HHI)。小さいほど「卵を多くのカゴに分けている」安全な状態です。">
+                        カゴの分け具合: <span class="${hhiClass}">${hhiLevel} (${formatNumber(stats.hhi, 0)})</span>
+                    </p>
+                </div>
             `;
         }
 
+        // --- 3. ポートフォリオ性格診断 ---
         if (personalityContent) {
             const b = stats.style_breakdown;
-            const cyclicalityLabel = b.cyclicality.defensive > b.cyclicality.cyclical ? 'ディフェンシブ寄り' : '景気敏感寄り';
-            const styleLabel = b.style.value > b.style.growth ? 'バリュー寄り' : 'グロース寄り';
-            const capLabel = b.marketCap.large > 50 ? '大型株中心' : '中小型株中心';
+            const cyclicalityLabel = b.cyclicality.defensive > b.cyclicality.cyclical ? '守りに強い' : '景気に敏感な';
+            const styleLabel = b.style.value > b.style.growth ? '割安株中心' : '成長株中心';
+            const capLabel = b.marketCap.large > 50 ? 'どっしりした大型株' : '身軽な中小型株';
+
+            // 「ひとこと診断」のロジック
+            let advice = "";
+            if (b.cyclicality.defensive > 60 && b.style.value > 50) {
+                advice = "不況に強く、割安な銘柄で固めた非常に堅実な構成です。初心者の方にも安心感があります。";
+            } else if (b.style.growth > 50 && b.marketCap.midSmall > 50) {
+                advice = "将来の成長を期待する銘柄が多く、値動きが大きくなりやすい「攻め」の構成です。";
+            } else if (stats.hhi < 1000) {
+                advice = "非常に多くの銘柄に分散されており、特定のニュースで資産が大きく減るリスクを抑えられています。";
+            } else if (stats.top5_ratio > 50) {
+                advice = "特定の一部の銘柄に資産が集中しています。それらの会社の業績変化に注意が必要です。";
+            } else {
+                advice = "バランスの取れた構成です。市場の変化に合わせて、適度にリスクとリターンを追いかけられています。";
+            }
 
             personalityContent.innerHTML = `
                 <div class="personality-summary">
                     <strong>診断結果: ${capLabel}の${cyclicalityLabel}${styleLabel}</strong>
+                    <div class="advice-box">${advice}</div>
                 </div>
                 <div class="personality-bars">
                     <div class="style-bar-group">
-                        <div class="style-bar-label"><span>景気敏感 ${formatNumber(b.cyclicality.cyclical, 0)}%</span><span>ディフェンシブ ${formatNumber(b.cyclicality.defensive, 0)}%</span></div>
+                        <div class="style-bar-label"><span>景気に敏感 ${formatNumber(b.cyclicality.cyclical, 0)}%</span><span>守りに強い ${formatNumber(b.cyclicality.defensive, 0)}%</span></div>
                         <div class="progress-stacked">
                             <div class="progress-bar cyclical" style="width: ${b.cyclicality.cyclical}%"></div>
                             <div class="progress-bar other" style="width: ${b.cyclicality.other}%"></div>
@@ -807,7 +874,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                     <div class="style-bar-group">
-                        <div class="style-bar-label"><span>バリュー ${formatNumber(b.style.value, 0)}%</span><span>グロース ${formatNumber(b.style.growth, 0)}%</span></div>
+                        <div class="style-bar-label"><span>割安(バリュー) ${formatNumber(b.style.value, 0)}%</span><span>成長(グロース) ${formatNumber(b.style.growth, 0)}%</span></div>
                         <div class="progress-stacked">
                             <div class="progress-bar value" style="width: ${b.style.value}%"></div>
                             <div class="progress-bar blend" style="width: ${b.style.blend}%"></div>

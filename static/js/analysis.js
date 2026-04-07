@@ -573,7 +573,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     legend: { position: 'bottom' },
                     tooltip: {
                         callbacks: {
-                            label: (context) => `${context.dataset.label}: ${Math.round(context.raw)}点`
+                            label: (context) => `${context.dataset.label}: ${Math.round(context.raw)}点`,
+                            footer: (context) => {
+                                const item = context[0];
+                                const descriptions = highlightRules?.radar_chart?.descriptions || {};
+                                const desc = descriptions[item.label] || "";
+                                
+                                // 解説文を約30文字ごとに改行して読みやすくする
+                                if (desc.length > 30) {
+                                    const lines = [];
+                                    for (let i = 0; i < desc.length; i += 30) {
+                                        lines.push(desc.substring(i, i + 30));
+                                    }
+                                    return "\n" + lines.join("\n");
+                                }
+                                return desc ? "\n" + desc : "";
+                            }
                         }
                     }
                 }

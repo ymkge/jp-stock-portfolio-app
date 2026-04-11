@@ -18,8 +18,8 @@
     --error-text: #721c24;
     --error-hover-bg: #f5c6cb;
     --analysis-card-header-height: 65px; /* 分析ページ右カラムのヘッダー高さ */
-    --up-color: #dc3545; /* 上昇（赤） */
-    --down-color: #28a745; /* 下落（緑） */
+    --up-color: #28a745; /* 上昇・プラス（緑） */
+    --down-color: #dc3545; /* 下落・マイナス（赤） */
 }
 
 body, html {

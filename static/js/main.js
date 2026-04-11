@@ -183,13 +183,23 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             const formatPercent = (val) => {
-                if (val === '--' || val === 'N/A') return '--';
+                if (val === '--' || val === 'N/A' || val === null) return '--';
                 if (typeof val === 'number') {
                     const sign = val > 0 ? '+' : '';
                     return `${sign}${val.toFixed(2)}%`;
                 }
+                // 文字列の場合でも数値なら+を付与
+                const num = parseFloat(val);
+                if (!isNaN(num)) {
+                    const sign = num > 0 ? '+' : '';
+                    return `${sign}${num.toFixed(2)}%`;
+                }
                 return `${val}%`;
             };
+
+            const changeClass = getChangeClass(change);
+            const wowClass = getChangeClass(wow);
+            const momClass = getChangeClass(mom);
 
             html += `
                 <a href="https://finance.yahoo.co.jp/quote/${idx.code}" target="_blank" class="market-index-link">
@@ -202,15 +212,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="market-index-changes">
                             <div class="market-index-row">
                                 <span class="change-label">前日比:</span>
-                                <span class="${getChangeClass(change)}">${change} (${formatPercent(changePercent)})</span>
+                                <span class="${changeClass}">${change} (${formatPercent(changePercent)})</span>
                             </div>
                             <div class="market-index-row">
                                 <span class="change-label">前週比:</span>
-                                <span class="${getChangeClass(wow)}">${formatPercent(wow)}</span>
+                                <span class="${wowClass}">${formatPercent(wow)}</span>
                             </div>
                             <div class="market-index-row">
                                 <span class="change-label">前月比:</span>
-                                <span class="${getChangeClass(mom)}">${formatPercent(mom)}</span>
+                                <span class="${momClass}">${formatPercent(mom)}</span>
                             </div>
                         </div>
                     </div>

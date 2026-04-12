@@ -142,9 +142,9 @@ SELL_SIGNAL_DISPLAY = get_config("sell_signal.display", {
     },
     "level_3": {
         "icon": "🌀",
-        "label": "長期調整",
+        "label": "トレンド崩壊",
         "recommended_action": "逆張り・仕込み検討。業績が良ければ将来の仕込み場です。",
-        "current_status": "75日移動平均線から大きく下方乖離しており、中長期的に売られすぎの状態です。"
+        "current_status": "75日移動平均線から大きく下方乖離しており、中長期的にトレンドが崩れた状態です。"
     }
 })
 
@@ -364,7 +364,7 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
             deviation_75 = (price - ma_75) / ma_75 * 100
             if deviation_75 <= ma_75_threshold:
                 long_config = get_config("buy_signal.display.long_adjustment", {})
-                label += long_config.get("suffix", "＋長期調整")
+                label += long_config.get("suffix", "＋長期調整中")
                 recommended_action = long_config.get("recommended_action_override", recommended_action)
                 current_status += " " + long_config.get("current_status_append", "")
                 reasons.append(f"75日線乖離過大({deviation_75:.1f}%)")

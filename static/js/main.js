@@ -118,7 +118,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             filterAndRender();
         } else {
-            // キャッシュがない場合のみスケルトンを表示
             showSkeletons();
         }
 
@@ -250,19 +249,19 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span class="market-index-name">${idx.name}</span>
                             <span class="market-index-code" style="font-size: 0.7rem; color: var(--text-muted);">${idx.code}</span>
                         </div>
-                        <div class="market-index-price">${price}</div>
+                        <div class="market-index-price numeric">${price}</div>
                         <div class="market-index-changes">
                             <div class="market-index-row">
                                 <span class="change-label">前日比:</span>
-                                <span class="${changeClass}">${change} (${formatPercent(changePercent)})</span>
+                                <span class="${changeClass} numeric">${change} (${formatPercent(changePercent)})</span>
                             </div>
                             <div class="market-index-row">
                                 <span class="change-label">前週比:</span>
-                                <span class="${wowClass}">${formatPercent(wow)}</span>
+                                <span class="${wowClass} numeric">${formatPercent(wow)}</span>
                             </div>
                             <div class="market-index-row">
                                 <span class="change-label">前月比:</span>
-                                <span class="${momClass}">${formatPercent(mom)}</span>
+                                <span class="${momClass} numeric">${formatPercent(mom)}</span>
                             </div>
                         </div>
                     </div>
@@ -332,7 +331,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderStockTable(stocks) {
         const tableBody = document.querySelector('#portfolio-table-jp_stock tbody');
-        // データ取得中かつ空ならスケルトン行を表示
         if (stocks.length === 0 && refreshAllButton.disabled) {
             const html = Array(5).fill(0).map(() => `<tr class="skeleton-row">${Array(17).fill(0).map(() => `<td><div class="skeleton skeleton-cell"></div></td>`).join('')}</tr>`).join('');
             tableBody.innerHTML = html;
@@ -360,12 +358,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (jpStock.error) {
                 row.className = 'error-row'; row.title = jpStock.error;
                 createCell(`<input type="checkbox" class="asset-checkbox" data-code="${jpStock.code}" disabled>`);
-                createCell(jpStock.code); createCell(jpStock.error, 'error-message').colSpan = 14;
+                createCell(jpStock.code, 'numeric'); createCell(jpStock.error, 'error-message').colSpan = 14;
                 createCell(`<button class="manage-btn" data-code="${jpStock.code}" disabled>管理</button>`);
                 return;
             }
             createCell(`<input type="checkbox" class="asset-checkbox" data-code="${jpStock.code}">`);
-            createCell(jpStock.code);
+            createCell(jpStock.code, 'numeric');
             const baseUrl = `https://finance.yahoo.co.jp/quote/${jpStock.code}.T`;
             let nameHtml = `<div class="d-flex flex-wrap align-items-center gap-1"><a href="${baseUrl}" target="_blank" class="fw-bold me-1">${jpStock.name}</a><div class="quick-links d-inline-flex gap-1"><a href="${baseUrl}/disclosure" target="_blank" class="badge bg-light text-dark border text-decoration-none" title="適時開示" style="font-size: 0.65rem; padding: 0.15rem 0.3rem;">開示</a><a href="${baseUrl}/performance" target="_blank" class="badge bg-light text-dark border text-decoration-none" title="業績詳細" style="font-size: 0.65rem; padding: 0.15rem 0.3rem;">業績</a></div>`;
             const isDiamond = jpStock.is_diamond || (jpStock.buy_signal && jpStock.buy_signal.is_diamond);
@@ -374,17 +372,17 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(nameHtml + `</div>`);
             createCell(jpStock.industry || 'N/A');
             createCell(renderScoreAsStars(jpStock.score, jpStock.score_details, jpStock.asset_type));
-            createCell(jpStock.price);
-            createCell(`${jpStock.change} (${(jpStock.change_percent && jpStock.change_percent !== 'N/A') ? jpStock.change_percent + '%' : 'N/A'})`);
-            createCell(formatMarketCap(jpStock.market_cap));
-            createCell(jpStock.per, getHighlightClass('per', jpStock.per, jpStock.asset_type));
-            createCell(jpStock.pbr, getHighlightClass('pbr', jpStock.pbr, jpStock.asset_type));
-            createCell(jpStock.roe, getHighlightClass('roe', jpStock.roe, jpStock.asset_type));
-            createCell(jpStock.yield, getHighlightClass('yield', jpStock.yield, jpStock.asset_type));
-            createCell((jpStock.fibonacci && jpStock.fibonacci.retracement !== undefined) ? `${jpStock.fibonacci.retracement.toFixed(1)}%` : '-');
-            createCell((jpStock.rci_26 !== undefined && jpStock.rci_26 !== null) ? `${jpStock.rci_26.toFixed(1)}%` : '-');
+            createCell(jpStock.price, 'numeric');
+            createCell(`${jpStock.change} (${(jpStock.change_percent && jpStock.change_percent !== 'N/A') ? jpStock.change_percent + '%' : 'N/A'})`, 'numeric');
+            createCell(formatMarketCap(jpStock.market_cap), 'numeric');
+            createCell(jpStock.per, 'numeric ' + getHighlightClass('per', jpStock.per, jpStock.asset_type));
+            createCell(jpStock.pbr, 'numeric ' + getHighlightClass('pbr', jpStock.pbr, jpStock.asset_type));
+            createCell(jpStock.roe, 'numeric ' + getHighlightClass('roe', jpStock.roe, jpStock.asset_type));
+            createCell(jpStock.yield, 'numeric ' + getHighlightClass('yield', jpStock.yield, jpStock.asset_type));
+            createCell((jpStock.fibonacci && jpStock.fibonacci.retracement !== undefined) ? `${jpStock.fibonacci.retracement.toFixed(1)}%` : '-', 'numeric');
+            createCell((jpStock.rci_26 !== undefined && jpStock.rci_26 !== null) ? `${jpStock.rci_26.toFixed(1)}%` : '-', 'numeric');
             createCellWithTooltip(jpStock.consecutive_increase_years > 0 ? `<span class="increase-badge">${jpStock.consecutive_increase_years}年連続</span>` : '-', 'badge-cell', formatDividendHistory(jpStock.dividend_history), `${baseUrl}/dividend`);
-            createCell(jpStock.settlement_month || 'N/A');
+            createCell(jpStock.settlement_month || 'N/A', 'numeric');
             const manageBtn = document.createElement('button'); manageBtn.textContent = '管理'; manageBtn.className = 'manage-btn'; manageBtn.dataset.code = jpStock.code;
             row.insertCell().appendChild(manageBtn);
         });
@@ -414,15 +412,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (fund.error) {
                 row.className = 'error-row'; row.title = fund.error;
                 createCell(`<input type="checkbox" class="asset-checkbox" data-code="${fund.code}" disabled>`);
-                createCell(fund.code); createCell(fund.error, 'error-message').colSpan = 5;
+                createCell(fund.code, 'numeric'); createCell(fund.error, 'error-message').colSpan = 5;
                 createCell(`<button class="manage-btn" data-code="${fund.code}" disabled>管理</button>`);
                 return;
             }
             createCell(`<input type="checkbox" class="asset-checkbox" data-code="${fund.code}">`);
-            createCell(fund.code); createCell(`<a href="https://finance.yahoo.co.jp/quote/${fund.code}" target="_blank">${fund.name}</a>`);
-            createCell(fund.price);
-            createCell(`${fund.change} (${(fund.change_percent && fund.change_percent !== 'N/A') ? fund.change_percent + '%' : 'N/A'})`);
-            createCell(fund.net_assets); createCell(fund.trust_fee);
+            createCell(fund.code, 'numeric'); createCell(`<a href="https://finance.yahoo.co.jp/quote/${fund.code}" target="_blank">${fund.name}</a>`);
+            createCell(fund.price, 'numeric');
+            createCell(`${fund.change} (${(fund.change_percent && fund.change_percent !== 'N/A') ? fund.change_percent + '%' : 'N/A'})`, 'numeric');
+            createCell(fund.net_assets, 'numeric'); createCell(fund.trust_fee, 'numeric');
             const manageBtn = document.createElement('button'); manageBtn.textContent = '管理'; manageBtn.className = 'manage-btn'; manageBtn.dataset.code = fund.code;
             row.insertCell().appendChild(manageBtn);
         });
@@ -452,18 +450,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (usStock.error) {
                 row.className = 'error-row'; row.title = usStock.error;
                 createCell(`<input type="checkbox" class="asset-checkbox" data-code="${usStock.code}" disabled>`);
-                createCell(usStock.code); createCell(usStock.error, 'error-message').colSpan = 7;
+                createCell(usStock.code, 'numeric'); createCell(usStock.error, 'error-message').colSpan = 7;
                 createCell(`<button class="manage-btn" data-code="${usStock.code}" disabled>管理</button>`);
                 return;
             }
             createCell(`<input type="checkbox" class="asset-checkbox" data-code="${usStock.code}">`);
-            createCell(usStock.code); createCell(`<a href="https://finance.yahoo.co.jp/quote/${usStock.code}" target="_blank">${usStock.name}</a>`);
-            createCell(usStock.market || 'N/A'); createCell(usStock.price);
-            createCell(`${usStock.change} (${(usStock.change_percent && usStock.change_percent !== 'N/A') ? usStock.change_percent + '%' : 'N/A'})`);
-            createCell(formatMarketCap(usStock.market_cap));
-            createCell(usStock.per, getHighlightClass('per', usStock.per, usStock.asset_type));
-            createCell(usStock.yield, getHighlightClass('yield', usStock.yield, usStock.asset_type));
-            createCell(usStock.settlement_month || 'N/A');
+            createCell(usStock.code, 'numeric'); createCell(`<a href="https://finance.yahoo.co.jp/quote/${usStock.code}" target="_blank">${usStock.name}</a>`);
+            createCell(usStock.market || 'N/A'); createCell(usStock.price, 'numeric');
+            createCell(`${usStock.change} (${(usStock.change_percent && usStock.change_percent !== 'N/A') ? usStock.change_percent + '%' : 'N/A'})`, 'numeric');
+            createCell(formatMarketCap(usStock.market_cap), 'numeric');
+            createCell(usStock.per, 'numeric ' + getHighlightClass('per', usStock.per, usStock.asset_type));
+            createCell(usStock.yield, 'numeric ' + getHighlightClass('yield', usStock.yield, usStock.asset_type));
+            createCell(usStock.settlement_month || 'N/A', 'numeric');
             const manageBtn = document.createElement('button'); manageBtn.textContent = '管理'; manageBtn.className = 'manage-btn'; manageBtn.dataset.code = usStock.code;
             row.insertCell().appendChild(manageBtn);
         });

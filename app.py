@@ -216,18 +216,24 @@ def calculate_sell_signal(stock_data: dict) -> Optional[dict]:
         reasons.append("75日線割れ(長期調整)")
 
     # レベルの決定 (緊急度・判断の明確さを優先)
+    # 1. ピークアウト (Lv2): 反転下落の初動であり、最も売却アクションの緊急度が高い。
+    # 2. 加熱気味 (Lv1): まだ上がっているが、買われすぎの状態。
+    # 3. 長期調整 (Lv3): トレンドがすでに崩れている状態。
     level = 0
-    if is_level2:   # ピークアウト (反転下落) を最優先
+    if is_level2:
         level = 2
-    elif is_level1: # 加熱気味 (買われすぎ)
+    elif is_level1:
         level = 1
-    elif is_level3: # 長期調整 (トレンド崩壊)
+    elif is_level3:
         level = 3
 
     if level == 0:
         return None
 
     config = SELL_SIGNAL_DISPLAY[f"level_{level}"]
+    
+    # 選択されたレベルにふさわしい理由のみをフィルタリング（混乱を防ぐため）
+    # ただし、裏側の事実はすべて reasons に残す
     return {
         "level": level,
         "icon": config["icon"],

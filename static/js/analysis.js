@@ -76,6 +76,73 @@ document.addEventListener('DOMContentLoaded', () => {
 
     initTheme();
 
+    // --- スケルトンUI表示 ---
+    function showSkeletons() {
+        // 1. 市場サマリー (3枚のカード)
+        const marketContainer = document.getElementById('market-summary-container');
+        if (marketContainer) {
+            marketContainer.innerHTML = Array(3).fill(0).map(() => `
+                <div class="market-index-card">
+                    <div class="skeleton skeleton-text" style="width: 40%; height: 1.2rem;"></div>
+                    <div class="skeleton skeleton-text" style="width: 70%; height: 1.8rem; margin: 0.5rem 0;"></div>
+                    <div class="skeleton skeleton-text" style="width: 90%;"></div>
+                    <div class="skeleton skeleton-text" style="width: 80%;"></div>
+                </div>
+            `).join('');
+            marketContainer.classList.remove('hidden');
+        }
+
+        // 2. 左カラムのカード群
+        const cardSkeletons = {
+            'summary-content': `<div class="skeleton skeleton-text" style="width: 80%;"></div><div class="skeleton skeleton-text" style="width: 70%;"></div><div class="skeleton skeleton-text" style="width: 90%;"></div><div class="skeleton skeleton-text" style="width: 60%;"></div>`,
+            'dna-content': `<div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text"></div>`,
+            'risk-content': `<div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text"></div>`,
+            'personality-content': `<div class="skeleton skeleton-text" style="height: 3rem; width: 100%;"></div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text"></div>`
+        };
+
+        Object.entries(cardSkeletons).forEach(([id, html]) => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = html;
+        });
+
+        // 3. チャートエリア (円形と矩形)
+        const chartContainers = document.querySelectorAll('.chart-container');
+        chartContainers.forEach(container => {
+            // radar-chart 等 ID があるものは残しつつ、スケルトンを被せる
+            const canvas = container.querySelector('canvas');
+            if (canvas) canvas.classList.add('hidden');
+            
+            // 既存のスケルトンがあれば削除
+            const existing = container.querySelector('.skeleton-overlay');
+            if (existing) existing.remove();
+
+            const isPie = container.parentElement.classList.contains('portfolio-chart');
+            const skeletonHtml = isPie 
+                ? `<div class="skeleton-overlay" style="display:flex; justify-content:center; align-items:center; height:100%;"><div class="skeleton skeleton-circle" style="width:200px; height:200px;"></div></div>`
+                : `<div class="skeleton-overlay" style="height:100%;"><div class="skeleton skeleton-rect"></div></div>`;
+            
+            container.insertAdjacentHTML('beforeend', skeletonHtml);
+        });
+
+        // 4. テーブル (5行のスケルトン)
+        renderTableSkeletons();
+    }
+
+    function hideSkeletons() {
+        const overlays = document.querySelectorAll('.skeleton-overlay');
+        overlays.forEach(o => o.remove());
+        const hiddenCanvases = document.querySelectorAll('canvas.hidden');
+        hiddenCanvases.forEach(c => c.classList.remove('hidden'));
+    }
+
+    function renderTableSkeletons() {
+        analysisTableBody.innerHTML = Array(5).fill(0).map(() => `
+            <tr class="skeleton-row">
+                ${Array(16).fill(0).map(() => `<td><div class="skeleton skeleton-cell"></div></td>`).join('')}
+            </tr>
+        `).join('');
+    }
+
     // --- データ取得とレンダリング ---
     async function fetchHighlightRules() {
         try {
@@ -108,6 +175,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderUpdateReport(cachedMetadata);
             }
             fetchAndRenderHistoryData();
+        } else {
+            // キャッシュがない場合は即座にスケルトンを表示
+            showSkeletons();
         }
 
         try {
@@ -128,6 +198,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const analysisData = await response.json();
             window.appState.updateState('analysis', analysisData);
             window.appState.updateTimestamp();
+            
+            hideSkeletons(); // データが来たらスケルトンを隠す
             processAnalysisData(analysisData);
             if (analysisData.metadata) {
                 renderUpdateReport(analysisData.metadata);
@@ -143,14 +215,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             console.error('Analysis fetch error:', error);
-            // 429 (Too Many Requests) の場合は、バックエンドのスマートキャッシュによる一時的な制限の可能性があるため、
-            // 警告は出さずに既存のキャッシュ表示を維持する（既に processAnalysisData 済み）
             if (error instanceof window.appState.HttpError && error.status === 429) {
                 console.log('Backend is currently throttling or updating. Using cached data.');
             } else if (!cachedData) {
                 showAlert(`分析データの取得に失敗しました。(${error.message})`, 'danger');
+                analysisTableBody.innerHTML = `<tr><td colspan="16" style="text-align:center; color: var(--danger-color);">データの取得に失敗しました。再読み込みしてください。</td></tr>`;
             }
             loadingIndicator.classList.add('hidden');
+            hideSkeletons();
         }
     }
 
@@ -375,9 +447,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function processAnalysisData(analysisData) {
         if (!analysisData) return;
 
-        // 防衛的処理: 
-        // 1. analysisData 自体が {"data": { holdings_list: ... }, "metadata": ...} のようにラップされている場合
-        // 2. analysisData 直下に holdings_list がある場合
         const actualData = analysisData.holdings_list ? analysisData : (analysisData.data || {});
         
         fullAnalysisData = actualData;
@@ -421,11 +490,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderAnalysisTable(holdings) {
+        // データ取得中（loadingIndicatorが表示中）かつデータが0件ならスケルトンを維持
+        if (holdings.length === 0 && !loadingIndicator.classList.contains('hidden')) {
+            renderTableSkeletons();
+            return;
+        }
+
         analysisTableBody.innerHTML = '';
         if (!holdings || holdings.length === 0) {
-            if (loadingIndicator.classList.contains('hidden')) {
-                analysisTableBody.innerHTML = `<tr><td colspan="16" style="text-align:center;">該当する保有銘柄はありません。</td></tr>`;
-            }
+            analysisTableBody.innerHTML = `<tr><td colspan="16" style="text-align:center;">該当する保有銘柄はありません。</td></tr>`;
             return;
         }
 
@@ -499,7 +572,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const summaryProfitLossRateClass = totalProfitLossRate >= 0 ? 'profit' : 'loss';
 
         // --- 30日前比 (MoM相当) の計算 ---
-        // フィルタ適用時は不正確になるため、全データ(allHoldingsData)の合計値を基準にする。
         const currentTotalMV = allHoldingsData.reduce((sum, item) => sum + (parseFloat(item.market_value) || 0), 0);
         const currentTotalPL = allHoldingsData.reduce((sum, item) => sum + (parseFloat(item.profit_loss) || 0), 0);
         const currentTotalDiv = allHoldingsData.reduce((sum, item) => sum + (parseFloat(item.estimated_annual_dividend) || 0), 0);
@@ -518,7 +590,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return `<small class="${cls}" style="margin-left: 8px; font-weight: bold;" title="30日前（または直近の過去データ）との比較です">(${sign}${diff.toFixed(2)}%)</small>`;
         };
 
-        // フィルタ適用中かどうかの判定
         const isFiltered = holdings.length !== allHoldingsData.length;
         const momSuffixMV = !isFiltered ? formatDiff(calcDiff(currentTotalMV, prev ? prev.total_market_value : 0)) : '';
         const momSuffixPL = !isFiltered ? formatDiff(calcDiff(currentTotalPL, prev ? prev.total_profit_loss : 0)) : '';
@@ -527,6 +598,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- サマリー表示の更新 ---
         const summaryContent = document.getElementById('summary-content');
         if (summaryContent) {
+            // データが0件かつ読み込み中ならスケルトンを表示
+            if (holdings.length === 0 && !loadingIndicator.classList.contains('hidden')) return;
+
             summaryContent.innerHTML = `
                 <p>総評価額: <span class="${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalMarketValue, 0)}円</span>${momSuffixMV}</p>
                 <p>総損益: <span class="${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossClass}">${formatNumber(totalProfitLoss, 0)}円</span>${momSuffixPL}</p>
@@ -540,7 +614,6 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }
 
-        // --- ポートフォリオDNAとリスク分析の計算と表示 ---
         const stats = calculateWeightedStats(holdings);
         renderDNAAndRisk(stats);
         renderRadarChart(stats);
@@ -560,7 +633,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const config = highlightRules.radar_chart;
         const bm = config.benchmarks;
 
-        // 正規化ロジック (0-100点)
         const normalize = (val, min, max, reverse = false) => {
             if (val === null || val === undefined) return 0;
             let score = ((val - min) / (max - min)) * 100;
@@ -572,25 +644,16 @@ document.addEventListener('DOMContentLoaded', () => {
             return path.split('.').reduce((acc, part) => acc && acc[part], obj) || def;
         };
 
-        // 各軸のスコアリング (7軸)
         const scores = [
-            // 1. 割安性 (PER + PBR の平均)
             (normalize(stats.weighted_per, 10, 40, true) + normalize(stats.weighted_pbr, 0.7, 2.5, true)) / 2,
-            // 2. 収益性 (ROE 20%以上で100点)
             normalize(stats.weighted_roe, 0, 20),
-            // 3. インカム (利回り 5%以上で100点)
             normalize(stats.weighted_yield, 0, 5),
-            // 4. クオリティ (増配10年以上で100点)
             normalize(stats.weighted_years, 0, 10),
-            // 5. モメンタム (トレンド星数: 5個で100点)
             normalize(stats.weighted_momentum, 0, 5),
-            // 6. 分散度 (Top5占有率 + HHI の平均)
             (normalize(stats.top5_ratio, 20, 60, true) + normalize(stats.hhi, 1000, 3000, true)) / 2,
-            // 7. 安全性 (統合スコア × 分散ペナルティ)
             Math.min(100, (safeGet(stats, 'style_breakdown.safetyScore', 0) * (stats.hhi > 2500 ? 0.9 : 1.0)))
         ];
 
-        // ベンチマーク（市場平均）のスコアリング
         const benchmarkScores = [
             (normalize(bm.valuation_per, 10, 40, true) + normalize(bm.valuation_pbr, 0.7, 2.5, true)) / 2,
             normalize(bm.profitability_roe, 0, 20),
@@ -657,8 +720,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const item = context[0];
                                 const descriptions = highlightRules?.radar_chart?.descriptions || {};
                                 const desc = descriptions[item.label] || "";
-                                
-                                // 解説文を約30文字ごとに改行して読みやすくする
                                 if (desc.length > 30) {
                                     const lines = [];
                                     for (let i = 0; i < desc.length; i += 30) {
@@ -693,13 +754,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             metrics.forEach(m => {
                 let val = item[m];
-                
-                // モメンタム（テクニカル星数）の集計
                 if (m === 'momentum' && item.score_details) {
                     const d = item.score_details;
                     val = (d.trend_short || 0) + (d.trend_medium || 0) + (d.trend_signal || 0) + (d.fibonacci || 0) + (d.rci || 0);
                 }
-
                 if (typeof val === 'string') {
                     val = parseFloat(val.replace(/,/g, '').replace('倍', '').replace('%', '').trim());
                 }
@@ -710,22 +768,17 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        // HHI
         let hhi = 0;
         Object.values(assetMarketValues).forEach(mv => {
             const weightPct = (mv / totalMarketValue) * 100;
             hhi += weightPct * weightPct;
         });
 
-        // Top 5
         const sortedValues = Object.values(assetMarketValues).sort((a, b) => b - a);
         const top5Value = sortedValues.slice(0, 5).reduce((sum, v) => sum + v, 0);
         const top5Ratio = (top5Value / totalMarketValue) * 100;
 
-        // スタイル分析の計算
         const styleBreakdown = calculateStyleBreakdown(holdings, totalMarketValue);
-
-        // 各指標のカバー率（信頼度）を計算
         const coverages = {};
         metrics.forEach(m => {
             coverages[m] = (weightsTotal[m] / totalMarketValue) * 100;
@@ -762,13 +815,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const mv = parseFloat(item.market_value) || 0;
             if (mv <= 0) return;
 
-            // --- 1. 景気特性 ---
             const industry = item.industry || "その他";
             if (defensiveIndustries.includes(industry)) breakdown.cyclicality.defensive += mv;
             else if (cyclicalIndustries.includes(industry)) breakdown.cyclicality.cyclical += mv;
             else breakdown.cyclicality.other += mv;
 
-            // --- 2. バリュー/グロース ---
             let per = null, pbr = null, roe = null;
             const parseVal = (v) => {
                 if (typeof v === 'string') return parseFloat(v.replace(/,/g, '').replace('倍', '').replace('%', '').trim());
@@ -786,7 +837,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 breakdown.style.blend += mv;
             }
 
-            // --- 3. 時価総額区分 (大型: 1兆円以上) ---
             let mcap = 0;
             const mcapVal = item.market_cap;
             if (typeof mcapVal === 'string') {
@@ -800,29 +850,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (mcap >= 1000000000000) breakdown.marketCap.large += mv;
             else breakdown.marketCap.midSmall += mv;
 
-            // --- 4. 安全性スコアの計算 (統合版ロジック) ---
             let assetSafetyScore = 0;
-            if (item.asset_type === 'investment_trust') {
-                // 投資信託（インデックス等）は高い安全性を付与
-                assetSafetyScore = 100;
-            } else if (item.asset_type === 'us_stock') {
-                // 米国個別株はユーザーポリシーによりリスク資産（10点）として扱う
-                assetSafetyScore = 10;
-            } else if (item.asset_type === 'jp_stock') {
-                // 国内個別株は多角的に判定
+            if (item.asset_type === 'investment_trust') assetSafetyScore = 100;
+            else if (item.asset_type === 'us_stock') assetSafetyScore = 10;
+            else if (item.asset_type === 'jp_stock') {
                 let jpPoints = 0;
-                if (defensiveIndustries.includes(industry)) jpPoints += 25; // 業種
-                if (mcap >= 1000000000000) jpPoints += 25; // 大型
-                else if (mcap >= 300000000000) jpPoints += 12.5; // 中堅も半分評価
-                
+                if (defensiveIndustries.includes(industry)) jpPoints += 25;
+                if (mcap >= 1000000000000) jpPoints += 25;
+                else if (mcap >= 300000000000) jpPoints += 12.5;
                 const incYears = parseInt(item.consecutive_increase_years || 0);
-                if (incYears >= 3) jpPoints += 25; // 連続増配
-
-                if (pbr !== null && pbr <= 1.2) jpPoints += 25; // 低PBR（資産の安全性）
-
-                // 収益性補正（赤字ならスコア半減）
+                if (incYears >= 3) jpPoints += 25;
+                if (pbr !== null && pbr <= 1.2) jpPoints += 25;
                 if (roe !== null && roe < 0) jpPoints *= 0.5;
-                
                 assetSafetyScore = jpPoints;
             }
             totalSafetyWeightedScore += assetSafetyScore * mv;
@@ -862,8 +901,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const thresholds = highlightRules.radar_chart ? highlightRules.radar_chart.benchmarks : {};
 
-        // --- 1. ポートフォリオDNA (加重平均) ---
         if (dnaContent) {
+            if (allHoldingsData.length === 0 && !loadingIndicator.classList.contains('hidden')) return;
+
             const getColorClass = (val, threshold, type = 'lower_is_better') => {
                 if (val === null || val === undefined) return '';
                 if (type === 'lower_is_better') {
@@ -878,7 +918,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const roeClass = getColorClass(stats.weighted_roe, thresholds.profitability_roe || 9.0, 'higher_is_better');
             const yieldClass = getColorClass(stats.weighted_yield, thresholds.income_yield || 2.5, 'higher_is_better');
 
-            // カバー率の警告生成
             const lowCoverageWarning = Object.entries(stats.coverages || {})
                 .filter(([k, v]) => v < 70 && ['per', 'pbr', 'roe', 'yield'].includes(k))
                 .map(([k, v]) => `${k.toUpperCase()}(${Math.round(v)}%)`)
@@ -886,72 +925,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
             dnaContent.innerHTML = `
                 <div class="dna-metrics">
-                    <p title="利益に対して株価が割安かを示します（平均PER）">
-                        割安さ(利益): <span class="${perClass}">${formatNumber(stats.weighted_per, 2)}倍</span>
-                    </p>
-                    <p title="持っている資産に対して株価が割安かを示します（平均PBR）">
-                        割安さ(資産): <span class="${pbrClass}">${formatNumber(stats.weighted_pbr, 2)}倍</span>
-                    </p>
-                    <p title="預けたお金をどれだけ効率よく増やせているかを示します（平均ROE）">
-                        稼ぐ力(収益性): <span class="${roeClass}">${formatNumber(stats.weighted_roe, 2)}%</span>
-                    </p>
-                    <p title="投資額に対して、1年間でもらえる配当の割合です（平均配当利回り）">
-                        配当利回り: <span class="${yieldClass}">${formatNumber(stats.weighted_yield, 2)}%</span>
-                    </p>
+                    <p title="利益に対して株価が割安かを示します（平均PER）">割安さ(利益): <span class="${perClass}">${formatNumber(stats.weighted_per, 2)}倍</span></p>
+                    <p title="持っている資産に対して株価が割安かを示します（平均PBR）">割安さ(資産): <span class="${pbrClass}">${formatNumber(stats.weighted_pbr, 2)}倍</span></p>
+                    <p title="預けたお金をどれだけ効率よく増やせているかを示します（平均ROE）">稼ぐ力(収益性): <span class="${roeClass}">${formatNumber(stats.weighted_roe, 2)}%</span></p>
+                    <p title="投資額に対して、1年間でもらえる配当の割合です（平均配当利回り）">配当利回り: <span class="${yieldClass}">${formatNumber(stats.weighted_yield, 2)}%</span></p>
                 </div>
                 ${lowCoverageWarning ? `<div class="coverage-warning">⚠️ 一部の銘柄データが不明なため、上記数値は参考値です。(${lowCoverageWarning})</div>` : ''}
             `;
         }
 
-        // --- 2. 分散度・リスク分析 ---
         if (riskContent) {
+            if (allHoldingsData.length === 0 && !loadingIndicator.classList.contains('hidden')) return;
+
             let hhiLevel = '分散良好';
             let hhiClass = 'profit';
             const hhiThreshold = thresholds.diversification_hhi || 1500;
-            
-            if (stats.hhi >= 2500) {
-                hhiLevel = '集中リスクあり';
-                hhiClass = 'loss';
-            } else if (stats.hhi >= hhiThreshold) {
-                hhiLevel = 'やや集中';
-                hhiClass = 'warning';
-            }
-
+            if (stats.hhi >= 2500) { hhiLevel = '集中リスクあり'; hhiClass = 'loss'; }
+            else if (stats.hhi >= hhiThreshold) { hhiLevel = 'やや集中'; hhiClass = 'warning'; }
             const top5Threshold = thresholds.diversification_top5 || 40.0;
             const top5Class = stats.top5_ratio > top5Threshold ? 'warning' : 'profit';
 
             riskContent.innerHTML = `
                 <div class="risk-metrics">
-                    <p title="上位5つの銘柄で全体の何%を占めているか。40%を超えると特定の株の影響を受けやすくなります。">
-                        銘柄の集中度(上位5選): <span class="${top5Class}">${formatNumber(stats.top5_ratio, 1)}%</span>
-                    </p>
-                    <p title="銘柄の分散具合を計算した数値(HHI)。小さいほど「卵を多くのカゴに分けている」安全な状態です。">
-                        カゴの分け具合: <span class="${hhiClass}">${hhiLevel} (${formatNumber(stats.hhi, 0)})</span>
-                    </p>
+                    <p title="上位5つの銘柄で全体の何%を占めているか">銘柄の集中度(上位5選): <span class="${top5Class}">${formatNumber(stats.top5_ratio, 1)}%</span></p>
+                    <p title="銘柄の分散具合を計算した数値(HHI)">カゴの分け具合: <span class="${hhiClass}">${hhiLevel} (${formatNumber(stats.hhi, 0)})</span></p>
                 </div>
             `;
         }
 
-        // --- 3. ポートフォリオ性格診断 ---
         if (personalityContent) {
+            if (allHoldingsData.length === 0 && !loadingIndicator.classList.contains('hidden')) return;
+
             const b = stats.style_breakdown;
             const cyclicalityLabel = b.cyclicality.defensive > b.cyclicality.cyclical ? '守りに強い' : '景気に敏感な';
             const styleLabel = b.style.value > b.style.growth ? '割安株中心' : '成長株中心';
             const capLabel = b.marketCap.large > 50 ? 'どっしりした大型株' : '身軽な中小型株';
 
-            // 「ひとこと診断」のロジック
             let advice = "";
-            if (b.cyclicality.defensive > 60 && b.style.value > 50) {
-                advice = "不況に強く、割安な銘柄で固めた非常に堅実な構成です。初心者の方にも安心感があります。";
-            } else if (b.style.growth > 50 && b.marketCap.midSmall > 50) {
-                advice = "将来の成長を期待する銘柄が多く、値動きが大きくなりやすい「攻め」の構成です。";
-            } else if (stats.hhi < 1000) {
-                advice = "非常に多くの銘柄に分散されており、特定のニュースで資産が大きく減るリスクを抑えられています。";
-            } else if (stats.top5_ratio > 50) {
-                advice = "特定の一部の銘柄に資産が集中しています。それらの会社の業績変化に注意が必要です。";
-            } else {
-                advice = "バランスの取れた構成です。市場の変化に合わせて、適度にリスクとリターンを追いかけられています。";
-            }
+            if (b.cyclicality.defensive > 60 && b.style.value > 50) advice = "不況に強く、割安な銘柄で固めた非常に堅実な構成です。";
+            else if (b.style.growth > 50 && b.marketCap.midSmall > 50) advice = "将来の成長を期待する銘柄が多く、値動きが大きくなりやすい構成です。";
+            else if (stats.hhi < 1000) advice = "非常に多くの銘柄に分散されており、リスクを抑えられています。";
+            else if (stats.top5_ratio > 50) advice = "特定の一部の銘柄に資産が集中しています。注意が必要です。";
+            else advice = "バランスの取れた構成です。";
 
             personalityContent.innerHTML = `
                 <div class="personality-summary">
@@ -988,50 +1003,38 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderCharts(holdings) {
-        const industryBreakdown = {}, accountTypeBreakdown = {}, countryBreakdown = {}, securityCompanyBreakdown = {}, dividendIndustryBreakdown = {};
+        if (holdings.length === 0 && !loadingIndicator.classList.contains('hidden')) return;
 
+        const industryBreakdown = {}, accountTypeBreakdown = {}, countryBreakdown = {}, securityCompanyBreakdown = {}, dividendIndustryBreakdown = {};
         holdings.forEach(item => {
             const marketValue = parseFloat(item.market_value) || 0;
             const annualDividend = parseFloat(item.estimated_annual_dividend) || 0;
             const industry = item.industry || 'その他';
-
             if (marketValue > 0) {
                 industryBreakdown[industry] = (industryBreakdown[industry] || 0) + marketValue;
                 const accountType = item.account_type || '不明';
                 accountTypeBreakdown[accountType] = (accountTypeBreakdown[accountType] || 0) + marketValue;
                 const securityCompany = item.security_company || '-';
                 securityCompanyBreakdown[securityCompany] = (securityCompanyBreakdown[securityCompany] || 0) + marketValue;
-                let country = 'その他';
-                if (item.asset_type === 'jp_stock') country = '日本';
-                else if (item.asset_type === 'us_stock') country = '米国';
-                else if (item.asset_type === 'investment_trust') country = '投資信託';
+                let country = item.asset_type === 'jp_stock' ? '日本' : (item.asset_type === 'us_stock' ? '米国' : '投資信託');
                 countryBreakdown[country] = (countryBreakdown[country] || 0) + marketValue;
             }
-
-            if (annualDividend > 0) {
-                dividendIndustryBreakdown[industry] = (dividendIndustryBreakdown[industry] || 0) + annualDividend;
-            }
+            if (annualDividend > 0) dividendIndustryBreakdown[industry] = (dividendIndustryBreakdown[industry] || 0) + annualDividend;
         });
 
         const colors = getChartThemeColors();
         const chartOptions = {
             responsive: true, maintainAspectRatio: false,
             plugins: {
-                legend: { 
-                    position: 'right',
-                    labels: { color: colors.text }
-                },
+                legend: { position: 'right', labels: { color: colors.text } },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            let label = context.label || '';
-                            if (label) label += ': ';
+                            let label = context.label || ''; if (label) label += ': ';
                             const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
                             const percentage = total > 0 ? (context.raw / total * 100) : 0;
-                            const unit = '円';
-                            const formattedAmount = isAmountVisible ? `${formatNumber(context.raw, 0)}${unit}` : `***${unit}`;
-                            label += `${formattedAmount} (${percentage.toFixed(2)}%)`;
-                            return label;
+                            const formattedAmount = isAmountVisible ? `${formatNumber(context.raw, 0)}円` : `***円`;
+                            return `${label}${formattedAmount} (${percentage.toFixed(2)}%)`;
                         }
                     }
                 }
@@ -1043,148 +1046,74 @@ document.addEventListener('DOMContentLoaded', () => {
             datasets: [{ data: Object.values(breakdown), backgroundColor: generateColors(Object.keys(breakdown).length), hoverOffset: 4 }]
         });
 
-        const industryCanvas = document.getElementById('industry-chart');
-        if (industryCanvas && Object.keys(industryBreakdown).length > 0) {
-            const existing = Chart.getChart(industryCanvas);
-            if (existing) existing.destroy();
-            industryChart = new Chart(industryCanvas, { type: 'pie', data: getChartData(industryBreakdown), options: chartOptions });
-        }
+        const canvasList = {
+            'industry-chart': industryBreakdown,
+            'account-type-chart': accountTypeBreakdown,
+            'security-company-chart': securityCompanyBreakdown,
+            'country-chart': countryBreakdown,
+            'dividend-industry-chart': dividendIndustryBreakdown
+        };
 
-        const accountTypeCanvas = document.getElementById('account-type-chart');
-        if (accountTypeCanvas && Object.keys(accountTypeBreakdown).length > 0) {
-            const existing = Chart.getChart(accountTypeCanvas);
-            if (existing) existing.destroy();
-            accountTypeChart = new Chart(accountTypeCanvas, { type: 'pie', data: getChartData(accountTypeBreakdown), options: chartOptions });
-        }
-
-        const securityCompanyCanvas = document.getElementById('security-company-chart');
-        if (securityCompanyCanvas && Object.keys(securityCompanyBreakdown).length > 0) {
-            const existing = Chart.getChart(securityCompanyCanvas);
-            if (existing) existing.destroy();
-            securityCompanyChart = new Chart(securityCompanyCanvas, { type: 'pie', data: getChartData(securityCompanyBreakdown), options: chartOptions });
-        }
-
-        const countryCanvas = document.getElementById('country-chart');
-        if (countryCanvas && Object.keys(countryBreakdown).length > 0) {
-            const existing = Chart.getChart(countryCanvas);
-            if (existing) existing.destroy();
-            countryChart = new Chart(countryCanvas, { type: 'pie', data: getChartData(countryBreakdown), options: chartOptions });
-        }
-
-        const divIndustryCanvas = document.getElementById('dividend-industry-chart');
-        if (divIndustryCanvas && Object.keys(dividendIndustryBreakdown).length > 0) {
-            const existing = Chart.getChart(divIndustryCanvas);
-            if (existing) existing.destroy();
-            dividendIndustryChart = new Chart(divIndustryCanvas, { type: 'pie', data: getChartData(dividendIndustryBreakdown), options: chartOptions });
-        }
+        Object.entries(canvasList).forEach(([id, data]) => {
+            const canvas = document.getElementById(id);
+            if (canvas && Object.keys(data).length > 0) {
+                const existing = Chart.getChart(canvas); if (existing) existing.destroy();
+                new Chart(canvas, { type: 'pie', data: getChartData(data), options: chartOptions });
+            }
+        });
         
-        // 月別配当分布グラフの描画
         renderMonthlyDividendChart(holdings);
-
         const activeBtn = document.querySelector('.chart-toggle-btn.active');
         updateChart(activeBtn ? activeBtn.dataset.chartType : 'industry');
     }
 
     function renderMonthlyDividendChart(holdings) {
+        if (holdings.length === 0 && !loadingIndicator.classList.contains('hidden')) return;
+
         const monthlyData = new Array(12).fill(0);
         const months = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
 
         holdings.forEach(item => {
             const annualDiv = parseFloat(item.estimated_annual_dividend) || 0;
             if (annualDiv <= 0) return;
-
-            // 決算月の取得 (数値化)
             let baseMonth = null;
             if (item.settlement_month && typeof item.settlement_month === 'string') {
-                const match = item.settlement_month.match(/(\d+)/);
-                if (match) baseMonth = parseInt(match[1]);
+                const match = item.settlement_month.match(/(\d+)/); if (match) baseMonth = parseInt(match[1]);
             }
-
             if (baseMonth === null) return;
-
-            // 月を配列のインデックス(0-11)に変換するためのヘルパー
             const getMonthIdx = (m, shift) => (m + shift - 1) % 12;
-
             if (item.asset_type === 'jp_stock') {
-                // 国内株: 3ヶ月後(期末) と 9ヶ月後(中間) に 50% ずつ
-                monthlyData[getMonthIdx(baseMonth, 3)] += annualDiv / 2;
-                monthlyData[getMonthIdx(baseMonth, 9)] += annualDiv / 2;
+                monthlyData[getMonthIdx(baseMonth, 3)] += annualDiv / 2; monthlyData[getMonthIdx(baseMonth, 9)] += annualDiv / 2;
             } else if (item.asset_type === 'us_stock') {
-                // 米国株: 3ヶ月おきに 25% ずつ
-                monthlyData[getMonthIdx(baseMonth, 3)] += annualDiv / 4;
-                monthlyData[getMonthIdx(baseMonth, 6)] += annualDiv / 4;
-                monthlyData[getMonthIdx(baseMonth, 9)] += annualDiv / 4;
-                monthlyData[getMonthIdx(baseMonth, 12)] += annualDiv / 4;
-            } else {
-                // その他: 3ヶ月後に 100% (暫定)
-                monthlyData[getMonthIdx(baseMonth, 3)] += annualDiv;
-            }
+                for (let i=3; i<=12; i+=3) monthlyData[getMonthIdx(baseMonth, i)] += annualDiv / 4;
+            } else monthlyData[getMonthIdx(baseMonth, 3)] += annualDiv;
         });
 
         const canvas = document.getElementById('monthly-dividend-chart');
         if (!canvas) return;
-
-        const existingChart = Chart.getChart(canvas);
-        if (existingChart) existingChart.destroy();
-
+        const existingChart = Chart.getChart(canvas); if (existingChart) existingChart.destroy();
         const ctx = canvas.getContext('2d');
         const colors = getChartThemeColors();
 
         monthlyDividendChart = new Chart(ctx, {
             type: 'bar',
-            data: {
-                labels: months,
-                datasets: [{
-                    label: '予想受取額',
-                    data: monthlyData,
-                    backgroundColor: '#1cc88a',
-                    borderRadius: 4
-                }]
-            },
+            data: { labels: months, datasets: [{ label: '予想受取額', data: monthlyData, backgroundColor: '#1cc88a', borderRadius: 4 }] },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        labels: { color: colors.text }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                let label = context.dataset.label || '';
-                                if (label) label += ': ';
-                                const formattedValue = isAmountVisible ? formatNumber(context.raw, 0) + '円' : '***円';
-                                label += formattedValue;
-                                return label;
-                            }
-                        }
-                    }
-                },
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: colors.text } }, tooltip: { callbacks: { label: (context) => {
+                    const formattedValue = isAmountVisible ? formatNumber(context.raw, 0) + '円' : '***円';
+                    return (context.dataset.label || '') + ': ' + formattedValue;
+                }}}},
                 scales: {
-                    x: {
-                        grid: { color: colors.grid },
-                        ticks: { color: colors.muted }
-                    },
-                    y: {
-                        beginAtZero: true,
-                        grid: { color: colors.grid },
-                        ticks: {
-                            color: colors.muted,
-                            callback: function(value) {
-                                return isAmountVisible ? formatNumber(value, 0) + '円' : '***円';
-                            }
-                        }
-                    }
+                    x: { grid: { color: colors.grid }, ticks: { color: colors.muted } },
+                    y: { beginAtZero: true, grid: { color: colors.grid }, ticks: { color: colors.muted, callback: (v) => isAmountVisible ? formatNumber(v, 0) + '円' : '***円' } }
                 }
             }
         });
     }
 
     function updateChart(chartType) {
-        // ポートフォリオ構成セクション内のキャンバスのみを対象にする
-        document.querySelectorAll('.portfolio-chart .chart-container canvas').forEach(canvas => {
-            canvas.classList.add('hidden');
-        });
+        document.querySelectorAll('.portfolio-chart .chart-container canvas').forEach(canvas => canvas.classList.add('hidden'));
         document.querySelectorAll('.chart-toggle-btn').forEach(btn => btn.classList.remove('active'));
         const activeBtn = document.querySelector(`.chart-toggle-btn[data-chart-type="${chartType}"]`);
         if (activeBtn) activeBtn.classList.add('active');
@@ -1205,8 +1134,7 @@ document.addEventListener('DOMContentLoaded', () => {
         alertContainer.appendChild(alert);
         requestAnimationFrame(() => alert.classList.add('show'));
         setTimeout(() => {
-            alert.classList.remove('show');
-            alert.classList.add('hide');
+            alert.classList.remove('show'); alert.classList.add('hide');
             alert.addEventListener('transitionend', () => alert.remove());
         }, 5000);
     }
@@ -1216,20 +1144,12 @@ document.addEventListener('DOMContentLoaded', () => {
             let valA = a[currentSort.key], valB = b[currentSort.key];
             const parseValue = (v) => {
                 if (v === undefined || v === null || v === 'N/A' || v === '--' || v === '') return -Infinity;
-                // フィボナッチなどのオブジェクト対応
-                if (typeof v === 'object' && v !== null && v.retracement !== undefined) {
-                    return v.retracement;
-                }
-                if (typeof v === 'string') {
-                    const num = parseFloat(v.replace(/,/g, ''));
-                    return isNaN(num) ? v : num;
-                }
+                if (typeof v === 'object' && v !== null && v.retracement !== undefined) return v.retracement;
+                if (typeof v === 'string') { const num = parseFloat(v.replace(/,/g, '')); return isNaN(num) ? v : num; }
                 return v;
             };
             const parsedA = parseValue(valA), parsedB = parseValue(valB);
-            if (typeof parsedA === 'number' && typeof parsedB === 'number') {
-                return currentSort.order === 'asc' ? parsedA - parsedB : parsedB - parsedA;
-            }
+            if (typeof parsedA === 'number' && typeof parsedB === 'number') return currentSort.order === 'asc' ? parsedA - parsedB : parsedB - parsedA;
             return currentSort.order === 'asc' ? String(parsedA).localeCompare(String(parsedB)) : String(parsedB).localeCompare(String(parsedA));
         });
     }
@@ -1237,9 +1157,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateSortHeaders() {
         document.querySelectorAll('#analysis-table .sortable').forEach(header => {
             header.classList.remove('sort-active', 'sort-asc', 'sort-desc');
-            if (header.dataset.key === currentSort.key) {
-                header.classList.add('sort-active', `sort-${currentSort.order}`);
-            }
+            if (header.dataset.key === currentSort.key) header.classList.add('sort-active', `sort-${currentSort.order}`);
         });
     }
 
@@ -1263,15 +1181,10 @@ document.addEventListener('DOMContentLoaded', () => {
     securityCompanyFilterSelect.addEventListener('change', filterAndRender);
     buySignalFilterSelect.addEventListener('change', filterAndRender);
     document.querySelector('#analysis-table thead').addEventListener('click', (event) => {
-        const header = event.target.closest('.sortable');
-        if (!header) return;
+        const header = event.target.closest('.sortable'); if (!header) return;
         const key = header.dataset.key;
-        if (currentSort.key === key) {
-            currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
-        } else {
-            currentSort.key = key;
-            currentSort.order = 'asc';
-        }
+        if (currentSort.key === key) currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+        else { currentSort.key = key; currentSort.order = 'asc'; }
         filterAndRender();
     });
     toggleVisibilityCheckbox.addEventListener('change', (event) => {
@@ -1282,15 +1195,9 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchAndRenderHistoryData();
     });
     downloadAnalysisCsvButton.addEventListener('click', () => { window.location.href = '/api/portfolio/analysis/csv'; });
-    chartToggleBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            updateChart(btn.dataset.chartType);
-        });
-    });
+    chartToggleBtns.forEach(btn => btn.addEventListener('click', () => updateChart(btn.dataset.chartType)));
 
-    window.addEventListener('pagehide', () => {
-        if (fetchController) fetchController.abort();
-    });
+    window.addEventListener('pagehide', () => { if (fetchController) fetchController.abort(); });
 
     function renderBuySignalBadge(signal, isDiamond = false) {
         if (!signal) return '';
@@ -1299,58 +1206,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const levelClass = `buy-signal-level-${level}`;
         const diamondClass = isDiamond ? 'buy-signal-diamond' : '';
         const isLongAdjustment = signal.label.includes('長期調整');
-
-        // シグナル強度の判定 (Level 1, 2のみ)
         let strengthClass = '';
         if (level >= 1) {
-            if (isDiamond && level === 2 && isLongAdjustment) {
-                strengthClass = 'signal-strength-rainbow';
-            } else if (isDiamond && level === 2) {
-                strengthClass = 'signal-strength-gold';
-            } else if ((level === 2 && isLongAdjustment) || (isDiamond && level === 1 && isLongAdjustment)) {
-                strengthClass = 'signal-strength-silver';
-            }
+            if (isDiamond && level === 2 && isLongAdjustment) strengthClass = 'signal-strength-rainbow';
+            else if (isDiamond && level === 2) strengthClass = 'signal-strength-gold';
+            else if ((level === 2 && isLongAdjustment) || (isDiamond && level === 1 && isLongAdjustment)) strengthClass = 'signal-strength-silver';
         }
-
-        // ツールチップの構築
-        let titleText = '';
-        if (signal.recommended_action) {
-            titleText += `【推奨アクション】\n${signal.recommended_action}\n\n`;
-        }
-        if (signal.current_status) {
-            titleText += `【現在の状態】\n${signal.current_status}\n\n`;
-        }
-        titleText += `【判定理由】\n${reasons}`;
-
-        return `
-            <span class="buy-signal-badge ${levelClass} ${diamondClass} ${strengthClass}" title="${titleText}">
-                <span class="buy-signal-icon-inner">${signal.icon}</span>
-                ${signal.label}
-            </span>
-        `;
+        let titleText = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${reasons}`;
+        return `<span class="buy-signal-badge ${levelClass} ${diamondClass} ${strengthClass}" title="${titleText}"><span class="buy-signal-icon-inner">${signal.icon}</span>${signal.label}</span>`;
     }
     function renderSellSignalBadge(signal, isDiamond = false) {
         if (!signal) return '';
         const reasons = signal.reasons.join('\n');
         const levelClass = `sell-signal-level-${signal.level}`;
         const diamondClass = isDiamond ? 'buy-signal-diamond' : '';
-
-        // ツールチップの構築
-        let titleText = '';
-        if (signal.recommended_action) {
-            titleText += `【推奨アクション】\n${signal.recommended_action}\n\n`;
-        }
-        if (signal.current_status) {
-            titleText += `【現在の状態】\n${signal.current_status}\n\n`;
-        }
-        titleText += `【判定理由】\n${reasons}`;
-
-        return `
-            <span class="sell-signal-badge ${levelClass} ${diamondClass}" title="${titleText}">
-                <span class="buy-signal-icon-inner">${signal.icon}</span>
-                ${signal.label}
-            </span>
-        `;
+        let titleText = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${reasons}`;
+        return `<span class="sell-signal-badge ${levelClass} ${diamondClass}" title="${titleText}"><span class="buy-signal-icon-inner">${signal.icon}</span>${signal.label}</span>`;
     }
 
     fetchHighlightRules();

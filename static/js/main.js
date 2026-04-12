@@ -42,6 +42,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
     initTheme();
 
+    // --- スケルトンUI表示 ---
+    function showSkeletons() {
+        // 1. 市場サマリー
+        const marketContainer = document.getElementById('market-summary-container');
+        if (marketContainer) {
+            marketContainer.innerHTML = Array(3).fill(0).map(() => `
+                <div class="market-index-card">
+                    <div class="skeleton skeleton-text" style="width: 40%; height: 1.2rem;"></div>
+                    <div class="skeleton skeleton-text" style="width: 70%; height: 1.8rem; margin: 0.5rem 0;"></div>
+                    <div class="skeleton skeleton-text" style="width: 90%;"></div>
+                    <div class="skeleton skeleton-text" style="width: 80%;"></div>
+                </div>
+            `).join('');
+            marketContainer.classList.remove('hidden');
+        }
+
+        // 2. テーブル (各タブの tbody に 5行のスケルトン)
+        const assetTypes = ['jp_stock', 'investment_trust', 'us_stock'];
+        const colCounts = { jp_stock: 17, investment_trust: 8, us_stock: 11 };
+        
+        assetTypes.forEach(type => {
+            const tbody = document.querySelector(`#portfolio-table-${type} tbody`);
+            if (tbody) {
+                tbody.innerHTML = Array(5).fill(0).map(() => `
+                    <tr class="skeleton-row">
+                        ${Array(colCounts[type]).fill(0).map(() => `<td><div class="skeleton skeleton-cell"></div></td>`).join('')}
+                    </tr>
+                `).join('');
+            }
+        });
+    }
+
     // --- モーダル関連DOM要素 ---
     const modalOverlay = document.getElementById('modal-overlay');
     const modalTitle = document.getElementById('modal-title');
@@ -56,50 +88,47 @@ document.addEventListener('DOMContentLoaded', () => {
     const quantityInput = document.getElementById('quantity-input');
     const holdingFormCancelBtn = document.getElementById('holding-form-cancel-btn');
     const modalCloseBtn = document.getElementById('modal-close-btn');
-    const securityCompanySelect = document.getElementById('security-company-select'); // 証券会社セレクトボックス
-    const memoInput = document.getElementById('memo-input'); // 備考入力欄
+    const securityCompanySelect = document.getElementById('security-company-select');
+    const memoInput = document.getElementById('memo-input');
 
     // --- グローバル変数 ---
     let allAssetsData = [];
     let accountTypes = [];
-    let securityCompanies = []; // 証券会社リスト
+    let securityCompanies = [];
     let highlightRules = {};
     let currentSort = { key: 'code', order: 'asc' };
     let currentManagingCode = null;
     let activeTab = 'jp_stock';
     const ASSETS_STORAGE_KEY = 'jpStockPortfolioAssets';
-    let fetchController = null; // AbortControllerを保持
+    let fetchController = null;
 
     // --- データ取得とレンダリング ---
     async function fetchAndRenderAllData(force = false) {
         if (fetchController) {
-            fetchController.abort(); // 既存のリクエストをキャンセル
+            fetchController.abort();
         }
         fetchController = new AbortController();
         const signal = fetchController.signal;
 
         const cachedState = window.appState.getState('portfolio');
         if (cachedState) {
-            // 防衛的処理: 配列形式(旧)とオブジェクト形式(新)の両方に対応
             allAssetsData = Array.isArray(cachedState) ? cachedState : (cachedState.data || []);
             if (cachedState.metadata) {
                 renderUpdateReport(cachedState.metadata);
             }
             filterAndRender();
+        } else {
+            // キャッシュがない場合のみスケルトンを表示
+            showSkeletons();
         }
 
-        // forceがfalseかつ、フロントエンド側の判定（現在は常にtrue）で取得不要ならスキップ
         if (!force && !window.appState.canFetch()) {
             return;
         }
 
         refreshAllButton.disabled = true;
         refreshAllButton.textContent = '更新中...';
-        if (updateReportContainer) {
-            updateReportContainer.innerHTML = '<div class="update-report">銘柄情報を取得中...</div>';
-            updateReportContainer.classList.remove('hidden');
-        }
-
+        
         try {
             const apiFetch = (url) => fetch(url, { signal }).then(handleApiResponse);
 
@@ -108,16 +137,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 apiFetch('/api/highlight-rules'),
                 apiFetch('/api/recent-stocks'),
                 apiFetch('/api/account-types'),
-                apiFetch('/api/security-companies') // 証券会社リスト取得
+                apiFetch('/api/security-companies')
             ]);
 
-            // 防衛的処理: APIレスポンスが配列形式(旧)かオブジェクト形式(新)かを判定
             allAssetsData = Array.isArray(assetsResponse) ? assetsResponse : (assetsResponse.data || []);
             highlightRules = rules;
             accountTypes = accTypes;
-            securityCompanies = secCompanies; // グローバル変数にセット
+            securityCompanies = secCompanies;
 
-            // stateにはレスポンス全体（メタデータ含む）を保存
             window.appState.updateState('portfolio', assetsResponse);
             window.appState.updateTimestamp();
             saveAssetsToStorage(); 
@@ -133,15 +160,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
         } catch (error) {
-            if (error.name === 'AbortError') {
-                console.log('Main page fetch aborted.');
-                return;
-            }
-            
+            if (error.name === 'AbortError') return;
             console.error('Data fetch error:', error);
-            
-            // 429 (Too Many Requests) の場合は、バックエンドのスマートキャッシュによる一時的な制限の可能性があるため、
-            // 警告は出さずに既存のキャッシュ表示を維持する
             if (error instanceof window.appState.HttpError && error.status === 429) {
                 console.log('Backend is currently throttling or updating. Using cached data.');
             } else {
@@ -177,15 +197,11 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         updateReportContainer.classList.remove('hidden');
 
-        // 市場サマリーの描画
         if (metadata.market_indices) {
             renderMarketSummary(metadata.market_indices);
         }
     }
 
-    /**
-     * 市場指標サマリーをレンダリングする
-     */
     function renderMarketSummary(indices) {
         const container = document.getElementById('market-summary-container');
         if (!container || !indices) return;
@@ -215,7 +231,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     const sign = val > 0 ? '+' : '';
                     return `${sign}${val.toFixed(2)}%`;
                 }
-                // 文字列の場合でも数値なら+を付与
                 const num = parseFloat(val);
                 if (!isNaN(num)) {
                     const sign = num > 0 ? '+' : '';
@@ -257,22 +272,19 @@ document.addEventListener('DOMContentLoaded', () => {
         container.innerHTML = html;
         container.classList.remove('hidden');
     }
+
     async function handleApiResponse(response) {
         if (!response.ok) {
             let errorDetail = `HTTP error! status: ${response.status}`;
             try {
                 const errorData = await response.json();
                 errorDetail = errorData.detail || errorDetail;
-            } catch (e) {
-                // JSONのパースに失敗した場合
-            }
+            } catch (e) {}
             throw new window.appState.HttpError(errorDetail, response.status);
         }
         return response.json();
     }
 
-
-    // --- ストレージ関連 ---
     function saveAssetsToStorage() {
         localStorage.setItem(ASSETS_STORAGE_KEY, JSON.stringify(allAssetsData));
     }
@@ -282,7 +294,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (storedAssets) {
             try {
                 const parsed = JSON.parse(storedAssets);
-                // 防衛的処理: 配列形式(旧)とオブジェクト形式(新)の両方に対応
                 allAssetsData = Array.isArray(parsed) ? parsed : (parsed.data || []);
                 filterAndRender();
             } catch (e) {
@@ -291,7 +302,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- レンダリング関連 ---
     function filterAndRender() {
         const filterText = filterInput.value.toLowerCase();
         const showOnlyManaged = showOnlyManagedAssetsCheckbox.checked;
@@ -301,32 +311,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         let filteredAssets = allAssetsData.filter(asset => asset.asset_type === activeTab);
 
-        if (showOnlyManaged) {
-            filteredAssets = filteredAssets.filter(asset => asset.holdings && asset.holdings.length > 0);
-        }
-
-        if (showStrictDip) {
-            // 厳選・押し目: 💎 かつ 購入シグナル(レベル1以上)
-            filteredAssets = filteredAssets.filter(asset => {
-                const isDiamond = asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true);
-                return isDiamond && asset.buy_signal && asset.buy_signal.level >= 1;
-            });
-        }
-
-        if (showStrictLow) {
-            // 厳選・安値圏: 💎 かつ 長期調整(レベル3)
-            filteredAssets = filteredAssets.filter(asset => {
-                const isDiamond = asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true);
-                return isDiamond && asset.sell_signal && asset.sell_signal.level === 3;
-            });
-        }
-
-        if (showOverheated) {
-            // 過熱・見送り: 過熱シグナル(レベル1 or 2)
-            filteredAssets = filteredAssets.filter(asset => 
-                asset.sell_signal && (asset.sell_signal.level === 1 || asset.sell_signal.level === 2)
-            );
-        }
+        if (showOnlyManaged) filteredAssets = filteredAssets.filter(asset => asset.holdings && asset.holdings.length > 0);
+        if (showStrictDip) filteredAssets = filteredAssets.filter(asset => (asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true)) && asset.buy_signal && asset.buy_signal.level >= 1);
+        if (showStrictLow) filteredAssets = filteredAssets.filter(asset => (asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true)) && asset.sell_signal && asset.sell_signal.level === 3);
+        if (showOverheated) filteredAssets = filteredAssets.filter(asset => asset.sell_signal && (asset.sell_signal.level === 1 || asset.sell_signal.level === 2));
 
         if (filterText) {
             filteredAssets = filteredAssets.filter(asset =>
@@ -335,19 +323,21 @@ document.addEventListener('DOMContentLoaded', () => {
             );
         }
         sortAssets(filteredAssets);
-        if (activeTab === 'jp_stock') {
-            renderStockTable(filteredAssets);
-        } else if (activeTab === 'investment_trust') {
-            renderFundTable(filteredAssets);
-        } else if (activeTab === 'us_stock') {
-            renderUSTable(filteredAssets);
-        }
+        if (activeTab === 'jp_stock') renderStockTable(filteredAssets);
+        else if (activeTab === 'investment_trust') renderFundTable(filteredAssets);
+        else if (activeTab === 'us_stock') renderUSTable(filteredAssets);
         updateSortHeaders();
         updateDeleteSelectedButtonState();
     }
 
     function renderStockTable(stocks) {
         const tableBody = document.querySelector('#portfolio-table-jp_stock tbody');
+        // データ取得中かつ空ならスケルトン行を表示
+        if (stocks.length === 0 && refreshAllButton.disabled) {
+            const html = Array(5).fill(0).map(() => `<tr class="skeleton-row">${Array(17).fill(0).map(() => `<td><div class="skeleton skeleton-cell"></div></td>`).join('')}</tr>`).join('');
+            tableBody.innerHTML = html;
+            return;
+        }
         tableBody.innerHTML = '';
         if (!stocks || stocks.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="17" style="text-align:center;">登録されている銘柄はありません。</td></tr>`;
@@ -357,107 +347,56 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = tableBody.insertRow();
             row.dataset.code = jpStock.code;
             const createCell = (html, className = '') => {
-                const cell = row.insertCell();
-                cell.innerHTML = html;
-                let finalClassName = className;
-                if (html === 'N/A' || html === '--' || html === '-') {
-                    finalClassName = (finalClassName ? finalClassName + ' ' : '') + 'na-value';
-                }
-                if (finalClassName) cell.className = finalClassName;
+                const cell = row.insertCell(); cell.innerHTML = html;
+                if (html === 'N/A' || html === '--' || html === '-') cell.className = (className ? className + ' ' : '') + 'na-value';
+                else if (className) cell.className = className;
                 return cell;
             };
             const createCellWithTooltip = (html, className = '', tooltipText = '', externalLink = '') => {
-                const cell = createCell(html, className);
-                if (tooltipText) cell.title = tooltipText;
-                if (externalLink) {
-                    cell.style.cursor = 'pointer';
-                    cell.addEventListener('click', () => window.open(externalLink, '_blank'));
-                }
+                const cell = createCell(html, className); if (tooltipText) cell.title = tooltipText;
+                if (externalLink) { cell.style.cursor = 'pointer'; cell.addEventListener('click', () => window.open(externalLink, '_blank')); }
                 return cell;
             };
-
             if (jpStock.error) {
-                row.className = 'error-row';
-                row.title = jpStock.error;
+                row.className = 'error-row'; row.title = jpStock.error;
                 createCell(`<input type="checkbox" class="asset-checkbox" data-code="${jpStock.code}" disabled>`);
-                createCell(jpStock.code);
-                const errorCell = createCell(jpStock.error, 'error-message');
-                errorCell.colSpan = 14; // colspanを調整
+                createCell(jpStock.code); createCell(jpStock.error, 'error-message').colSpan = 14;
                 createCell(`<button class="manage-btn" data-code="${jpStock.code}" disabled>管理</button>`);
                 return;
             }
             createCell(`<input type="checkbox" class="asset-checkbox" data-code="${jpStock.code}">`);
             createCell(jpStock.code);
-            
-            // 銘柄名とシグナルの表示
             const baseUrl = `https://finance.yahoo.co.jp/quote/${jpStock.code}.T`;
-            let nameHtml = `<div class="d-flex flex-wrap align-items-center gap-1">`;
-            nameHtml += `<a href="${baseUrl}" target="_blank" class="fw-bold me-1">${jpStock.name}</a>`;
-            
-            // クイックリンクアイコン (適時開示, 業績)
-            nameHtml += `
-                <div class="quick-links d-inline-flex gap-1">
-                    <a href="${baseUrl}/disclosure" target="_blank" class="badge bg-light text-dark border text-decoration-none" title="適時開示を確認" style="font-size: 0.65rem; padding: 0.15rem 0.3rem;">開示</a>
-                    <a href="${baseUrl}/performance" target="_blank" class="badge bg-light text-dark border text-decoration-none" title="業績詳細を確認" style="font-size: 0.65rem; padding: 0.15rem 0.3rem;">業績</a>
-                </div>
-            `;
-
+            let nameHtml = `<div class="d-flex flex-wrap align-items-center gap-1"><a href="${baseUrl}" target="_blank" class="fw-bold me-1">${jpStock.name}</a><div class="quick-links d-inline-flex gap-1"><a href="${baseUrl}/disclosure" target="_blank" class="badge bg-light text-dark border text-decoration-none" title="適時開示" style="font-size: 0.65rem; padding: 0.15rem 0.3rem;">開示</a><a href="${baseUrl}/performance" target="_blank" class="badge bg-light text-dark border text-decoration-none" title="業績詳細" style="font-size: 0.65rem; padding: 0.15rem 0.3rem;">業績</a></div>`;
             const isDiamond = jpStock.is_diamond || (jpStock.buy_signal && jpStock.buy_signal.is_diamond);
-            if (jpStock.buy_signal) {
-                nameHtml += renderBuySignalBadge(jpStock.buy_signal, isDiamond);
-            }
-            if (jpStock.sell_signal) {
-                nameHtml += renderSellSignalBadge(jpStock.sell_signal, isDiamond);
-            }
-            nameHtml += `</div>`;
-            createCell(nameHtml);
-
+            if (jpStock.buy_signal) nameHtml += renderBuySignalBadge(jpStock.buy_signal, isDiamond);
+            if (jpStock.sell_signal) nameHtml += renderSellSignalBadge(jpStock.sell_signal, isDiamond);
+            createCell(nameHtml + `</div>`);
             createCell(jpStock.industry || 'N/A');
             createCell(renderScoreAsStars(jpStock.score, jpStock.score_details, jpStock.asset_type));
             createCell(jpStock.price);
-            
-            const changePercent = jpStock.change_percent;
-            const displayChangePercent = (changePercent && changePercent !== 'N/A') ? `${changePercent}%` : 'N/A';
-            createCell(`${jpStock.change} (${displayChangePercent})`);
-            
+            createCell(`${jpStock.change} (${(jpStock.change_percent && jpStock.change_percent !== 'N/A') ? jpStock.change_percent + '%' : 'N/A'})`);
             createCell(formatMarketCap(jpStock.market_cap));
             createCell(jpStock.per, getHighlightClass('per', jpStock.per, jpStock.asset_type));
             createCell(jpStock.pbr, getHighlightClass('pbr', jpStock.pbr, jpStock.asset_type));
             createCell(jpStock.roe, getHighlightClass('roe', jpStock.roe, jpStock.asset_type));
             createCell(jpStock.yield, getHighlightClass('yield', jpStock.yield, jpStock.asset_type));
-
-            // フィボナッチの表示
-            let fibText = '-';
-            if (jpStock.fibonacci && jpStock.fibonacci.retracement !== undefined) {
-                fibText = `${jpStock.fibonacci.retracement.toFixed(1)}%`;
-            }
-            createCell(fibText);
-
-            // RCIの表示
-            let rciText = '-';
-            if (jpStock.rci_26 !== undefined && jpStock.rci_26 !== null) {
-                rciText = `${jpStock.rci_26.toFixed(1)}%`;
-            }
-            createCell(rciText);
-            
-            const tooltipContent = formatDividendHistory(jpStock.dividend_history);
-            const externalLink = `https://finance.yahoo.co.jp/quote/${jpStock.code}.T/dividend`;
-            createCellWithTooltip(jpStock.consecutive_increase_years > 0 ? `<span class="increase-badge">${jpStock.consecutive_increase_years}年連続</span>` : '-', 'badge-cell', tooltipContent, externalLink);
-            
+            createCell((jpStock.fibonacci && jpStock.fibonacci.retracement !== undefined) ? `${jpStock.fibonacci.retracement.toFixed(1)}%` : '-');
+            createCell((jpStock.rci_26 !== undefined && jpStock.rci_26 !== null) ? `${jpStock.rci_26.toFixed(1)}%` : '-');
+            createCellWithTooltip(jpStock.consecutive_increase_years > 0 ? `<span class="increase-badge">${jpStock.consecutive_increase_years}年連続</span>` : '-', 'badge-cell', formatDividendHistory(jpStock.dividend_history), `${baseUrl}/dividend`);
             createCell(jpStock.settlement_month || 'N/A');
-
-            const manageCell = document.createElement('td');
-            const manageButton = document.createElement('button');
-            manageButton.textContent = '管理';
-            manageButton.className = 'manage-btn';
-            manageButton.dataset.code = jpStock.code;
-            manageCell.appendChild(manageButton);
-            row.appendChild(manageCell);
+            const manageBtn = document.createElement('button'); manageBtn.textContent = '管理'; manageBtn.className = 'manage-btn'; manageBtn.dataset.code = jpStock.code;
+            row.insertCell().appendChild(manageBtn);
         });
     }
 
     function renderFundTable(funds) {
         const tableBody = document.querySelector('#portfolio-table-investment_trust tbody');
+        if (funds.length === 0 && refreshAllButton.disabled) {
+            const html = Array(5).fill(0).map(() => `<tr class="skeleton-row">${Array(8).fill(0).map(() => `<td><div class="skeleton skeleton-cell"></div></td>`).join('')}</tr>`).join('');
+            tableBody.innerHTML = html;
+            return;
+        }
         tableBody.innerHTML = '';
         if (!funds || funds.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;">登録されている投資信託はありません。</td></tr>`;
@@ -467,48 +406,35 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = tableBody.insertRow();
             row.dataset.code = fund.code;
             const createCell = (html, className = '') => {
-                const cell = row.insertCell();
-                cell.innerHTML = html;
-                let finalClassName = className;
-                if (html === 'N/A' || html === '--' || html === '-') {
-                    finalClassName = (finalClassName ? finalClassName + ' ' : '') + 'na-value';
-                }
-                if (finalClassName) cell.className = finalClassName;
+                const cell = row.insertCell(); cell.innerHTML = html;
+                if (html === 'N/A' || html === '--' || html === '-') cell.className = (className ? className + ' ' : '') + 'na-value';
+                else if (className) cell.className = className;
                 return cell;
             };
             if (fund.error) {
-                row.className = 'error-row';
-                row.title = fund.error;
+                row.className = 'error-row'; row.title = fund.error;
                 createCell(`<input type="checkbox" class="asset-checkbox" data-code="${fund.code}" disabled>`);
-                createCell(fund.code);
-                const errorCell = createCell(fund.error, 'error-message');
-                errorCell.colSpan = 5;
+                createCell(fund.code); createCell(fund.error, 'error-message').colSpan = 5;
                 createCell(`<button class="manage-btn" data-code="${fund.code}" disabled>管理</button>`);
                 return;
             }
             createCell(`<input type="checkbox" class="asset-checkbox" data-code="${fund.code}">`);
-            createCell(fund.code);
-            createCell(`<a href="https://finance.yahoo.co.jp/quote/${fund.code}" target="_blank">${fund.name}</a>`);
+            createCell(fund.code); createCell(`<a href="https://finance.yahoo.co.jp/quote/${fund.code}" target="_blank">${fund.name}</a>`);
             createCell(fund.price);
-            
-            const changePercent = fund.change_percent;
-            const displayChangePercent = (changePercent && changePercent !== 'N/A') ? `${changePercent}%` : 'N/A';
-            createCell(`${fund.change} (${displayChangePercent})`);
-            
-            createCell(fund.net_assets);
-            createCell(fund.trust_fee);
-            const manageCell = document.createElement('td');
-            const manageButton = document.createElement('button');
-            manageButton.textContent = '管理';
-            manageButton.className = 'manage-btn';
-            manageButton.dataset.code = fund.code;
-            manageCell.appendChild(manageButton);
-            row.appendChild(manageCell);
+            createCell(`${fund.change} (${(fund.change_percent && fund.change_percent !== 'N/A') ? fund.change_percent + '%' : 'N/A'})`);
+            createCell(fund.net_assets); createCell(fund.trust_fee);
+            const manageBtn = document.createElement('button'); manageBtn.textContent = '管理'; manageBtn.className = 'manage-btn'; manageBtn.dataset.code = fund.code;
+            row.insertCell().appendChild(manageBtn);
         });
     }
 
     function renderUSTable(usStocks) {
         const tableBody = document.querySelector('#portfolio-table-us_stock tbody');
+        if (usStocks.length === 0 && refreshAllButton.disabled) {
+            const html = Array(5).fill(0).map(() => `<tr class="skeleton-row">${Array(11).fill(0).map(() => `<td><div class="skeleton skeleton-cell"></div></td>`).join('')}</tr>`).join('');
+            tableBody.innerHTML = html;
+            return;
+        }
         tableBody.innerHTML = '';
         if (!usStocks || usStocks.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;">登録されている米国株式はありません。</td></tr>`;
@@ -518,70 +444,45 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = tableBody.insertRow();
             row.dataset.code = usStock.code;
             const createCell = (html, className = '') => {
-                const cell = row.insertCell();
-                cell.innerHTML = html;
-                let finalClassName = className;
-                if (html === 'N/A' || html === '--' || html === '-') {
-                    finalClassName = (finalClassName ? finalClassName + ' ' : '') + 'na-value';
-                }
-                if (finalClassName) cell.className = finalClassName;
+                const cell = row.insertCell(); cell.innerHTML = html;
+                if (html === 'N/A' || html === '--' || html === '-') cell.className = (className ? className + ' ' : '') + 'na-value';
+                else if (className) cell.className = className;
                 return cell;
             };
             if (usStock.error) {
-                row.className = 'error-row';
-                row.title = usStock.error;
+                row.className = 'error-row'; row.title = usStock.error;
                 createCell(`<input type="checkbox" class="asset-checkbox" data-code="${usStock.code}" disabled>`);
-                createCell(usStock.code);
-                const errorCell = createCell(usStock.error, 'error-message');
-                errorCell.colSpan = 7;
+                createCell(usStock.code); createCell(usStock.error, 'error-message').colSpan = 7;
                 createCell(`<button class="manage-btn" data-code="${usStock.code}" disabled>管理</button>`);
                 return;
             }
             createCell(`<input type="checkbox" class="asset-checkbox" data-code="${usStock.code}">`);
-            createCell(usStock.code);
-            createCell(`<a href="https://finance.yahoo.co.jp/quote/${usStock.code}" target="_blank">${usStock.name}</a>`);
-            createCell(usStock.market || 'N/A');
-            createCell(usStock.price);
-            
-            const changePercent = usStock.change_percent;
-            const displayChangePercent = (changePercent && changePercent !== 'N/A') ? `${changePercent}%` : 'N/A';
-            createCell(`${usStock.change} (${displayChangePercent})`);
-            
+            createCell(usStock.code); createCell(`<a href="https://finance.yahoo.co.jp/quote/${usStock.code}" target="_blank">${usStock.name}</a>`);
+            createCell(usStock.market || 'N/A'); createCell(usStock.price);
+            createCell(`${usStock.change} (${(usStock.change_percent && usStock.change_percent !== 'N/A') ? usStock.change_percent + '%' : 'N/A'})`);
             createCell(formatMarketCap(usStock.market_cap));
             createCell(usStock.per, getHighlightClass('per', usStock.per, usStock.asset_type));
             createCell(usStock.yield, getHighlightClass('yield', usStock.yield, usStock.asset_type));
             createCell(usStock.settlement_month || 'N/A');
-
-            const manageCell = document.createElement('td');
-            const manageButton = document.createElement('button');
-            manageButton.textContent = '管理';
-            manageButton.className = 'manage-btn';
-            manageButton.dataset.code = usStock.code;
-            manageCell.appendChild(manageButton);
-            row.appendChild(manageCell);
+            const manageBtn = document.createElement('button'); manageBtn.textContent = '管理'; manageBtn.className = 'manage-btn'; manageBtn.dataset.code = usStock.code;
+            row.insertCell().appendChild(manageBtn);
         });
     }
 
     function showAlert(message, type = 'danger', isHtml = false) {
-        const alert = document.createElement('div');
-        alert.className = `alert alert-${type}`;
-        if (isHtml) {
-            alert.innerHTML = message;
-        } else {
-            alert.textContent = message;
-        }
+        const alert = document.createElement('div'); alert.className = `alert alert-${type}`;
+        if (isHtml) alert.innerHTML = message; else alert.textContent = message;
         alertContainer.appendChild(alert);
         requestAnimationFrame(() => alert.classList.add('show'));
         setTimeout(() => {
-            alert.classList.remove('show');
-            alert.classList.add('hide');
+            alert.classList.remove('show'); alert.classList.add('hide');
             alert.addEventListener('transitionend', () => alert.remove());
-        }, 10000); // エラーメッセージを少し長く表示 (5秒 -> 10秒)
+        }, 10000);
     }
 
     const formatNumber = (num, fractionDigits = 0) => {
         const parsedNum = parseFloat(num);
-        if (parsedNum === null || parsedNum === undefined || isNaN(parsedNum)) return 'N/A';
+        if (isNaN(parsedNum)) return 'N/A';
         return parsedNum.toLocaleString(undefined, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
     };
 
@@ -590,14 +491,8 @@ document.addEventListener('DOMContentLoaded', () => {
             let valA = a[currentSort.key], valB = b[currentSort.key];
             const parseValue = (v) => {
                 if (v === undefined || v === null || v === 'N/A' || v === '--' || v === '') return -Infinity;
-                // フィボナッチなどのオブジェクト対応
-                if (typeof v === 'object' && v !== null && v.retracement !== undefined) {
-                    return v.retracement;
-                }
-                if (typeof v === 'string') {
-                    const num = parseFloat(v.replace(/,/g, '').replace(/%|倍|円/g, ''));
-                    return isNaN(num) ? v : num;
-                }
+                if (typeof v === 'object' && v !== null && v.retracement !== undefined) return v.retracement;
+                if (typeof v === 'string') { const num = parseFloat(v.replace(/,/g, '').replace(/%|倍|円/g, '')); return isNaN(num) ? v : num; }
                 return v;
             };
             const parsedA = parseValue(valA), parsedB = parseValue(valB);
@@ -608,23 +503,19 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateSortHeaders() {
         document.querySelectorAll(`.tab-content.active .sortable`).forEach(header => {
             header.classList.remove('sort-active', 'sort-asc', 'sort-desc');
-            if (header.dataset.key === currentSort.key) {
-                header.classList.add('sort-active', `sort-${currentSort.order}`);
-            }
+            if (header.dataset.key === currentSort.key) header.classList.add('sort-active', `sort-${currentSort.order}`);
         });
     }
 
     function updateDeleteSelectedButtonState() {
-        const checkedCount = document.querySelectorAll(`#${activeTab} .asset-checkbox:checked`).length;
-        deleteSelectedStocksButton.disabled = checkedCount === 0;
+        deleteSelectedStocksButton.disabled = document.querySelectorAll(`#${activeTab} .asset-checkbox:checked`).length === 0;
     }
     function formatMarketCap(value) {
-        if (value === 'N/A' || value === null || value === undefined || value === '--') return 'N/A';
+        if (value === 'N/A' || !value || value === '--') return 'N/A';
         const num = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
         if (isNaN(num)) return 'N/A';
-        const trillion = 1e12, oku = 1e8;
-        if (num >= trillion) return `${(num / trillion).toFixed(2)}兆円`;
-        if (num >= oku) return `${(num / oku).toFixed(2)}億円`;
+        if (num >= 1e12) return `${(num / 1e12).toFixed(2)}兆円`;
+        if (num >= 1e8) return `${(num / 1e8).toFixed(2)}億円`;
         return `${num.toLocaleString()}円`;
     }
     function formatDividendHistory(history) {
@@ -633,384 +524,183 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function renderBuySignalBadge(signal, isDiamond = false) {
         if (!signal) return '';
-        const reasons = signal.reasons.join('\n');
-        const level = signal.level !== undefined ? signal.level : 1;
-        const levelClass = `buy-signal-level-${level}`;
-        const diamondClass = isDiamond ? 'buy-signal-diamond' : '';
-        const isLongAdjustment = signal.label.includes('長期調整');
-
-        // シグナル強度の判定 (Level 1, 2のみ)
-        let strengthClass = '';
+        const level = signal.level || 1;
+        const isLong = signal.label.includes('長期調整');
+        let strength = '';
         if (level >= 1) {
-            if (isDiamond && level === 2 && isLongAdjustment) {
-                strengthClass = 'signal-strength-rainbow';
-            } else if (isDiamond && level === 2) {
-                strengthClass = 'signal-strength-gold';
-            } else if ((level === 2 && isLongAdjustment) || (isDiamond && level === 1 && isLongAdjustment)) {
-                strengthClass = 'signal-strength-silver';
-            }
+            if (isDiamond && level === 2 && isLong) strength = 'signal-strength-rainbow';
+            else if (isDiamond && level === 2) strength = 'signal-strength-gold';
+            else if ((level === 2 && isLong) || (isDiamond && level === 1 && isLong)) strength = 'signal-strength-silver';
         }
-        
-        // ツールチップの構築
-        let titleText = '';
-        if (signal.recommended_action) {
-            titleText += `【推奨アクション】\n${signal.recommended_action}\n\n`;
-        }
-        if (signal.current_status) {
-            titleText += `【現在の状態】\n${signal.current_status}\n\n`;
-        }
-        titleText += `【判定理由】\n${reasons}`;
-
-        return `
-            <span class="buy-signal-badge ${levelClass} ${diamondClass} ${strengthClass}" title="${titleText}">
-                <span class="buy-signal-icon-inner">${signal.icon}</span>
-                ${signal.label}
-            </span>
-        `;
+        const title = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${signal.reasons.join('\n')}`;
+        return `<span class="buy-signal-badge buy-signal-level-${level} ${isDiamond ? 'buy-signal-diamond' : ''} ${strength}" title="${title}"><span class="buy-signal-icon-inner">${signal.icon}</span>${signal.label}</span>`;
     }
 
     function renderSellSignalBadge(signal, isDiamond = false) {
         if (!signal) return '';
-        const reasons = signal.reasons.join('\n');
-        const levelClass = `sell-signal-level-${signal.level}`;
-        const diamondClass = isDiamond ? 'buy-signal-diamond' : ''; // 売却側にもダイヤモンドの装飾を適用可能にする
-        
-        // ツールチップの構築
-        let titleText = '';
-        if (signal.recommended_action) {
-            titleText += `【推奨アクション】\n${signal.recommended_action}\n\n`;
-        }
-        if (signal.current_status) {
-            titleText += `【現在の状態】\n${signal.current_status}\n\n`;
-        }
-        titleText += `【判定理由】\n${reasons}`;
-
-        return `
-            <span class="sell-signal-badge ${levelClass} ${diamondClass}" title="${titleText}">
-                <span class="buy-signal-icon-inner">${signal.icon}</span>
-                ${signal.label}
-            </span>
-        `;
+        const title = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${signal.reasons.join('\n')}`;
+        return `<span class="sell-signal-badge sell-signal-level-${signal.level} ${isDiamond ? 'buy-signal-diamond' : ''}" title="${title}"><span class="buy-signal-icon-inner">${signal.icon}</span>${signal.label}</span>`;
     }
 
     function renderScoreAsStars(score, details, assetType) {
-        if (assetType !== 'jp_stock') return 'N/A';
+        if (assetType !== 'jp_stock' || score === undefined || score === null) return 'N/A';
         if (score === -1) return `<span class="score-na" title="評価指標なし">N/A</span>`;
-        if (score === undefined || score === null) return 'N/A';
-        
-        // 15点満点に対応するため、1行あたりの星の数を調整
-        // 8個 × 2行 = 最大16個まで表示可能なレイアウトにする
-        const maxStarsPerRow = 8;
-        const totalSlots = 16; // 8 * 2
-        
-        // トレンドスコアの合計を計算
         const trendScore = (details.trend_short || 0) + (details.trend_medium || 0) + (details.trend_signal || 0) + (details.fibonacci || 0) + (details.rci || 0);
-        // ファンダメンタルズスコア = 全体スコア - トレンドスコア
         const fundamentalScore = score - trendScore;
-
-        let starsHtml = '';
-        for (let i = 0; i < totalSlots; i++) {
-            if (i === maxStarsPerRow) starsHtml += '<br>';
-            
-            let className = 'score-empty';
-            let char = '★'; // デフォルトは塗りつぶし星（色はクラスで制御）
-            
-            if (i < fundamentalScore) {
-                className = 'score-fundamental';
-            } else if (i < score) { // fundamentalScore <= i < score
-                className = 'score-trend';
-            } else {
-                className = 'score-empty';
-                char = '☆'; // 空の場合は白抜き星にする
-            }
-            
-            starsHtml += `<span class="${className}">${char}</span>`;
+        let html = '';
+        for (let i = 0; i < 16; i++) {
+            if (i === 8) html += '<br>';
+            const cls = i < fundamentalScore ? 'score-fundamental' : (i < score ? 'score-trend' : 'score-empty');
+            html += `<span class="${cls}">${i < score ? '★' : '☆'}</span>`;
         }
-        
-        let tooltip = `合計: ${score}/15 (PER: ${details.per||0}/2, PBR: ${details.pbr||0}/2, ROE: ${details.roe||0}/2, 利回り: ${details.yield||0}/2, 連続増配: ${details.consecutive_increase||0}/2, トレンド短期: ${details.trend_short||0}/1, トレンド中期: ${details.trend_medium||0}/1, 上昇基調: ${details.trend_signal||0}/1, フィボナッチ: ${details.fibonacci||0}/1, RCI: ${details.rci||0}/1)`;
-        
-        let warningIcon = '';
-        if (details.is_reliable === false) {
-            const missing = details.missing_items ? details.missing_items.join(', ') : '不明';
-            warningIcon = `<span class="score-unreliable-icon" title="判定不完全: 以下のデータが取得できていないため、正しく評価できていない可能性があります。\n欠損: ${missing}">⚠️</span>`;
-        }
-
-        return `<span class="score-container" title="${tooltip}">${starsHtml}</span>${warningIcon}`;
+        const tooltip = `合計: ${score}/15 (PER: ${details.per||0}, PBR: ${details.pbr||0}, ROE: ${details.roe||0}, 利回り: ${details.yield||0}, 連続増配: ${details.consecutive_increase||0}, テクニカル: ${trendScore})`;
+        const warning = details.is_reliable === false ? `<span class="score-unreliable-icon" title="不完全: ${details.missing_items.join(', ')}">⚠️</span>` : '';
+        return `<span class="score-container" title="${tooltip}">${html}</span>${warning}`;
     }
     function getHighlightClass(key, value, assetType) {
         if (assetType !== 'jp_stock') return '';
-        const rules = highlightRules[key];
-        if (!rules || value === 'N/A' || value === null || value === undefined || value === '--') return '';
-        const numericValue = parseFloat(String(value).replace(/[^0-9.-]/g, ''));
-        if (isNaN(numericValue)) return '';
-        if (key === 'yield' || key === 'roe') {
-            if (rules.undervalued !== undefined && numericValue >= rules.undervalued) return 'undervalued';
-        } else {
-            if (rules.undervalued !== undefined && numericValue <= rules.undervalued) return 'undervalued';
-            if (rules.overvalued !== undefined && numericValue >= rules.overvalued) return 'overvalued';
-        }
+        const rules = highlightRules[key]; if (!rules || !value || value === 'N/A') return '';
+        const num = parseFloat(String(value).replace(/[^0-9.-]/g, '')); if (isNaN(num)) return '';
+        if (key === 'yield' || key === 'roe') { if (num >= rules.undervalued) return 'undervalued'; }
+        else { if (num <= rules.undervalued) return 'undervalued'; if (num >= rules.overvalued) return 'overvalued'; }
         return '';
     }
     function renderRecentStocksList(codes) {
         if (!recentStocksList) return;
         recentStocksList.innerHTML = codes.length ? '' : '<li>最近追加した資産はありません。</li>';
         codes.forEach(code => {
-            const li = document.createElement('li');
-            li.className = 'recent-stock-item';
-            li.textContent = code;
+            const li = document.createElement('li'); li.className = 'recent-stock-item'; li.textContent = code;
             li.addEventListener('click', () => { assetCodeInput.value = code; });
             recentStocksList.appendChild(li);
         });
     }
 
-    // --- モーダル関連 ---
     function openManagementModal(code) {
         currentManagingCode = code;
-        const asset = allAssetsData.find(s => s.code === code);
-        if (!asset) return;
+        const asset = allAssetsData.find(s => s.code === code); if (!asset) return;
         modalTitle.textContent = `保有情報管理 (${asset.code} ${asset.name})`;
-        renderHoldingsList(asset.holdings, asset.asset_type);
-        hideHoldingForm();
+        renderHoldingsList(asset.holdings, asset.asset_type); hideHoldingForm();
         modalOverlay.classList.remove('hidden');
     }
     function renderHoldingsList(holdings, assetType) {
-        const isFund = assetType === 'investment_trust';
-        const quantityDigits = isFund ? 6 : 0;
-
         holdingsListContainer.innerHTML = '';
-        if (!holdings || holdings.length === 0) {
-            holdingsListContainer.innerHTML = '<p>この資産の保有情報はありません。</p>';
-            return;
-        }
+        if (!holdings || holdings.length === 0) { holdingsListContainer.innerHTML = '<p>保有情報なし</p>'; return; }
         holdings.forEach(h => {
-            const item = document.createElement('div');
-            item.className = 'holding-item';
-            item.innerHTML = `
-                <div class="holding-info">
-                    <span class="account-type">${h.account_type}</span>
-                    <span>取得単価: ${formatNumber(h.purchase_price, 2)}円</span>
-                    <span>数量: ${formatNumber(h.quantity, quantityDigits)}</span>
-                </div>
-                <div class="holding-actions">
-                    <button class="btn-sm btn-edit" data-holding-id="${h.id}">編集</button>
-                    <button class="btn-sm btn-delete-holding" data-holding-id="${h.id}">削除</button>
-                </div>
-            `;
+            const item = document.createElement('div'); item.className = 'holding-item';
+            item.innerHTML = `<div class="holding-info"><span class="account-type">${h.account_type}</span><span>取得単価: ${formatNumber(h.purchase_price, 2)}円</span><span>数量: ${formatNumber(h.quantity, assetType === 'investment_trust' ? 6 : 0)}</span></div><div class="holding-actions"><button class="btn-sm btn-edit" data-holding-id="${h.id}">編集</button><button class="btn-sm btn-delete-holding" data-holding-id="${h.id}">削除</button></div>`;
             holdingsListContainer.appendChild(item);
         });
     }
     function showHoldingForm(holding = null) {
         holdingForm.reset();
         accountTypeSelect.innerHTML = accountTypes.map(t => `<option value="${t}">${t}</option>`).join('');
-        securityCompanySelect.innerHTML = '<option value="">(未選択)</option>' + securityCompanies.map(c => `<option value="${c}">${c}</option>`).join(''); // 証券会社リスト生成
-
+        securityCompanySelect.innerHTML = '<option value="">(未選択)</option>' + securityCompanies.map(c => `<option value="${c}">${c}</option>`).join('');
         if (holding) {
-            holdingFormTitle.textContent = '保有情報の編集';
-            holdingIdInput.value = holding.id;
-            accountTypeSelect.value = holding.account_type;
-            purchasePriceInput.value = holding.purchase_price;
-            quantityInput.value = holding.quantity;
-            securityCompanySelect.value = holding.security_company || ""; // 既存値があればセット
-            memoInput.value = holding.memo || ""; // 既存値があればセット
-        } else {
-            holdingFormTitle.textContent = '保有情報の新規追加';
-            holdingIdInput.value = '';
-        }
+            holdingFormTitle.textContent = '保有情報の編集'; holdingIdInput.value = holding.id; accountTypeSelect.value = holding.account_type;
+            purchasePriceInput.value = holding.purchase_price; quantityInput.value = holding.quantity; securityCompanySelect.value = holding.security_company || ""; memoInput.value = holding.memo || "";
+        } else { holdingFormTitle.textContent = '保有情報の新規追加'; holdingIdInput.value = ''; }
         holdingFormContainer.classList.remove('hidden');
     }
     function hideHoldingForm() { holdingFormContainer.classList.add('hidden'); }
-    async function handleHoldingFormSubmit(event) {
-        event.preventDefault();
-        const holdingId = holdingIdInput.value;
-        const data = {
-            account_type: accountTypeSelect.value,
-            purchase_price: parseFloat(purchasePriceInput.value),
-            quantity: parseFloat(quantityInput.value),
-            security_company: securityCompanySelect.value || null, // 空文字ならnull
-            memo: memoInput.value || null // 空文字ならnull
-        };
-        const url = holdingId ? `/api/holdings/${holdingId}` : `/api/stocks/${currentManagingCode}/holdings`;
-        const method = holdingId ? 'PUT' : 'POST';
+    async function handleHoldingFormSubmit(e) {
+        e.preventDefault();
+        const data = { account_type: accountTypeSelect.value, purchase_price: parseFloat(purchasePriceInput.value), quantity: parseFloat(quantityInput.value), security_company: securityCompanySelect.value || null, memo: memoInput.value || null };
+        const url = holdingIdInput.value ? `/api/holdings/${holdingIdInput.value}` : `/api/stocks/${currentManagingCode}/holdings`;
         try {
-            const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-            if (!response.ok) throw new Error((await response.json()).detail || '保存失敗');
-            showAlert('保有情報を保存しました。', 'success');
-            
-            window.appState.clearState();
-            
-            // After clearing state, force a re-fetch.
-            await fetchAndRenderAllData(true);
-            
-            // Find the updated asset in the newly fetched data
-            const updatedAsset = allAssetsData.find(a => a.code === currentManagingCode);
-            if (updatedAsset) {
-                renderHoldingsList(updatedAsset.holdings, updatedAsset.asset_type);
-            }
+            const res = await fetch(url, { method: holdingIdInput.value ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+            if (!res.ok) throw new Error('保存失敗');
+            showAlert('保有情報を保存しました。', 'success'); window.appState.clearState(); await fetchAndRenderAllData(true);
+            const asset = allAssetsData.find(a => a.code === currentManagingCode); if (asset) renderHoldingsList(asset.holdings, asset.asset_type);
             hideHoldingForm();
-        } catch (error) { showAlert(error.message, 'danger'); }
+        } catch (err) { showAlert(err.message, 'danger'); }
     }
-    async function handleHoldingDelete(holdingId) {
-        if (!confirm('この保有情報を削除しますか？')) return;
+    async function handleHoldingDelete(id) {
+        if (!confirm('削除しますか？')) return;
         try {
-            const response = await fetch(`/api/holdings/${holdingId}`, { method: 'DELETE' });
-            if (!response.ok) throw new Error('削除失敗');
-            showAlert('保有情報を削除しました。', 'success');
-
-            window.appState.clearState();
-            
-            // After clearing state, force a re-fetch.
-            await fetchAndRenderAllData(true);
-
-            // Find the updated asset in the newly fetched data
-            const updatedAsset = allAssetsData.find(a => a.code === currentManagingCode);
-            if (updatedAsset) {
-                renderHoldingsList(updatedAsset.holdings, updatedAsset.asset_type);
-            }
-        } catch (error) { showAlert(error.message, 'danger'); }
+            const res = await fetch(`/api/holdings/${id}`, { method: 'DELETE' }); if (!res.ok) throw new Error('削除失敗');
+            showAlert('削除しました。', 'success'); window.appState.clearState(); await fetchAndRenderAllData(true);
+            const asset = allAssetsData.find(a => a.code === currentManagingCode); if (asset) renderHoldingsList(asset.holdings, asset.asset_type);
+        } catch (err) { showAlert(err.message, 'danger'); }
     }
     function closeModal() { modalOverlay.classList.add('hidden'); currentManagingCode = null; }
 
     // --- イベントリスナー ---
-    addAssetForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const code = assetCodeInput.value.trim();
-        if (!code) return;
+    addAssetForm.addEventListener('submit', async (e) => {
+        e.preventDefault(); const code = assetCodeInput.value.trim(); if (!code) return;
         try {
-            const response = await fetch('/api/stocks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code }),
-            });
-            const data = await response.json();
-            showAlert(data.message, data.status === 'success' ? 'success' : (data.status === 'exists' ? 'warning' : 'danger'));
-            
-            if (data.status === 'success') {
-                window.appState.clearState();
-                await fetchAndRenderAllData(true); // Force re-fetch
-            }
+            const res = await fetch('/api/stocks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) });
+            const d = await res.json(); showAlert(d.message, d.status === 'success' ? 'success' : (d.status === 'exists' ? 'warning' : 'danger'));
+            if (d.status === 'success') { window.appState.clearState(); await fetchAndRenderAllData(true); }
             assetCodeInput.value = '';
-        } catch (error) { showAlert('資産の追加中にエラーが発生しました。', 'danger'); }
+        } catch (err) { showAlert('追加エラー', 'danger'); }
     });
 
-    document.querySelectorAll('.portfolio-table tbody').forEach(tbody => {
-        tbody.addEventListener('click', (event) => {
-            if (event.target.classList.contains('manage-btn')) {
-                openManagementModal(event.target.dataset.code);
-            }
-        });
-    });
+    document.querySelectorAll('.portfolio-table tbody').forEach(tbody => tbody.addEventListener('click', (e) => { if (e.target.classList.contains('manage-btn')) openManagementModal(e.target.dataset.code); }));
+    document.querySelectorAll('.portfolio-table thead').forEach(thead => thead.addEventListener('click', (e) => {
+        const h = e.target.closest('.sortable'); if (!h) return;
+        if (currentSort.key === h.dataset.key) currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+        else { currentSort.key = h.dataset.key; currentSort.order = 'asc'; }
+        filterAndRender();
+    }));
 
-    document.querySelectorAll('.portfolio-table thead').forEach(thead => {
-        thead.addEventListener('click', (event) => {
-            const header = event.target.closest('.sortable');
-            if (!header) return;
-            const key = header.dataset.key;
-            if (currentSort.key === key) {
-                currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
-            } else {
-                currentSort.key = key;
-                currentSort.order = 'asc';
-            }
-            filterAndRender();
-        });
-    });
-
-    tabNav.addEventListener('click', (event) => {
-        if (event.target.classList.contains('tab-link')) {
-            activeTab = event.target.dataset.tab;
-            document.querySelector('.tab-link.active').classList.remove('active');
-            event.target.classList.add('active');
-            document.querySelector('.tab-content.active').classList.remove('active');
-            document.getElementById(activeTab).classList.add('active');
+    tabNav.addEventListener('click', (e) => {
+        if (e.target.classList.contains('tab-link')) {
+            activeTab = e.target.dataset.tab;
+            document.querySelector('.tab-link.active').classList.remove('active'); e.target.classList.add('active');
+            document.querySelector('.tab-content.active').classList.remove('active'); document.getElementById(activeTab).classList.add('active');
             filterAndRender();
         }
     });
 
     downloadCsvButton.addEventListener('click', () => { window.location.href = '/api/stocks/csv'; });
     filterInput.addEventListener('input', filterAndRender);
-    showOnlyManagedAssetsCheckbox.addEventListener('input', filterAndRender);
-    showOnlyAttentionAssetsCheckbox.addEventListener('input', filterAndRender);
-    showOnlyOpportunityAssetsCheckbox.addEventListener('input', filterAndRender);
-    showOnlyOverheatedAssetsCheckbox.addEventListener('input', filterAndRender);
+    [showOnlyManagedAssetsCheckbox, showOnlyAttentionAssetsCheckbox, showOnlyOpportunityAssetsCheckbox, showOnlyOverheatedAssetsCheckbox].forEach(c => c.addEventListener('input', filterAndRender));
     
-    document.querySelectorAll('.select-all-assets').forEach(checkbox => {
-        checkbox.addEventListener('change', (event) => {
-            const assetType = event.target.dataset.assetType;
-            document.querySelectorAll(`#portfolio-table-${assetType} .asset-checkbox:not(:disabled)`).forEach(cb => {
-                cb.checked = event.target.checked;
-            });
-            updateDeleteSelectedButtonState();
-        });
-    });
+    document.querySelectorAll('.select-all-assets').forEach(checkbox => checkbox.addEventListener('change', (e) => {
+        document.querySelectorAll(`#portfolio-table-${e.target.dataset.assetType} .asset-checkbox:not(:disabled)`).forEach(cb => cb.checked = e.target.checked);
+        updateDeleteSelectedButtonState();
+    }));
 
-    document.querySelectorAll('.portfolio-table tbody').forEach(tbody => {
-        tbody.addEventListener('change', (event) => {
-            if (event.target.classList.contains('asset-checkbox')) {
-                const tableId = event.target.closest('.portfolio-table').id;
-                const all = document.querySelectorAll(`#${tableId} .asset-checkbox:not(:disabled)`);
-                const checked = document.querySelectorAll(`#${tableId} .asset-checkbox:checked:not(:disabled)`);
-                const selectAllCheckbox = document.querySelector(`.select-all-assets[data-asset-type="${activeTab}"]`);
-                selectAllCheckbox.checked = all.length > 0 && all.length === checked.length;
-                updateDeleteSelectedButtonState();
-            }
-        });
-    });
+    document.querySelectorAll('.portfolio-table tbody').forEach(tbody => tbody.addEventListener('change', (e) => {
+        if (e.target.classList.contains('asset-checkbox')) {
+            const tableId = e.target.closest('.portfolio-table').id;
+            const all = document.querySelectorAll(`#${tableId} .asset-checkbox:not(:disabled)`);
+            const checked = document.querySelectorAll(`#${tableId} .asset-checkbox:checked:not(:disabled)`);
+            document.querySelector(`.select-all-assets[data-asset-type="${activeTab}"]`).checked = all.length > 0 && all.length === checked.length;
+            updateDeleteSelectedButtonState();
+        }
+    }));
 
     deleteSelectedStocksButton.addEventListener('click', async () => {
-        const codesToDelete = Array.from(document.querySelectorAll(`#${activeTab} .asset-checkbox:checked`)).map(cb => cb.dataset.code);
-        if (codesToDelete.length === 0 || !confirm(`選択された ${codesToDelete.length} 件の資産を削除しますか？`)) return;
+        const codes = Array.from(document.querySelectorAll(`#${activeTab} .asset-checkbox:checked`)).map(cb => cb.dataset.code);
+        if (codes.length === 0 || !confirm(`${codes.length}件削除しますか？`)) return;
         try {
-            const response = await fetch('/api/stocks/bulk-delete', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ codes: codesToDelete }),
-            });
-            if (!response.ok) throw new Error((await response.json()).detail || '一括削除失敗');
-            showAlert(`${codesToDelete.length} 件の銘柄情報を削除しました。`, 'success');
-            
-            window.appState.clearState();
-            await fetchAndRenderAllData(true); // Force re-fetch
-        } catch (error) { showAlert(error.message, 'danger'); }
+            const res = await fetch('/api/stocks/bulk-delete', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codes }) });
+            if (!res.ok) throw new Error('削除失敗');
+            showAlert('削除しました', 'success'); window.appState.clearState(); await fetchAndRenderAllData(true);
+        } catch (err) { showAlert(err.message, 'danger'); }
     });
 
     refreshAllButton.addEventListener('click', () => fetchAndRenderAllData(true));
-
-    // モーダルイベント
     addNewHoldingBtn.addEventListener('click', () => showHoldingForm());
     holdingForm.addEventListener('submit', handleHoldingFormSubmit);
     holdingFormCancelBtn.addEventListener('click', hideHoldingForm);
-    holdingsListContainer.addEventListener('click', (event) => {
-        const target = event.target;
-        if (target.classList.contains('btn-edit')) {
-            const holdingId = target.dataset.holdingId;
-            const asset = allAssetsData.find(s => s.code === currentManagingCode);
-            const holding = asset.holdings.find(h => h.id === holdingId);
-            showHoldingForm(holding);
-        } else if (target.classList.contains('btn-delete-holding')) {
-            handleHoldingDelete(target.dataset.holdingId);
-        }
+    holdingsListContainer.addEventListener('click', (e) => {
+        if (e.target.classList.contains('btn-edit')) {
+            const h = allAssetsData.find(s => s.code === currentManagingCode).holdings.find(h => h.id === e.target.dataset.holdingId);
+            showHoldingForm(h);
+        } else if (e.target.classList.contains('btn-delete-holding')) handleHoldingDelete(e.target.dataset.holdingId);
     });
     modalCloseBtn.addEventListener('click', closeModal);
-    modalOverlay.addEventListener('click', (event) => { if (event.target === modalOverlay) closeModal(); });
-
-    // ページを離れるときにfetchをキャンセル
-    window.addEventListener('pagehide', () => {
-        if (fetchController) {
-            fetchController.abort();
-        }
-    });
+    modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
+    window.addEventListener('pagehide', () => { if (fetchController) fetchController.abort(); });
 
     // --- 初期実行 ---
     const initialCachedState = window.appState.getState('portfolio');
     if (initialCachedState) {
-        // 防衛的処理: 配列形式(旧)とオブジェクト形式(新)の両方に対応
         allAssetsData = Array.isArray(initialCachedState) ? initialCachedState : (initialCachedState.data || []);
-        if (initialCachedState.metadata) {
-            renderUpdateReport(initialCachedState.metadata);
-        }
+        if (initialCachedState.metadata) renderUpdateReport(initialCachedState.metadata);
         filterAndRender();
-    } else {
-        loadAssetsFromStorage();
-    }
+    } else { loadAssetsFromStorage(); }
     fetchAndRenderAllData(false);
 });

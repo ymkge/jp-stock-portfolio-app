@@ -14,6 +14,33 @@ document.addEventListener('DOMContentLoaded', () => {
     const showOnlyOpportunityAssetsCheckbox = document.getElementById('show-only-opportunity-assets-checkbox');
     const showOnlyOverheatedAssetsCheckbox = document.getElementById('show-only-overheated-assets-checkbox');
     const tabNav = document.querySelector('.tab-nav');
+    const darkModeToggle = document.getElementById('dark-mode-toggle');
+
+    // --- テーマ管理 ---
+    function initTheme() {
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark') {
+            document.documentElement.classList.add('dark-mode');
+            if (darkModeToggle) darkModeToggle.checked = true;
+        } else {
+            document.documentElement.classList.remove('dark-mode');
+            if (darkModeToggle) darkModeToggle.checked = false;
+        }
+    }
+
+    if (darkModeToggle) {
+        darkModeToggle.addEventListener('change', () => {
+            if (darkModeToggle.checked) {
+                document.documentElement.classList.add('dark-mode');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                document.documentElement.classList.remove('dark-mode');
+                localStorage.setItem('theme', 'light');
+            }
+        });
+    }
+
+    initTheme();
 
     // --- モーダル関連DOM要素 ---
     const modalOverlay = document.getElementById('modal-overlay');

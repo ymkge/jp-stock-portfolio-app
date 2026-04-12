@@ -1,6 +1,15 @@
 // static/js/analysis.js
 
 document.addEventListener('DOMContentLoaded', () => {
+    // --- グローバル変数 (初期化順序のために上部に配置) ---
+    let allHoldingsData = [];
+    let fullAnalysisData = {};
+    let highlightRules = null;
+    let filteredHoldingsData = [];
+    let currentSort = { key: 'market_value', order: 'desc' };
+    let isAmountVisible = true;
+    let fetchController = null; // AbortControllerを保持
+
     // --- DOM要素の取得 ---
     const alertContainer = document.getElementById('alert-container');
     const portfolioSummary = document.querySelector('.portfolio-summary');
@@ -15,19 +24,57 @@ document.addEventListener('DOMContentLoaded', () => {
     const chartToggleBtns = document.querySelectorAll('.chart-toggle-btn');
     const loadingIndicator = document.getElementById('loading-indicator');
     const updateReportContainer = document.getElementById('update-report-container');
+    const darkModeToggle = document.getElementById('dark-mode-toggle');
 
     // --- Chart.jsインスタンス ---
     let industryChart, accountTypeChart, countryChart, securityCompanyChart, dividendIndustryChart;
     let assetHistoryChart, dividendHistoryChart, monthlyDividendChart, radarChart;
 
-    // --- グローバル変数 ---
-    let allHoldingsData = [];
-    let fullAnalysisData = {};
-    let highlightRules = null;
-    let filteredHoldingsData = [];
-    let currentSort = { key: 'market_value', order: 'desc' };
-    let isAmountVisible = true;
-    let fetchController = null; // AbortControllerを保持
+    // --- テーマ管理 ---
+    function initTheme() {
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark') {
+            document.documentElement.classList.add('dark-mode');
+            if (darkModeToggle) darkModeToggle.checked = true;
+        } else {
+            document.documentElement.classList.remove('dark-mode');
+            if (darkModeToggle) darkModeToggle.checked = false;
+        }
+        updateAllCharts();
+    }
+
+    if (darkModeToggle) {
+        darkModeToggle.addEventListener('change', () => {
+            if (darkModeToggle.checked) {
+                document.documentElement.classList.add('dark-mode');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                document.documentElement.classList.remove('dark-mode');
+                localStorage.setItem('theme', 'light');
+            }
+            updateAllCharts();
+        });
+    }
+
+    function getChartThemeColors() {
+        const style = getComputedStyle(document.documentElement);
+        return {
+            text: style.getPropertyValue('--text-color').trim() || '#343a40',
+            grid: style.getPropertyValue('--chart-grid-color').trim() || 'rgba(0, 0, 0, 0.1)',
+            muted: style.getPropertyValue('--text-muted').trim() || '#6c757d'
+        };
+    }
+
+    function updateAllCharts() {
+        // データがある場合のみ再描画
+        if (filteredHoldingsData && filteredHoldingsData.length > 0) {
+            renderCharts(filteredHoldingsData);
+            renderRadarChart(calculateWeightedStats(filteredHoldingsData));
+            fetchAndRenderHistoryData();
+        }
+    }
+
+    initTheme();
 
     // --- データ取得とレンダリング ---
     async function fetchHighlightRules() {
@@ -222,6 +269,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderHistoryCharts(historyData) {
         if (!historyData || historyData.length === 0) return;
 
+        const colors = getChartThemeColors();
         const labels = historyData.map(d => d.snapshot_month);
         const marketValues = historyData.map(d => d.total_market_value);
         const profitLosses = historyData.map(d => d.total_profit_loss);
@@ -232,6 +280,9 @@ document.addEventListener('DOMContentLoaded', () => {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
+                legend: {
+                    labels: { color: colors.text }
+                },
                 tooltip: {
                     mode: 'index',
                     intersect: false,
@@ -247,9 +298,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             },
             scales: {
+                x: {
+                    grid: { color: colors.grid },
+                    ticks: { color: colors.muted }
+                },
                 y: {
                     beginAtZero: true,
+                    grid: { color: colors.grid },
                     ticks: {
+                        color: colors.muted,
                         callback: function(value) {
                             return isAmountVisible ? formatNumber(value, 0) + '円' : '***円';
                         }
@@ -261,7 +318,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // 資産推移グラフ
         const assetCanvas = document.getElementById('asset-history-chart');
         if (assetCanvas) {
-            if (assetHistoryChart) assetHistoryChart.destroy();
+            const existingChart = Chart.getChart(assetCanvas);
+            if (existingChart) existingChart.destroy();
+            
             const assetCtx = assetCanvas.getContext('2d');
             assetHistoryChart = new Chart(assetCtx, {
                 type: 'line',
@@ -293,7 +352,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // 配当推移グラフ
         const divCanvas = document.getElementById('dividend-history-chart');
         if (divCanvas) {
-            if (dividendHistoryChart) dividendHistoryChart.destroy();
+            const existingChart = Chart.getChart(divCanvas);
+            if (existingChart) existingChart.destroy();
+
             const divCtx = divCanvas.getContext('2d');
             dividendHistoryChart = new Chart(divCtx, {
                 type: 'bar',
@@ -491,9 +552,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const canvas = document.getElementById('radar-chart');
         if (!canvas) return;
 
-        const ctx = canvas.getContext('2d');
-        if (radarChart) radarChart.destroy();
+        const existingChart = Chart.getChart(canvas);
+        if (existingChart) existingChart.destroy();
 
+        const ctx = canvas.getContext('2d');
+        const colors = getChartThemeColors();
         const config = highlightRules.radar_chart;
         const bm = config.benchmarks;
 
@@ -574,13 +637,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         max: 100,
                         beginAtZero: true,
                         ticks: { stepSize: 20, display: false },
-                        grid: { color: '#e3e6f0' },
-                        angleLines: { color: '#e3e6f0' },
-                        pointLabels: { font: { size: 12, weight: 'bold' } }
+                        grid: { color: colors.grid },
+                        angleLines: { color: colors.grid },
+                        pointLabels: { 
+                            color: colors.text,
+                            font: { size: 12, weight: 'bold' } 
+                        }
                     }
                 },
                 plugins: {
-                    legend: { position: 'bottom' },
+                    legend: { 
+                        position: 'bottom',
+                        labels: { color: colors.text }
+                    },
                     tooltip: {
                         callbacks: {
                             label: (context) => `${context.dataset.label}: ${Math.round(context.raw)}点`,
@@ -944,10 +1013,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
+        const colors = getChartThemeColors();
         const chartOptions = {
             responsive: true, maintainAspectRatio: false,
             plugins: {
-                legend: { position: 'right' },
+                legend: { 
+                    position: 'right',
+                    labels: { color: colors.text }
+                },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
@@ -970,34 +1043,39 @@ document.addEventListener('DOMContentLoaded', () => {
             datasets: [{ data: Object.values(breakdown), backgroundColor: generateColors(Object.keys(breakdown).length), hoverOffset: 4 }]
         });
 
-        if (industryChart) industryChart.destroy();
-        if (Object.keys(industryBreakdown).length > 0) {
-            const canvas = document.getElementById('industry-chart');
-            if (canvas) industryChart = new Chart(canvas, { type: 'pie', data: getChartData(industryBreakdown), options: chartOptions });
+        const industryCanvas = document.getElementById('industry-chart');
+        if (industryCanvas && Object.keys(industryBreakdown).length > 0) {
+            const existing = Chart.getChart(industryCanvas);
+            if (existing) existing.destroy();
+            industryChart = new Chart(industryCanvas, { type: 'pie', data: getChartData(industryBreakdown), options: chartOptions });
         }
 
-        if (accountTypeChart) accountTypeChart.destroy();
-        if (Object.keys(accountTypeBreakdown).length > 0) {
-            const canvas = document.getElementById('account-type-chart');
-            if (canvas) accountTypeChart = new Chart(canvas, { type: 'pie', data: getChartData(accountTypeBreakdown), options: chartOptions });
+        const accountTypeCanvas = document.getElementById('account-type-chart');
+        if (accountTypeCanvas && Object.keys(accountTypeBreakdown).length > 0) {
+            const existing = Chart.getChart(accountTypeCanvas);
+            if (existing) existing.destroy();
+            accountTypeChart = new Chart(accountTypeCanvas, { type: 'pie', data: getChartData(accountTypeBreakdown), options: chartOptions });
         }
 
-        if (securityCompanyChart) securityCompanyChart.destroy();
-        if (Object.keys(securityCompanyBreakdown).length > 0) {
-            const canvas = document.getElementById('security-company-chart');
-            if (canvas) securityCompanyChart = new Chart(canvas, { type: 'pie', data: getChartData(securityCompanyBreakdown), options: chartOptions });
+        const securityCompanyCanvas = document.getElementById('security-company-chart');
+        if (securityCompanyCanvas && Object.keys(securityCompanyBreakdown).length > 0) {
+            const existing = Chart.getChart(securityCompanyCanvas);
+            if (existing) existing.destroy();
+            securityCompanyChart = new Chart(securityCompanyCanvas, { type: 'pie', data: getChartData(securityCompanyBreakdown), options: chartOptions });
         }
 
-        if (countryChart) countryChart.destroy();
-        if (Object.keys(countryBreakdown).length > 0) {
-            const canvas = document.getElementById('country-chart');
-            if (canvas) countryChart = new Chart(canvas, { type: 'pie', data: getChartData(countryBreakdown), options: chartOptions });
+        const countryCanvas = document.getElementById('country-chart');
+        if (countryCanvas && Object.keys(countryBreakdown).length > 0) {
+            const existing = Chart.getChart(countryCanvas);
+            if (existing) existing.destroy();
+            countryChart = new Chart(countryCanvas, { type: 'pie', data: getChartData(countryBreakdown), options: chartOptions });
         }
 
-        if (dividendIndustryChart) dividendIndustryChart.destroy();
-        if (Object.keys(dividendIndustryBreakdown).length > 0) {
-            const canvas = document.getElementById('dividend-industry-chart');
-            if (canvas) dividendIndustryChart = new Chart(canvas, { type: 'pie', data: getChartData(dividendIndustryBreakdown), options: chartOptions });
+        const divIndustryCanvas = document.getElementById('dividend-industry-chart');
+        if (divIndustryCanvas && Object.keys(dividendIndustryBreakdown).length > 0) {
+            const existing = Chart.getChart(divIndustryCanvas);
+            if (existing) existing.destroy();
+            dividendIndustryChart = new Chart(divIndustryCanvas, { type: 'pie', data: getChartData(dividendIndustryBreakdown), options: chartOptions });
         }
         
         // 月別配当分布グラフの描画
@@ -1046,8 +1124,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const canvas = document.getElementById('monthly-dividend-chart');
         if (!canvas) return;
 
-        if (monthlyDividendChart) monthlyDividendChart.destroy();
+        const existingChart = Chart.getChart(canvas);
+        if (existingChart) existingChart.destroy();
+
         const ctx = canvas.getContext('2d');
+        const colors = getChartThemeColors();
 
         monthlyDividendChart = new Chart(ctx, {
             type: 'bar',
@@ -1064,6 +1145,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
+                    legend: {
+                        labels: { color: colors.text }
+                    },
                     tooltip: {
                         callbacks: {
                             label: function(context) {
@@ -1077,9 +1161,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 },
                 scales: {
+                    x: {
+                        grid: { color: colors.grid },
+                        ticks: { color: colors.muted }
+                    },
                     y: {
                         beginAtZero: true,
+                        grid: { color: colors.grid },
                         ticks: {
+                            color: colors.muted,
                             callback: function(value) {
                                 return isAmountVisible ? formatNumber(value, 0) + '円' : '***円';
                             }

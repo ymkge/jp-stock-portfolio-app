@@ -8,6 +8,7 @@
     --background-color: #f8f9fa;
     --content-background-color: #ffffff;
     --text-color: #343a40;
+    --text-muted: #6c757d;
     --border-color: #dee2e6;
     --header-bg-color: #f1f3f5;
     --star-color: #f8b400;
@@ -17,18 +18,36 @@
     --error-bg: #f8d7da;
     --error-text: #721c24;
     --error-hover-bg: #f5c6cb;
-    --analysis-card-header-height: 65px; /* 分析ページ右カラムのヘッダー高さ */
-    --up-color: #28a745; /* 上昇・プラス（緑） */
-    --down-color: #dc3545; /* 下落・マイナス（赤） */
+    --analysis-card-header-height: 65px;
+    --up-color: #28a745;
+    --down-color: #dc3545;
+    --card-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    --chart-grid-color: rgba(0, 0, 0, 0.1);
+}
+
+/* ダークモード用変数 */
+.dark-mode {
+    --background-color: #121212;
+    --content-background-color: #1e1e1e;
+    --text-color: #e0e0e0;
+    --text-muted: #a0a0a0;
+    --border-color: #333333;
+    --header-bg-color: #252525;
+    --undervalued-bg: #1b3a21; /* 暗い緑 */
+    --overvalued-bg: #442326;  /* 暗い赤 */
+    --error-bg: #442326;
+    --error-text: #ffb7b7;
+    --card-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    --chart-grid-color: rgba(255, 255, 255, 0.1);
 }
 
 body, html {
     margin: 0;
     padding: 0;
-    /* height: 100%; を削除 */
     font-family: 'Helvetica Neue', Arial, sans-serif;
     background-color: var(--background-color);
     color: var(--text-color);
+    transition: background-color 0.3s, color 0.3s;
 }
 
 h1, h2 {

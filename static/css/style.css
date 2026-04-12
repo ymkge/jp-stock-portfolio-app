@@ -393,7 +393,7 @@ button {
     padding: 2px 10px;
     border-radius: 20px;
     font-size: 0.75rem;
-    font-weight: 800; /* より太く */
+    font-weight: 800; /* 読みやすい太さに */
     margin-left: 6px;
     cursor: help;
     white-space: nowrap;
@@ -402,61 +402,71 @@ button {
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
-    color: white !important; /* 基本は白文字 */
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); /* 文字を浮き立たせる */
+    /* 基本は濃い黒文字。背景色を活かすため影は最小限に */
+    color: #1a1a1a !important;
+    text-shadow: none;
 }
 
 /* 購入レベル1: 注目 (🟡) */
 .buy-signal-level-1 {
-    background-color: #f1c40f; /* 鮮やかな黄色 */
-    color: #2c3e50 !important; /* 黄色には濃いグレーの文字 */
-    text-shadow: none; /* 黄色背景に影は不要 */
-}
-
-/* 購入レベル2: チャンス (🔥) */
-.buy-signal-level-2 {
-    background-color: #e74c3c; /* 視認性の高い赤 */
+    background-color: #fed330; /* 明るい黄色 */
 }
 
 /* 売却レベル1: 過熱気味 (🟠) */
 .sell-signal-level-1 {
-    background-color: #e67e22; /* 鮮やかなオレンジ */
+    background-color: #ff9f1a; /* 鮮やかなオレンジ */
 }
 
-/* 売却レベル2: ピークアウト (🔴) */
+/* 購入レベル2: チャンス (🔥) - 攻めの白文字 */
+.buy-signal-level-2 {
+    background-color: #eb4d4b !important;
+    color: #ffffff !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* 売却レベル2: ピークアウト (🔴) - 警告の黒文字 */
 .sell-signal-level-2 {
-    background-color: #c0392b; /* 濃い赤 */
+    background-color: #ff4757 !important; /* 鮮やかな警告赤 */
+    color: #1a1a1a !important; /* 濃い黒文字で視認性確保 */
+    text-shadow: 0 0 2px rgba(255, 255, 255, 0.8) !important; /* 黒文字を浮かせるための白グロー */
+    font-weight: 900 !important;
 }
 
 /* 売却レベル3: 長期調整 (🔵) */
 .sell-signal-level-3 {
-    background-color: #3498db; /* 落ち着いた青 */
+    background-color: #70a1ff; /* 文字が映える明るい青 */
 }
 
-/* ダイヤモンド (💎) */
+/* ダイヤモンド (💎) - 明るい水色ベースに変更して黒文字を際立たせる */
 .buy-signal-diamond {
-    border: 1px solid rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(0, 0, 0, 0.1);
     background: linear-gradient(
         110deg,
-        #3498db 0%,
-        #3498db 40%,
+        #7ed6df 0%,
+        #7ed6df 40%,
         rgba(255, 255, 255, 0.8) 50%,
-        #3498db 60%,
-        #3498db 100%
+        #7ed6df 60%,
+        #7ed6df 100%
     );
     background-size: 200% 100%;
     animation: signal-shimmer 3s infinite linear;
 }
 
-/* 虹色シグナル (最強) */
+/* 虹色シグナル (最強) - 背景を少し明るめに調整 */
 .signal-strength-rainbow {
     background: linear-gradient(
         110deg,
-        #ff3f34, #ff9f1a, #fed330, #26de81, #2bcbba, #45aaf2, #a55eea
+        #ff7979, #f9ca24, #f0932b, #badc58, #7ed6df, #e056fd, #686de0
     );
     background-size: 200% 100%;
-    animation: signal-shimmer 2s infinite linear;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+    animation: signal-shimmer 2.5s infinite linear;
+}
+
+/* シグナル内のアイコン間隔 */
+.buy-signal-icon-inner {
+    margin-right: 3px;
+    font-size: 0.9rem;
+    filter: drop-shadow(0 0 1px rgba(255,255,255,0.5)); /* アイコンを少し見やすく */
 }
 
 /* シグナル内のアイコン間隔 */

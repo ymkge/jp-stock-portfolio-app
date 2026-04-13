@@ -387,7 +387,7 @@ button {
 }
 
 /* --- 購入・売却シグナルの共通ベーススタイル --- */
-.buy-signal-badge, .sell-signal-badge {
+.signal-badge-base {
     display: inline-flex;
     align-items: center;
     padding: 2px 10px;
@@ -407,39 +407,71 @@ button {
     text-shadow: none;
 }
 
-/* 購入レベル1: 注目 (🟡) */
-.buy-signal-level-1 {
-    background-color: #fed330; /* 明るい黄色 */
+.signal-badge-base:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
 }
 
-/* 売却レベル1: 過熱気味 (🟠) */
-.sell-signal-level-1 {
-    background-color: #ff9f1a; /* 鮮やかなオレンジ */
+.buy-signal-icon-inner {
+    margin-right: 4px;
+    font-size: 1.1em;
+    filter: drop-shadow(0 0 1px rgba(255,255,255,0.3));
 }
 
-/* 購入レベル2: チャンス (🔥) - 攻めの白文字 */
-.buy-signal-level-2 {
-    background-color: #eb4d4b !important;
-    color: #ffffff !important;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
+/* --- シグナル用テーマ定義 (排他的適用) --- */
 
-/* 売却レベル2: ピークアウト (🔴) - 警告の黒文字 */
-.sell-signal-level-2 {
+/* 売却：Lv2 ピークアウト (🔴) */
+.theme-sell-lv2 {
     background-color: #ff4757 !important; /* 鮮やかな警告赤 */
-    color: #1a1a1a !important; /* 濃い黒文字で視認性確保 */
-    text-shadow: 0 0 2px rgba(255, 255, 255, 0.8) !important; /* 黒文字を浮かせるための白グロー */
+    color: #1a1a1a !important;
+    text-shadow: 0 0 2px rgba(255, 255, 255, 0.8) !important;
     font-weight: 900 !important;
 }
 
-/* 売却レベル3: 長期調整 (🔵) */
-.sell-signal-level-3 {
-    background-color: #70a1ff; /* 文字が映える明るい青 */
+/* 売却：Lv1 過熱気味 (🟠) */
+.theme-sell-lv1 {
+    background-color: #ff9f1a !important; /* 鮮やかなオレンジ */
+    color: #1a1a1a !important;
 }
 
-/* ダイヤモンド (💎) - 明るい水色ベースに変更して黒文字を際立たせる */
-.buy-signal-diamond {
-    border: 1px solid rgba(0, 0, 0, 0.1);
+/* 売却：Lv3 トレンド崩壊 (🔵) */
+.theme-sell-lv3 {
+    background-color: #70a1ff !important; /* 明るい青 */
+    color: #1a1a1a !important;
+}
+
+/* 購入：虹色 (最強) */
+.theme-rainbow {
+    background: linear-gradient(45deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #8b00ff) !important;
+    background-size: 200% 200% !important;
+    animation: rainbow-flow 3s linear infinite !important;
+    color: #ffffff !important;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8) !important;
+    border: 1px solid rgba(255,255,255,0.5) !important;
+}
+
+/* 購入：金色 (💎+🔥) */
+.theme-gold {
+    background: linear-gradient(45deg, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c) !important;
+    background-size: 200% 200% !important;
+    animation: shimmer-gold 3s linear infinite !important;
+    color: #ffffff !important;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8) !important;
+    border: 1px solid #d4af37 !important;
+}
+
+/* 購入：銀色 (Lv2+長期等) */
+.theme-silver {
+    background: linear-gradient(45deg, #a1a2a3, #e6e7e8, #a1a2a3, #c0c0c0) !important;
+    background-size: 200% 200% !important;
+    animation: shimmer-gold 5s linear infinite !important;
+    color: #333333 !important;
+    text-shadow: 0px 0px 1px rgba(255,255,255,0.5) !important;
+    border: 1px solid #c0c0c0 !important;
+}
+
+/* 購入：ダイヤモンド (💎) */
+.theme-diamond {
     background: linear-gradient(
         110deg,
         #7ed6df 0%,
@@ -447,101 +479,55 @@ button {
         rgba(255, 255, 255, 0.8) 50%,
         #7ed6df 60%,
         #7ed6df 100%
-    );
-    background-size: 200% 100%;
-    animation: signal-shimmer 3s infinite linear;
+    ) !important;
+    background-size: 200% 100% !important;
+    animation: signal-shimmer 3s infinite linear !important;
+    border: 1px solid rgba(0, 0, 0, 0.1) !important;
 }
 
-/* 虹色シグナル (最強) - 背景を少し明るめに調整 */
-.signal-strength-rainbow {
-    background: linear-gradient(
-        110deg,
-        #ff7979, #f9ca24, #f0932b, #badc58, #7ed6df, #e056fd, #686de0
-    );
-    background-size: 200% 100%;
-    animation: signal-shimmer 2.5s infinite linear;
+/* 購入：Lv2 チャンス (🔥) */
+.theme-buy-lv2 {
+    background-color: #eb4d4b !important;
+    color: #ffffff !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important;
+    animation: pulse-red 2.5s infinite ease-in-out !important;
 }
 
-/* シグナル内のアイコン間隔 */
-.buy-signal-icon-inner {
-    margin-right: 3px;
-    font-size: 0.9rem;
-    filter: drop-shadow(0 0 1px rgba(255,255,255,0.5)); /* アイコンを少し見やすく */
+/* 購入：Lv1 注目 (🟡) */
+.theme-buy-lv1 {
+    background-color: #fed330 !important; /* 明るい黄色 */
+    color: #1a1a1a !important;
 }
 
-/* シグナル内のアイコン間隔 */
-.buy-signal-icon-inner {
-    margin-right: 3px;
-    font-size: 0.9rem;
-}
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    transition: all 0.2s ease;
-    border: 1px solid transparent;
-}
-
-.buy-signal-badge:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-}
-
-/* Level 1: 注目 (🟡) */
-.buy-signal-level-1 {
-    background-color: #fff3cd;
-    color: #856404;
-    border-color: #ffeeba;
-}
-
-/* Level 2: チャンス (🔥) */
-.buy-signal-level-2 {
-    background-color: #f8d7da;
-    color: #721c24;
-    border-color: #f5c6cb;
-    animation: pulse-red 2.5s infinite ease-in-out;
-}
-
-/* Level 0: 判定不能 (🔘) - Phase 3 */
-.buy-signal-level-0 {
+/* 購入：Lv0 判定不能 (🔘) */
+.theme-unreliable {
     background-color: #f1f3f5 !important;
     color: #6c757d !important;
     border: 1px solid #dee2e6 !important;
-    opacity: 0.8;
+    opacity: 0.8 !important;
 }
 
-.buy-signal-level-0 .buy-signal-icon-inner {
-    animation: none !important; /* 判定不能はアニメーションなし */
+/* --- アニメーション定義 --- */
+@keyframes signal-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
 }
 
-/* Diamond: 厳選 (💎) */
-.buy-signal-diamond {
-    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-    color: #0d47a1;
-    border-color: #90caf9;
-    box-shadow: 0 0 8px rgba(144, 202, 249, 0.5);
-    position: relative;
-    overflow: hidden;
+@keyframes pulse-red {
+    0% { box-shadow: 0 0 0 0 rgba(235, 77, 75, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(235, 77, 75, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(235, 77, 75, 0); }
 }
 
-/* ダイヤモンド用のシマー（輝き）エフェクト */
-.buy-signal-diamond::after {
-    content: "";
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: linear-gradient(
-        to right,
-        rgba(255, 255, 255, 0) 0%,
-        rgba(255, 255, 255, 0.3) 50%,
-        rgba(255, 255, 255, 0) 100%
-    );
-    transform: rotate(30deg);
-    animation: shimmer 3s infinite linear;
+@keyframes rainbow-flow {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
 }
 
-.buy-signal-icon-inner {
-    margin-right: 4px;
-    font-size: 1.1em;
+@keyframes shimmer-gold {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
 }
 
 /* --- 購入・売却シグナルの表示 (一本化完了) --- */

@@ -620,15 +620,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderBuySignalBadge(signal, isDiamond = false) {
         if (!signal) return '';
-        const level = signal.level || 1, isLong = signal.label.includes('長期調整');
-        let strength = ''; if (level >= 1) { if (isDiamond && level === 2 && isLong) strength = 'signal-strength-rainbow'; else if (isDiamond && level === 2) strength = 'signal-strength-gold'; else if ((level === 2 && isLong) || (isDiamond && level === 1 && isLong)) strength = 'signal-strength-silver'; }
+        const level = signal.level;
+        const isLong = signal.label.includes('長期調整');
+        
+        // 排他的に1つのテーマを選択するロジック (優先順位順)
+        let themeClass = '';
+        if (level === 0) {
+            themeClass = 'theme-unreliable';
+        } else if (isDiamond && level === 2 && isLong) {
+            themeClass = 'theme-rainbow';
+        } else if (isDiamond && level === 2) {
+            themeClass = 'theme-gold';
+        } else if ((level === 2 && isLong) || (isDiamond && level === 1 && isLong)) {
+            themeClass = 'theme-silver';
+        } else if (isDiamond) {
+            themeClass = 'theme-diamond';
+        } else if (level === 2) {
+            themeClass = 'theme-buy-lv2';
+        } else if (level === 1) {
+            themeClass = 'theme-buy-lv1';
+        } else {
+            themeClass = 'theme-unreliable';
+        }
+
         const title = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${signal.reasons.join('\n')}`;
-        return `<span class="buy-signal-badge buy-signal-level-${level} ${isDiamond ? 'buy-signal-diamond' : ''} ${strength}" title="${title}"><span class="buy-signal-icon-inner">${signal.icon}</span>${signal.label}</span>`;
+        return `<span class="signal-badge-base ${themeClass}" title="${title}"><span class="buy-signal-icon-inner">${signal.icon}</span>${signal.label}</span>`;
     }
+
     function renderSellSignalBadge(signal, isDiamond = false) {
         if (!signal) return '';
+        
+        // 売却はダイヤモンド属性に関わらず警告色を100%優先
+        let themeClass = '';
+        if (signal.level === 2) {
+            themeClass = 'theme-sell-lv2';
+        } else if (signal.level === 1) {
+            themeClass = 'theme-sell-lv1';
+        } else {
+            themeClass = 'theme-sell-lv3';
+        }
+
         const title = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${signal.reasons.join('\n')}`;
-        return `<span class="sell-signal-badge sell-signal-level-${signal.level} ${isDiamond ? 'buy-signal-diamond' : ''}" title="${title}"><span class="buy-signal-icon-inner">${signal.icon}</span>${signal.label}</span>`;
+        const label = (isDiamond ? '💎 ' : '') + signal.label;
+        return `<span class="signal-badge-base ${themeClass}" title="${title}"><span class="buy-signal-icon-inner">${signal.icon}</span>${label}</span>`;
     }
 
     fetchHighlightRules();

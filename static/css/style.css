@@ -399,12 +399,13 @@ button {
     white-space: nowrap;
     vertical-align: middle;
     box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-    transition: all 0.3s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
     position: relative;
-    overflow: hidden;
-    /* 基本は濃い黒文字。背景色を活かすため影は最小限に */
-    color: #1a1a1a !important;
+    z-index: 1;
+    overflow: hidden; /* 内部でアニメーションを完結させる (物理移動を表示するため必須) */
+    color: #1a1a1a; /* 基本は濃い黒文字（GEMINI.md準拠） */
     text-shadow: none;
+    border: none;
 }
 
 .signal-badge-base:hover {
@@ -412,122 +413,139 @@ button {
     box-shadow: 0 4px 8px rgba(0,0,0,0.2);
 }
 
-.buy-signal-icon-inner {
-    margin-right: 4px;
-    font-size: 1.1em;
-    filter: drop-shadow(0 0 1px rgba(255,255,255,0.3));
+/* アニメーション専用レイヤー (疑似要素) - 共通の光の帯を定義 */
+.signal-badge-base::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        110deg,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0) 40%,
+        rgba(255, 255, 255, 0.7) 50%,
+        rgba(255, 255, 255, 0) 60%,
+        rgba(255, 255, 255, 0) 100%
+    );
+    background-size: 200% 100%;
+    z-index: 1;
+    pointer-events: none;
+    transform: translateX(-100%); /* 初期位置 */
+}
+
+/* 文字レイヤー (最前面) */
+.signal-badge-text {
+    position: relative;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
 }
 
 /* --- シグナル用テーマ定義 (排他的適用) --- */
 
-/* 売却：Lv2 ピークアウト (🔴) */
+/* 売却：Lv2 ピークアウト (🔴) - 超高速閃光 */
 .theme-sell-lv2 {
-    background-color: #ff4757 !important; /* 鮮やかな警告赤 */
-    color: #1a1a1a !important;
-    text-shadow: 0 0 2px rgba(255, 255, 255, 0.8) !important;
+    background-color: #ff4757 !important;
     font-weight: 900 !important;
 }
+.theme-sell-lv2::after {
+    animation: shimmer-effect 1.2s infinite linear;
+}
 
-/* 売却：Lv1 過熱気味 (🟠) */
+/* 売却：Lv1 過熱気味 (🟠) - 標準輝き */
 .theme-sell-lv1 {
-    background-color: #ff9f1a !important; /* 鮮やかなオレンジ */
-    color: #1a1a1a !important;
+    background-color: #ff9f1a !important;
+}
+.theme-sell-lv1::after {
+    animation: shimmer-effect 2.5s infinite linear;
 }
 
-/* 売却：Lv3 トレンド崩壊 (🔵) */
+/* 売却：Lv3 トレンド崩壊/長期調整 (🔵) - 低速流動 */
 .theme-sell-lv3 {
-    background-color: #70a1ff !important; /* 明るい青 */
-    color: #1a1a1a !important;
+    background-color: #70a1ff !important;
+}
+.theme-sell-lv3::after {
+    animation: shimmer-effect 4.0s infinite linear;
 }
 
-/* 購入：虹色 (最強) */
+/* 購入：虹色 (最強) - 特別な流動グラデーション */
 .theme-rainbow {
     background: linear-gradient(45deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #8b00ff) !important;
     background-size: 200% 200% !important;
     animation: rainbow-flow 3s linear infinite !important;
-    color: #ffffff !important;
-    text-shadow: 1px 1px 2px rgba(0,0,0,0.8) !important;
-    border: 1px solid rgba(255,255,255,0.5) !important;
 }
+.theme-rainbow .signal-badge-text {
+    color: #ffffff !important;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5) !important;
+}
+.theme-rainbow::after { display: none; } /* 虹色は背景自体が動くため不要 */
 
-/* 購入：金色 (💎+🔥) */
+/* 購入：金色 (💎+🔥) - 高速黄金輝き */
 .theme-gold {
     background: linear-gradient(45deg, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c) !important;
-    background-size: 200% 200% !important;
-    animation: shimmer-gold 3s linear infinite !important;
-    color: #ffffff !important;
-    text-shadow: 1px 1px 2px rgba(0,0,0,0.8) !important;
     border: 1px solid #d4af37 !important;
 }
-
-/* 購入：銀色 (Lv2+長期等) */
-.theme-silver {
-    background: linear-gradient(45deg, #a1a2a3, #e6e7e8, #a1a2a3, #c0c0c0) !important;
-    background-size: 200% 200% !important;
-    animation: shimmer-gold 5s linear infinite !important;
-    color: #333333 !important;
-    text-shadow: 0px 0px 1px rgba(255,255,255,0.5) !important;
-    border: 1px solid #c0c0c0 !important;
-}
-
-/* 購入：ダイヤモンド (💎) */
-.theme-diamond {
+.theme-gold::after {
     background: linear-gradient(
         110deg,
-        #7ed6df 0%,
-        #7ed6df 40%,
-        rgba(255, 255, 255, 0.8) 50%,
-        #7ed6df 60%,
-        #7ed6df 100%
-    ) !important;
-    background-size: 200% 100% !important;
-    animation: signal-shimmer 3s infinite linear !important;
-    border: 1px solid rgba(0, 0, 0, 0.1) !important;
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.4) 40%,
+        rgba(255, 255, 255, 0.9) 50%,
+        rgba(255, 255, 255, 0.4) 60%,
+        rgba(255, 255, 255, 0) 100%
+    );
+    animation: shimmer-effect 1.8s infinite linear;
 }
 
-/* 購入：Lv2 チャンス (🔥) */
+/* 購入：銀色 (Lv2+長期等) - 低速銀光 */
+.theme-silver {
+    background: linear-gradient(45deg, #a1a2a3, #e6e7e8, #a1a2a3, #c0c0c0) !important;
+    border: 1px solid #c0c0c0 !important;
+}
+.theme-silver::after {
+    animation: shimmer-effect 3.5s infinite linear;
+}
+
+/* 購入：ダイヤモンド (💎) - 標準水色輝き (実績ベース) */
+.theme-diamond {
+    background-color: #7ed6df !important;
+}
+.theme-diamond::after {
+    animation: shimmer-effect 2.5s infinite linear;
+}
+
+/* 購入：Lv2 チャンス (🔥) - 高速閃光 */
 .theme-buy-lv2 {
     background-color: #eb4d4b !important;
+}
+.theme-buy-lv2 .signal-badge-text {
     color: #ffffff !important;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important;
-    animation: pulse-red 2.5s infinite ease-in-out !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4) !important;
+}
+.theme-buy-lv2::after {
+    animation: shimmer-effect 1.8s infinite linear;
 }
 
-/* 購入：Lv1 注目 (🟡) */
+/* 購入：Lv1 注目 (🟡) - 標準輝き */
 .theme-buy-lv1 {
-    background-color: #fed330 !important; /* 明るい黄色 */
-    color: #1a1a1a !important;
+    background-color: #fed330 !important;
+}
+.theme-buy-lv1::after {
+    animation: shimmer-effect 3.0s infinite linear;
 }
 
-/* 購入：Lv0 判定不能 (🔘) */
-.theme-unreliable {
-    background-color: #f1f3f5 !important;
-    color: #6c757d !important;
-    border: 1px solid #dee2e6 !important;
-    opacity: 0.8 !important;
-}
-
-/* --- アニメーション定義 --- */
-@keyframes signal-shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-}
-
-@keyframes pulse-red {
-    0% { box-shadow: 0 0 0 0 rgba(235, 77, 75, 0.7); }
-    70% { box-shadow: 0 0 0 10px rgba(235, 77, 75, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(235, 77, 75, 0); }
+/* --- アニメーション定義 (GPU加速・物理移動) --- */
+@keyframes shimmer-effect {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
 }
 
 @keyframes rainbow-flow {
     0% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
     100% { background-position: 0% 50%; }
-}
-
-@keyframes shimmer-gold {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
 }
 
 /* --- 購入・売却シグナルの表示 (一本化完了) --- */

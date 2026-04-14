@@ -546,7 +546,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const title = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${signal.reasons.join('\n')}`;
-        return `<span class="signal-badge-base ${themeClass}" title="${title}"><span class="buy-signal-icon-inner">${signal.icon}</span>${signal.label}</span>`;
+        return `<span class="signal-badge-base ${themeClass}" title="${title}"><span class="signal-badge-text"><span class="buy-signal-icon-inner">${signal.icon}</span>${signal.label}</span></span>`;
     }
 
     function renderSellSignalBadge(signal, isDiamond = false) {
@@ -565,7 +565,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const title = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${signal.reasons.join('\n')}`;
         // 売却時はisDiamond属性があったとしても、アイコンに含める程度に留め、背景色はthemeClassに委ねる
         const label = (isDiamond ? '💎 ' : '') + signal.label;
-        return `<span class="signal-badge-base ${themeClass}" title="${title}"><span class="buy-signal-icon-inner">${signal.icon}</span>${label}</span>`;
+        return `<span class="signal-badge-base ${themeClass}" title="${title}"><span class="signal-badge-text"><span class="buy-signal-icon-inner">${signal.icon}</span>${label}</span></span>`;
     }
 
     function renderScoreAsStars(score, details, assetType) {

@@ -118,6 +118,34 @@
 
 ## next step
 - **[UI改善]ダークモード選択時に、analysisのポートフォリオ構成のヘッダーの文字が白塗りに白文字のため、内容が見えなくなっている**
+- **[改善] sqliteの分析用のクエリが正常に動いてない**:change_rate以降の項目がほとんどnanになっていそう
+    - 1. データのロードとフラット化（Pre-processing） の処理で取得した、`df_stocks` は以下
+```
+    <class 'pandas.core.frame.DataFrame'>
+RangeIndex: 906 entries, 0 to 905
+Data columns (total 17 columns):
+ #   Column                         Non-Null Count  Dtype         
+---  ------                         --------------  -----         
+ 0   date                           906 non-null    datetime64[ns]
+ 1   code                           906 non-null    object        
+ 2   name                           906 non-null    object        
+ 3   asset_type                     906 non-null    object        
+ 4   price                          890 non-null    float64       
+ 5   change_rate                    0 non-null      object        
+ 6   total_score                    1 non-null      float64       
+ 7   fundamental_score              0 non-null      object        
+ 8   technical_score                0 non-null      object        
+ 9   buy_signal                     1 non-null      object        
+ 10  sell_signal                    0 non-null      object        
+ 11  is_reliable                    906 non-null    bool          
+ 12  ind_per                        0 non-null      float64       
+ 13  ind_pbr                        0 non-null      float64       
+ 14  ind_roe                        0 non-null      float64       
+ 15  ind_dividend_yield             0 non-null      float64       
+ 16  ind_continuous_dividend_years  0 non-null      object        
+dtypes: bool(1), datetime64[ns](1), float64(6), object(9)
+memory usage: 114.3+ KB
+```
 - **[UI改善]シグナル情報のアニメーションのブラッシュアップ対応**: 現在、アニメーションがやや単調になってしまっている。
     - デグレを起こさないことを最優先として、ブラッシュアップできることがないか？を検討する
 - **[改善]日経平均先物の情報が正しく取得できていない**:

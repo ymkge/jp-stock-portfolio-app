@@ -205,7 +205,8 @@ class JPStockScraper(BaseScraper):
             
             return {
                 "high": high, "low": low, "current": current,
-                "retracement": retracement
+                "retracement": retracement,
+                "period": len(prices)
             }
         except (ValueError, TypeError, ZeroDivisionError):
             return None

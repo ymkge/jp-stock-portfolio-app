@@ -379,7 +379,17 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(jpStock.pbr, 'numeric ' + getHighlightClass('pbr', jpStock.pbr, jpStock.asset_type));
             createCell(jpStock.roe, 'numeric ' + getHighlightClass('roe', jpStock.roe, jpStock.asset_type));
             createCell(jpStock.yield, 'numeric ' + getHighlightClass('yield', jpStock.yield, jpStock.asset_type));
-            createCell((jpStock.fibonacci && jpStock.fibonacci.retracement !== undefined) ? `${jpStock.fibonacci.retracement.toFixed(1)}%` : '-', 'numeric');
+            
+            // フィボナッチ (ツールチップで詳細情報を表示)
+            const fib = jpStock.fibonacci;
+            if (fib && fib.retracement !== undefined) {
+                const fibVal = `${fib.retracement.toFixed(1)}%`;
+                const fibTooltip = `算出期間: ${fib.period || '不明'}日\n直近高値: ${fib.high?.toLocaleString() || '-'}円\n直近安値: ${fib.low?.toLocaleString() || '-'}円`;
+                createCellWithTooltip(fibVal, 'numeric', fibTooltip);
+            } else {
+                createCell('-', 'numeric');
+            }
+            
             createCell((jpStock.rci_26 !== undefined && jpStock.rci_26 !== null) ? `${jpStock.rci_26.toFixed(1)}%` : '-', 'numeric');
             createCellWithTooltip(jpStock.consecutive_increase_years > 0 ? `<span class="increase-badge">${jpStock.consecutive_increase_years}年連続</span>` : '-', 'badge-cell', formatDividendHistory(jpStock.dividend_history), `${baseUrl}/dividend`);
             createCell(jpStock.settlement_month || 'N/A', 'numeric');

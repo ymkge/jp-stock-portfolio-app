@@ -23,6 +23,8 @@
     --down-color: #dc3545;
     --card-shadow: 0 2px 4px rgba(0,0,0,0.05);
     --chart-grid-color: rgba(0, 0, 0, 0.1);
+    --button-bg-color: #f0f0f0;
+    --button-hover-bg-color: #e0e0e0;
 }
 
 /* ダークモード用変数 */
@@ -39,6 +41,8 @@
     --error-text: #ffb7b7;
     --card-shadow: 0 4px 12px rgba(0,0,0,0.4);
     --chart-grid-color: rgba(255, 255, 255, 0.1);
+    --button-bg-color: #333333;
+    --button-hover-bg-color: #444444;
 }
 
 body, html {
@@ -1071,7 +1075,7 @@ button {
 .chart-toggle-btn {
     padding: 8px 16px;
     font-size: 0.9rem;
-    background-color: #f0f0f0;
+    background-color: var(--button-bg-color);
     color: var(--text-color);
     border: 1px solid var(--border-color);
     border-radius: 20px; /* 角を丸くする */
@@ -1080,7 +1084,7 @@ button {
 }
 
 .chart-toggle-btn:hover {
-    background-color: #e0e0e0;
+    background-color: var(--button-hover-bg-color);
 }
 
 .chart-toggle-btn.active {

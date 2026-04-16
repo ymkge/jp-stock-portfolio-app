@@ -78,21 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- スケルトンUI表示 ---
     function showSkeletons() {
-        // 1. 市場サマリー (3枚のカード)
-        const marketContainer = document.getElementById('market-summary-container');
-        if (marketContainer) {
-            marketContainer.innerHTML = Array(3).fill(0).map(() => `
-                <div class="market-index-card">
-                    <div class="skeleton skeleton-text" style="width: 40%; height: 1.2rem;"></div>
-                    <div class="skeleton skeleton-text" style="width: 70%; height: 1.8rem; margin: 0.5rem 0;"></div>
-                    <div class="skeleton skeleton-text" style="width: 90%;"></div>
-                    <div class="skeleton skeleton-text" style="width: 80%;"></div>
-                </div>
-            `).join('');
-            marketContainer.classList.remove('hidden');
-        }
-
-        // 2. 左カラムのカード群
+        // 1. 左カラムのカード群
         const cardSkeletons = {
             'summary-content': `<div class="skeleton skeleton-text" style="width: 80%;"></div><div class="skeleton skeleton-text" style="width: 70%;"></div><div class="skeleton skeleton-text" style="width: 90%;"></div><div class="skeleton skeleton-text" style="width: 60%;"></div>`,
             'dna-content': `<div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text"></div>`,
@@ -229,62 +215,8 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
         updateReportContainer.classList.remove('hidden');
-        if (metadata.market_indices) renderMarketSummary(metadata.market_indices);
     }
 
-    function renderMarketSummary(indices) {
-        const container = document.getElementById('market-summary-container');
-        if (!container || !indices) return;
-        let html = '';
-        indices.forEach(idx => {
-            const price = idx.price || '--';
-            const change = idx.change || '--';
-            const changePercent = idx.change_percent || '--';
-            const wow = idx.wow_percent || '--';
-            const mom = idx.mom_percent || '--';
-            const getChangeClass = (val) => {
-                if (typeof val === 'string') { if (val.startsWith('+')) return 'price-up'; if (val.startsWith('-')) return 'price-down'; }
-                else if (typeof val === 'number') { if (val > 0) return 'price-up'; if (val < 0) return 'price-down'; }
-                return '';
-            };
-            const formatPercent = (val) => {
-                if (val === '--' || val === 'N/A' || val === null) return '--';
-                if (typeof val === 'number') { const sign = val > 0 ? '+' : ''; return `${sign}${val.toFixed(2)}%`; }
-                const num = parseFloat(val); if (!isNaN(num)) { const sign = num > 0 ? '+' : ''; return `${sign}${num.toFixed(2)}%`; }
-                return `${val}%`;
-            };
-            const changeClass = getChangeClass(change);
-            const wowClass = getChangeClass(wow);
-            const momClass = getChangeClass(mom);
-            html += `
-                <a href="https://finance.yahoo.co.jp/quote/${idx.code}" target="_blank" class="market-index-link">
-                    <div class="market-index-card">
-                        <div class="market-index-header">
-                            <span class="market-index-name">${idx.name}</span>
-                            <span class="market-index-code" style="font-size: 0.7rem; color: var(--text-muted);">${idx.code}</span>
-                        </div>
-                        <div class="market-index-price numeric">${price}</div>
-                        <div class="market-index-changes">
-                            <div class="market-index-row">
-                                <span class="change-label">前日比:</span>
-                                <span class="${changeClass} numeric">${change} (${formatPercent(changePercent)})</span>
-                            </div>
-                            <div class="market-index-row">
-                                <span class="change-label">前週比:</span>
-                                <span class="${wowClass} numeric">${formatPercent(wow)}</span>
-                            </div>
-                            <div class="market-index-row">
-                                <span class="change-label">前月比:</span>
-                                <span class="${momClass} numeric">${formatPercent(mom)}</span>
-                            </div>
-                        </div>
-                    </div>
-                </a>
-            `;
-        });
-        container.innerHTML = html;
-        container.classList.remove('hidden');
-    }
     async function fetchAndRenderHistoryData() {
         try {
             const response = await fetch('/api/history/summary');

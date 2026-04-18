@@ -1421,13 +1421,13 @@ button {
 
 /* --- Dividend Distribution Spec Note --- */
 .dividend-spec-note {
-    background-color: #f8f9fa;
+    background-color: var(--header-bg-color);
     border: 1px solid var(--border-color);
     border-radius: 6px;
     padding: 0.8rem;
     margin-top: 1rem;
     font-size: 0.85rem;
-    color: #495057;
+    color: var(--text-color);
 }
 
 .dividend-spec-note .note-title {
@@ -1448,7 +1448,7 @@ button {
 
 .dividend-spec-note small {
     display: block;
-    color: #6c757d;
+    color: var(--text-muted);
     font-size: 0.75rem;
     line-height: 1.4;
 }

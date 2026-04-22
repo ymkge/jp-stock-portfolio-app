@@ -768,6 +768,7 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
 
         # 鮮度が高いキャッシュがあれば、セマフォを確保して即座に返す (待機なし)
         if is_fresh and cached_data:
+            logger.info(f"Using {source} cache for {code} ({asset_type})")
             async with semaphore:
                 # スクレイパーのメモリキャッシュを同期
                 scraper_instance.cache[code] = cached_data
@@ -823,13 +824,25 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
     processed_data = []
     for asset_info in portfolio:
         code = asset_info['code']
-        scraped_data = scraped_data_map.get(code)
-        merged_data = {**asset_info, **(scraped_data or {"error": "データ取得失敗"})}
+        try:
+            scraped_data = scraped_data_map.get(code)
+            # データが取得できていない場合でも最低限の辞書を作成
+            base_scraped = scraped_data or {"error": "データ取得失敗", "code": code}
+            merged_data = {**asset_info, **base_scraped}
 
-        # 分析情報の付与とDB更新（国内株のみ）
-        merged_data = _enrich_stock_data(merged_data, scraped_data)
+            # 分析情報の付与とDB更新（国内株のみ）
+            # ここで例外が起きやすいのでガード
+            try:
+                merged_data = _enrich_stock_data(merged_data, scraped_data)
+            except Exception as e:
+                logger.error(f"Error in _enrich_stock_data for {code}: {e}", exc_info=True)
+                merged_data["error"] = f"分析計算エラー: {str(e)}"
 
-        processed_data.append(merged_data)
+            processed_data.append(merged_data)
+        except Exception as e:
+            logger.error(f"Critical error processing {code}: {e}", exc_info=True)
+            # エラーが起きてもリストには追加して500エラーを回避
+            processed_data.append({**asset_info, "error": f"システムエラー: {str(e)}"})
 
     end_time = time.perf_counter()
     duration = end_time - start_time
@@ -862,34 +875,30 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
                 continue
             
             code = idx_result["code"]
-            current_price_str = str(idx_result.get("price", "0")).replace(',', '')
-            try:
-                current_price = float(current_price_str)
-            except ValueError:
-                current_price = 0.0
+            def safe_float(val):
+                if val in [None, "N/A", "--", ""]: return 0.0
+                try: return float(str(val).replace(',', ''))
+                except (ValueError, TypeError): return 0.0
+
+            current_price = safe_float(idx_result.get("price"))
             
-            # 過去データの取得 (DoDはYahooから、WoWは7日前、MoMは30日前)
             # WoW
             date_wow = (now_jst - timedelta(days=7)).strftime("%Y-%m-%d")
             hist_wow = history_manager.get_historical_data_before(code, date_wow)
             wow_percent = "N/A"
             if hist_wow and current_price > 0:
-                try:
-                    old_price = float(str(hist_wow.get("price", "0")).replace(',', ''))
-                    if old_price > 0:
-                        wow_percent = round((current_price - old_price) / old_price * 100, 2)
-                except ValueError: pass
+                old_price = safe_float(hist_wow.get("price"))
+                if old_price > 0:
+                    wow_percent = round((current_price - old_price) / old_price * 100, 2)
                 
             # MoM
             date_mom = (now_jst - timedelta(days=30)).strftime("%Y-%m-%d")
             hist_mom = history_manager.get_historical_data_before(code, date_mom)
             mom_percent = "N/A"
             if hist_mom and current_price > 0:
-                try:
-                    old_price = float(str(hist_mom.get("price", "0")).replace(',', ''))
-                    if old_price > 0:
-                        mom_percent = round((current_price - old_price) / old_price * 100, 2)
-                except ValueError: pass
+                old_price = safe_float(hist_mom.get("price"))
+                if old_price > 0:
+                    mom_percent = round((current_price - old_price) / old_price * 100, 2)
 
             market_indices_results.append({
                 "name": idx_result.get("name", market_indices_config[i]["name"]),

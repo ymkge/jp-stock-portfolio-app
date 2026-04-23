@@ -195,43 +195,55 @@ class JPStockScraper(BaseScraper):
 
         json_q = self._extract_next_data(res_q.text)
         
-        # 基本指標
-        per_m = re.search(r'\"per\":\{.*?\"value\":\"([\d,\.]+)\"', json_q)
+        # 基本指標 (境界制約 [^{}]*? を導入して他項目への飛び越しを防止)
+        per_m = re.search(r'\"per\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
         data['per'] = per_m.group(1).replace(',', '') if per_m and per_m.group(1) != "---" else "N/A"
-        pbr_m = re.search(r'\"pbr\":\{.*?\"value\":\"([\d,\.]+)\"', json_q)
+        
+        pbr_m = re.search(r'\"pbr\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
         data['pbr'] = pbr_m.group(1).replace(',', '') if pbr_m and pbr_m.group(1) != "---" else "N/A"
-        y_m = re.search(r'\"shareDividendYield\":\{.*?\"value\":\"([\d,\.]+)\"', json_q)
+        
+        y_m = re.search(r'\"shareDividendYield\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
         data['yield'] = y_m.group(1).replace(',', '') if y_m and y_m.group(1) != "---" else "N/A"
         
-        # 前日比・騰落率 (国内株追加)
-        change_m = re.search(r'\"priceChange\":\{.*?\"value\":\"([\+\-\d,\.]+)\"', json_q)
+        # 前日比・騰落率
+        change_m = re.search(r'\"priceChange\":\{[^{}]*?\"value\":\"([\+\-\d\.\,]+)\"', json_q)
         data['change'] = change_m.group(1).replace(',', '') if change_m else "N/A"
-        rate_m = re.search(r'\"priceChangeRate\":\{.*?\"value\":\"([\+\-\d,\.]+)\"', json_q)
+        rate_m = re.search(r'\"priceChangeRate\":\{[^{}]*?\"value\":\"([\+\-\d\.\,]+)\"', json_q)
         data['change_percent'] = rate_m.group(1) if rate_m else "N/A"
 
-        # ROE (多層検索)
-        roe_m = re.search(r'\"roe\":\{.*?\"value\":\"([\d,\.]+)\"', json_q)
-        if roe_m:
-            data['roe'] = roe_m.group(1).replace(',', '')
+        # ROE (多層検索の強化: 負の値対応と実績ラベル優先)
+        # 1. UIラベル（実績）に基づく抽出を最優先
+        roe_label_m = re.search(r'\"name\":\"ROE\",.*?\"value\":\"([\d\.\-\,]+)\"', json_q)
+        if roe_label_m and roe_label_m.group(1) != "---":
+            data['roe'] = roe_label_m.group(1).replace(',', '')
         else:
-            # 業績セクションから最新のROEを探す
-            roe_list = re.findall(r'\"roe\":([\d\.]+)', json_q)
-            data['roe'] = roe_list[-1] if roe_list else "N/A"
+            # 2. 構造ベース（マイナス対応）
+            roe_m = re.search(r'\"roe\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
+            if roe_m and roe_m.group(1) != "---":
+                data['roe'] = roe_m.group(1).replace(',', '')
+            else:
+                # 3. 業績セクションからのフォールバック
+                roe_list = re.findall(r'\"roe\":([\d\.\-]+)', json_q)
+                roe_list = [r for r in roe_list if r != "$undefined"]
+                data['roe'] = roe_list[-1] if roe_list else "N/A"
 
         # 1株配当 (dps)
-        dps_m = re.search(r'\"dps\":\{.*?\"value\":\"([\d,\.]+)\"', json_q)
+        dps_m = re.search(r'\"dps\":\{[^{}]*?\"value\":\"([\d\.\,]+)\"', json_q)
         data['annual_dividend'] = float(dps_m.group(1).replace(',', '')) if dps_m and dps_m.group(1) != "---" else 0.0
 
-        # 配当履歴 (業績セクションから配当実績を抽出)
-        # {"date":"202303","amount":...} のような構造から配当額を抜く
+        # 配当履歴 (業績セクションから汎用的に抽出: 3月固定を廃止しマルチキー対応)
         div_history = {}
-        div_matches = re.findall(r'\"date\":\"(\d{4})03\".*?\"dividend\":([\d\.]+)', json_q)
+        # 年次データブロックを特定し、その中の配当相当キー(dividend, amount, dps)を拾う
+        div_matches = re.findall(r'\"date\":\"(\d{4})\d{2}\".*?\"(?:dividend|amount|dps)\":([\d\.]+)', json_q)
         for year, val in div_matches:
-            div_history[year] = float(val)
+            # 年度ごとの最大値を採用（名寄せ）
+            v = float(val)
+            if year not in div_history or v > div_history[year]:
+                div_history[year] = v
         data['dividend_history'] = div_history
 
-        # 配当利回りのリカバリ (N/Aの場合、予想配当から逆算)
-        if data.get('yield') == "N/A" and data['annual_dividend'] > 0:
+        # 配当利回りのリカバリ (N/Aの場合、予想配当から逆算。吸い上げ防止後のガードとして重要)
+        if (data.get('yield') == "N/A" or data.get('yield') == "---") and data['annual_dividend'] > 0:
             try:
                 p = float(data['price'])
                 if p > 0:

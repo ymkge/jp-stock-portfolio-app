@@ -82,30 +82,39 @@ class BaseScraper(ABC):
         else:
             data['name'] = "N/A"
 
-        # 2. 現在値 (クォートの有無に柔軟に対応しつつ、誤検知を防ぐ)
+        # 2. 現在値 (JSON優先、特定構造を優先的に探索)
         # 投資信託の価格 (fundPrices) を優先
         it_p_match = re.search(r'\"?fundPrices\"?:\{[^{}]*?\"?price\"?:\s*\"?([\d\.\,]+)\"?', json_text)
         if it_p_match:
             data['price'] = it_p_match.group(1).replace(',', '')
             return data
+            
+        # 指数の価格 (indexPrices)
+        idx_p_match = re.search(r'\"?indexPrices\"?:\{[^{}]*?\"?previousPrice\"?:\s*\"?([\d\.\,]+)\"?', json_text)
+        if idx_p_match:
+            data['price'] = idx_p_match.group(1).replace(',', '')
 
         # 一般的な価格オブジェクト (新・旧両方の構造に対応)
         price_match = re.search(r'\"?price\"?:\{[^{}]*?\"?value\"?:\s*\"?([\d\.\-\,]+)\"?', json_text)
         if not price_match:
-            # 投信等の旧方式 (4桁以上または小数点ありに限定してフラグ値の誤検知を防止)
-            price_match = re.search(r'\"?(price|basePrice)\"?:\s*\"?([\d,]{4,}|[\d,]+\.[\d]+)\"?', json_text)
+            # 米国株等のフラットな構造
+            price_match = re.search(r'\"?price\"?:\s*\"?([\d,]{4,}|[\d,]+\.[\d]+)\"?', json_text)
             if price_match:
-                data['price'] = price_match.group(2).replace(',', '')
+                data['price'] = price_match.group(1).replace(',', '')
             else:
-                # HTMLフォールバック
-                candidates = re.findall(r'value[^\"]*\">([\d\.\,]+)<', html)
-                prices = [c.replace(',', '') for c in candidates if c != "0.00" and ('.' in c or len(c) >= 4)]
-                if prices:
-                    data['price'] = prices[0]
+                # HTMLフォールバック (より具体的なクラスを狙う)
+                # メインの価格ボードに含まれる数値を優先
+                pb_area = re.search(r'class=\"[^\"]*PriceBoard.*?\">.*?([\d\.\,]{2,})<', html, re.S)
+                if pb_area:
+                    data['price'] = pb_area.group(1).replace(',', '')
                 else:
-                    # 投信等の最終手段: HTML全体の <span> 内にある4桁以上の数値を狙う
-                    it_price_match = re.search(r'>([\d,]{4,})</span>', html)
-                    data['price'] = it_price_match.group(1).replace(',', '') if it_price_match else "N/A"
+                    candidates = re.findall(r'value[^\"]*\">([\d\.\,]+)<', html)
+                    prices = [c.replace(',', '') for c in candidates if c != "0.00" and ('.' in c or len(c) >= 4)]
+                    if prices:
+                        data['price'] = prices[0]
+                    else:
+                        it_price_match = re.search(r'>([\d,]{4,})</span>', html)
+                        data['price'] = it_price_match.group(1).replace(',', '') if it_price_match else "N/A"
         else:
             data['price'] = price_match.group(1).replace(',', '')
 
@@ -318,6 +327,35 @@ class InvestTrustScraper(BaseScraper):
         data['change'] = change_m.group(1).replace(',', '') if change_m else "N/A"
         rate_m = re.search(r'\"?changePriceRate\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
         data['change_percent'] = rate_m.group(1) if rate_m else "N/A"
+
+        # 純資産総額 (mainFundDetail.items.netAssetBalance.price)
+        na_m = re.search(r'\"?netAssetBalance\"?:\{[^{}]*?\"?price\"?:\s*\"?([\d\.\,]+)\"?', json_text)
+        if na_m:
+            try:
+                # 百万円単位で取得されることが多い
+                v = float(na_m.group(1).replace(',', ''))
+                raw_value = v * 1_000_000
+                data['market_cap'] = str(int(raw_value))
+                # フロントエンド互換用
+                if v >= 1000000: # 1兆円以上 (1,000,000百万)
+                    data['net_assets'] = f"{(v/1000000):.2f}兆円"
+                elif v >= 100: # 1億円以上 (100百万)
+                    data['net_assets'] = f"{(v/100):.2f}億円"
+                else:
+                    data['net_assets'] = f"{v:.0f}百万円"
+            except: 
+                data['market_cap'] = "N/A"
+                data['net_assets'] = "N/A"
+        else:
+            data['market_cap'] = "N/A"
+            data['net_assets'] = "N/A"
+
+        # 信託報酬 (mainFundDetail.items.payRateTotal.rate)
+        tf_m = re.search(r'\"?payRateTotal\"?:\{[^{}]*?\"?rate\"?:\s*\"?([\d\.\,]+)\"?', json_text)
+        if tf_m:
+            data['trust_fee'] = f"{tf_m.group(1)}%"
+        else:
+            data['trust_fee'] = "N/A"
         
         data.update({"code": code, "asset_type": "investment_trust", "currency": "JPY"})
         return data
@@ -334,7 +372,26 @@ class USStockScraper(BaseScraper):
 
         data = self._scavenge_common_data(res.text, json_text)
         
-        # 米国株特有の指標 (クォート柔軟対応)
+        # 米国株特有の構造 (mainUsStocksPriceBoard) からの抽出
+        # 市場 (NASDAQ/NYSE等)
+        m_label = re.search(r'\"?mainUsStocksPriceBoard\"?:\{[^{}]*?\"?label\"?:\s*\"?([^\"]+)\"?', json_text)
+        data['market'] = m_label.group(1) if m_label else "N/A"
+
+        # 現在値 (JSON優先)
+        m_price = re.search(r'\"?mainUsStocksPriceBoard\"?:\{[^{}]*?\"?price\"?:\s*\"?([\d\.\,]+)\"?', json_text)
+        if m_price:
+            data['price'] = m_price.group(1).replace(',', '')
+
+        # 前日比
+        m_change = re.search(r'\"?mainUsStocksPriceBoard\"?:\{[^{}]*?\"?priceChange\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
+        if m_change:
+            data['change'] = m_change.group(1).replace(',', '')
+        
+        m_rate = re.search(r'\"?mainUsStocksPriceBoard\"?:\{[^{}]*?\"?priceChangeRate\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
+        if m_rate:
+            data['change_percent'] = m_rate.group(1)
+
+        # 財務指標 (mainUsStocksReferenceIndex)
         per_m = re.search(r'\"?per\"?:\{[^{}]*?\"?value\"?:\s*\"?([\d\.\-\,]+)\"?', json_text)
         data['per'] = per_m.group(1).replace(',', '') if per_m and per_m.group(1) != "---" else "N/A"
         
@@ -345,15 +402,27 @@ class USStockScraper(BaseScraper):
         else:
             data['yield'] = y_m.group(2).replace(',', '') if y_m.group(2) != "---" else "N/A"
 
-        change_m = re.search(r'\"?priceChange\"?:\{[^{}]*?\"?value\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
-        if not change_m:
-             change_m = re.search(r'\"?priceChange\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
-        data['change'] = change_m.group(1).replace(',', '') if change_m else "N/A"
-        
-        rate_m = re.search(r'\"?priceChangeRate\"?:\{[^{}]*?\"?value\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
-        if not rate_m:
-             rate_m = re.search(r'\"?priceChangeRate\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
-        data['change_percent'] = rate_m.group(1) if rate_m else "N/A"
+        # 時価総額 (mainUsStocksReferenceIndex.totalPrice)
+        # 米国株はドル建てなので円換算する
+        cap_m = re.search(r'\"?totalPrice\"?:\{[^{}]*?\"?value\"?:\s*\"?([\d\.\,]+)\"?,\s*\"?move\"?:[^{}]*?\"?suffix\"?:\s*\"?([^\"]+)\"?', json_text)
+        if cap_m:
+            v_str, s = cap_m.group(1).replace(',', ''), cap_m.group(2)
+            try:
+                v = float(v_str)
+                usd_cap = v
+                if "千ドル" in s: usd_cap = v * 1000
+                elif "百万ドル" in s: usd_cap = v * 1_000_000
+                elif "億ドル" in s: usd_cap = v * 100_000_000
+                
+                # 為替換算
+                rate = get_exchange_rate()
+                if rate:
+                    data['market_cap'] = str(int(usd_cap * rate))
+                else:
+                    data['market_cap'] = "N/A"
+            except: data['market_cap'] = "N/A"
+        else:
+            data['market_cap'] = "N/A"
 
         # 決算月 (推測)
         month_m = re.search(r'\"?updateDate\"?:\s*\"?(\d{2})/', json_text)

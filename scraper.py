@@ -252,13 +252,46 @@ class JPStockScraper(BaseScraper):
         dps_m = re.search(r'\"dps\":\{[^{}]*?\"value\":\"([\d\.\,]+)\"', json_q)
         data['annual_dividend'] = float(dps_m.group(1).replace(',', '')) if dps_m and dps_m.group(1) != "---" else 0.0
 
-        # 配当履歴 (汎用抽出)
+        # 配当履歴の抽出 (メインページからは最新のみ、詳細は専用ページから)
         div_history = {}
-        div_matches = re.findall(r'\"date\":\"(\d{4})\d{2}\".*?\"(?:dividend|amount|dps)\":([\d\.]+)', json_q)
-        for year, val in div_matches:
-            v = float(val)
-            if year not in div_history or v > div_history[year]:
-                div_history[year] = v
+        
+        # 1. 配当ページから詳細かつ長期の履歴を取得 (直近2-3年しか取れないメインページの制約を回避)
+        time.sleep(0.5)
+        url_div = f"https://finance.yahoo.co.jp/quote/{code}.T/dividend"
+        res_div = self._make_request(url_div)
+        if res_div:
+            json_div = self._extract_next_data(res_div.text) or self._extract_legacy_data(res_div.text)
+            if json_div:
+                # 基準日ごとの年間合計値 (annualForecastValue, annualCorrectedActualValue等)
+                # 境界制約を加えて誤検知を防ぎつつ、異常な巨大数値（売上高等）を弾く
+                dps_matches_ext = re.findall(r'\"settlementDate\":\"(\d{4})\d{2}\"[^{}]*?\"(?:annualForecastValue|annualCorrectedActualValue|annualActualValue)\":\s*([\d\.]+)', json_div)
+                for year, val in dps_matches_ext:
+                    v = float(val)
+                    if v < 100000: # 10万円以上の1株配当は通常ありえないため除外 (誤検知対策)
+                        if year not in div_history or v > div_history[year]:
+                            div_history[year] = v
+
+        # 2. メインページからの補足 (最新の予想値などが配当ページに未反映の場合に備える)
+        # "dps" オブジェクトまたは "dividend" リスト内に限定して探索
+        dps_area = re.search(r'\"dps\":\{.*?\}', json_q)
+        if dps_area:
+            ctx = dps_area.group(0)
+            m_latest = re.search(r'\"updateDate\":\"(\d{4})/\d{2}\".*?\"value\":\"([\d\.]+)\"', ctx)
+            if m_latest:
+                year, val = m_latest.group(1), float(m_latest.group(2))
+                if year not in div_history or val > div_history[year]:
+                    div_history[year] = val
+        
+        div_list_area = re.search(r'\"dividend\":\[.*?\]', json_q)
+        if div_list_area:
+            ctx = div_list_area.group(0)
+            m_list = re.findall(r'\"date\":\"(\d{4})\d{2}\".*?\"(?:dividend|dps)\":\s*([\d\.]+)', ctx)
+            for year, val in m_list:
+                v = float(val)
+                if v < 100000:
+                    if year not in div_history or v > div_history[year]:
+                        div_history[year] = v
+                        
         data['dividend_history'] = div_history
 
         # 利回りリカバリ

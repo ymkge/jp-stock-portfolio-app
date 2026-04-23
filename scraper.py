@@ -27,7 +27,7 @@ DEFAULT_HEADERS = {
 class BaseScraper(ABC):
     """
     スクレイパークラスのベースとなる抽象クラス。
-    Next.js形式のデータ抽出と共通のリクエスト処理を提供する。
+    Next.js形式(新)と従来のJSON形式(旧)の両方に対応するハイブリッド抽出を提供する。
     """
     def __init__(self, cache_size=128):
         self.cache = TTLCache(maxsize=cache_size, ttl=CACHE_TTL)
@@ -63,50 +63,70 @@ class BaseScraper(ABC):
             chunks.append(chunk)
         return "".join(chunks)
 
+    def _extract_legacy_data(self, html: str) -> str:
+        """従来のJSON埋め込み形式(__PRELOADED_STATE__)を抽出する"""
+        # 強欲マッチ (.*) を使用して、最後の </script> 直前の閉じ括弧まで拾う
+        match = re.search(r'__PRELOADED_STATE__\s*=\s*(\{.*\}?)\s*</script>', html, re.S)
+        return match.group(1).strip() if match else ""
+
     def _scavenge_common_data(self, html: str, json_text: str) -> Dict[str, Any]:
         """JSONとHTMLの両方から銘柄名と現在値を回収するハイブリッド抽出"""
         data = {}
 
-        # 1. 銘柄名 (HTMLのtitleタグから)
+        # 1. 銘柄名
         title_match = re.search(r'<title>(.*?)</title>', html)
         if title_match:
             name_raw = title_match.group(1)
-            # 区切り文字（【, ：, -）で分割。IPO銘柄や投信に対応。
             name = re.split(r'【|：|-', name_raw)[0].strip()
             data['name'] = name
         else:
             data['name'] = "N/A"
 
-        # 2. 現在値
-        # JSON優先 ( \"price\":{\"value\":\"3,191\"} )
-        price_match = re.search(r'\"price\":\{\"value\":\"([\d,\.]+)\"\}', json_text)
-        if price_match:
-            data['price'] = price_match.group(1).replace(',', '')
-        else:
-            # HTMLフォールバック: _StyledNumber 系のクラスを優先
-            candidates = re.findall(r'value[^\"]*\">([\d,\.]+)<', html)
-            prices = [c.replace(',', '') for c in candidates if c != "0.00" and ('.' in c or len(c) >= 4)]
+        # 2. 現在値 (クォートの有無に柔軟に対応しつつ、誤検知を防ぐ)
+        # 投資信託の価格 (fundPrices) を優先
+        it_p_match = re.search(r'\"?fundPrices\"?:\{[^{}]*?\"?price\"?:\s*\"?([\d\.\,]+)\"?', json_text)
+        if it_p_match:
+            data['price'] = it_p_match.group(1).replace(',', '')
+            return data
 
-            if prices:
-                data['price'] = prices[0]
+        # 一般的な価格オブジェクト (新・旧両方の構造に対応)
+        price_match = re.search(r'\"?price\"?:\{[^{}]*?\"?value\"?:\s*\"?([\d\.\-\,]+)\"?', json_text)
+        if not price_match:
+            # 投信等の旧方式 (4桁以上または小数点ありに限定してフラグ値の誤検知を防止)
+            price_match = re.search(r'\"?(price|basePrice)\"?:\s*\"?([\d,]{4,}|[\d,]+\.[\d]+)\"?', json_text)
+            if price_match:
+                data['price'] = price_match.group(2).replace(',', '')
             else:
-                # 投信等の最終手段: HTML全体の <span> 内にある4桁以上の数値を狙う
-                it_price_match = re.search(r'>([\d,]{4,})</span>', html)
-                data['price'] = it_price_match.group(1).replace(',', '') if it_price_match else "N/A"
+                # HTMLフォールバック
+                candidates = re.findall(r'value[^\"]*\">([\d\.\,]+)<', html)
+                prices = [c.replace(',', '') for c in candidates if c != "0.00" and ('.' in c or len(c) >= 4)]
+                if prices:
+                    data['price'] = prices[0]
+                else:
+                    # 投信等の最終手段: HTML全体の <span> 内にある4桁以上の数値を狙う
+                    it_price_match = re.search(r'>([\d,]{4,})</span>', html)
+                    data['price'] = it_price_match.group(1).replace(',', '') if it_price_match else "N/A"
+        else:
+            data['price'] = price_match.group(1).replace(',', '')
 
         return data
 
     def _parse_histories(self, json_text: str) -> List[Dict[str, Any]]:
         """JSONテキストの正しい階層(histories)からのみ時系列データを回収する"""
         histories = []
+        # エスケープの有無に配慮
         start_idx = json_text.find('"histories":[')
+        if start_idx == -1: start_idx = json_text.find('\"histories\":[')
         if start_idx == -1: return []
-        search_area = json_text[start_idx:start_idx + 100000]
-        records = re.findall(r'\{\s*\"date\"\s*:\s*\"(\d{4}/\d{1,2}/\d{1,2})\"\s*,\s*\"values\"\s*:\s*\[(.*?\])\s*\}', search_area, re.S)
+        
+        search_area = json_text[start_idx:start_idx + 150000]
+        # 日付と数値のペアを抽出
+        records = re.findall(r'\"?date\"?:\s*\"?(\d{4}/\d{1,2}/\d{1,2})\"?,\s*\"?values\"?:\s*\[(.*?\])', search_area, re.S)
         for dt, val_block in records:
-            vals = re.findall(r'\"value\"\s*:\s*\"([\d,\.]+)\"', val_block)
+            vals = re.findall(r'\"?value\"?:\s*\"?([\d\.\,]+)\"?', val_block)
             if len(vals) >= 4:
                 histories.append({"baseDatetime": dt, "closePrice": vals[3].replace(',', '')})
+        
         unique_histories = {}
         for h in histories:
             if h['baseDatetime'] not in unique_histories:
@@ -174,7 +194,6 @@ class JPStockScraper(BaseScraper):
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
         logger.info(f"Fetching JP Stock: {code}.T")
         url_h = f"https://finance.yahoo.co.jp/quote/{code}.T/history"
-        logger.info(f"Accessing History: {url_h}")
         res_h = self._make_request(url_h)
         if not res_h: return {"code": code, "error": "通信エラー"}
 
@@ -182,17 +201,15 @@ class JPStockScraper(BaseScraper):
         data = self._scavenge_common_data(res_h.text, json_h)
         histories = self._parse_histories(json_h)
 
-        logger.info(f"Fetching History Page 2 for {code}.T")
         time.sleep(0.5)
         url_p2 = f"{url_h}?page=2&_data=app%2Fpc%2F%5Btype%5D%2Fquote%2F%5Bcode%5D%2Fhistory%2Fpage"
         res_p2 = self._make_request(url_p2)
         if res_p2: histories.extend(self._parse_histories(res_p2.text))
 
-        logger.info(f"Complementing indicators from Main Page: {code}.T")
         time.sleep(0.5)
         url_q = f"https://finance.yahoo.co.jp/quote/{code}.T"
         res_q = self._make_request(url_q)
-
+        if not res_q: return {"code": code, "error": "メインページの取得に失敗しました"}
         json_q = self._extract_next_data(res_q.text)
         
         # 基本指標 (境界制約 [^{}]*? を導入して他項目への飛び越しを防止)
@@ -205,44 +222,37 @@ class JPStockScraper(BaseScraper):
         y_m = re.search(r'\"shareDividendYield\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
         data['yield'] = y_m.group(1).replace(',', '') if y_m and y_m.group(1) != "---" else "N/A"
         
-        # 前日比・騰落率
         change_m = re.search(r'\"priceChange\":\{[^{}]*?\"value\":\"([\+\-\d\.\,]+)\"', json_q)
         data['change'] = change_m.group(1).replace(',', '') if change_m else "N/A"
         rate_m = re.search(r'\"priceChangeRate\":\{[^{}]*?\"value\":\"([\+\-\d\.\,]+)\"', json_q)
         data['change_percent'] = rate_m.group(1) if rate_m else "N/A"
 
         # ROE (多層検索の強化: 負の値対応と実績ラベル優先)
-        # 1. UIラベル（実績）に基づく抽出を最優先
         roe_label_m = re.search(r'\"name\":\"ROE\",.*?\"value\":\"([\d\.\-\,]+)\"', json_q)
         if roe_label_m and roe_label_m.group(1) != "---":
             data['roe'] = roe_label_m.group(1).replace(',', '')
         else:
-            # 2. 構造ベース（マイナス対応）
             roe_m = re.search(r'\"roe\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
             if roe_m and roe_m.group(1) != "---":
                 data['roe'] = roe_m.group(1).replace(',', '')
             else:
-                # 3. 業績セクションからのフォールバック
                 roe_list = re.findall(r'\"roe\":([\d\.\-]+)', json_q)
                 roe_list = [r for r in roe_list if r != "$undefined"]
                 data['roe'] = roe_list[-1] if roe_list else "N/A"
 
-        # 1株配当 (dps)
         dps_m = re.search(r'\"dps\":\{[^{}]*?\"value\":\"([\d\.\,]+)\"', json_q)
         data['annual_dividend'] = float(dps_m.group(1).replace(',', '')) if dps_m and dps_m.group(1) != "---" else 0.0
 
-        # 配当履歴 (業績セクションから汎用的に抽出: 3月固定を廃止しマルチキー対応)
+        # 配当履歴 (汎用抽出)
         div_history = {}
-        # 年次データブロックを特定し、その中の配当相当キー(dividend, amount, dps)を拾う
         div_matches = re.findall(r'\"date\":\"(\d{4})\d{2}\".*?\"(?:dividend|amount|dps)\":([\d\.]+)', json_q)
         for year, val in div_matches:
-            # 年度ごとの最大値を採用（名寄せ）
             v = float(val)
             if year not in div_history or v > div_history[year]:
                 div_history[year] = v
         data['dividend_history'] = div_history
 
-        # 配当利回りのリカバリ (N/Aの場合、予想配当から逆算。吸い上げ防止後のガードとして重要)
+        # 利回りリカバリ
         if (data.get('yield') == "N/A" or data.get('yield') == "---") and data['annual_dividend'] > 0:
             try:
                 p = float(data['price'])
@@ -254,7 +264,6 @@ class JPStockScraper(BaseScraper):
         ind_m = re.search(r'\"industryName\":\"(.*?)\"', json_q)
         data['industry'] = ind_m.group(1) if ind_m else "N/A"
         
-        # Market Cap (時価総額 - 百万円対応)
         cap_m = re.search(r'\"totalPrice\":\{.*?\"value\":\"([\d,\.]+)\".*?\"suffix\":\"(.*?)\"', json_q)
         if cap_m:
             v_str, s = cap_m.group(1).replace(',', ''), cap_m.group(2)
@@ -267,15 +276,12 @@ class JPStockScraper(BaseScraper):
             except: data['market_cap'] = "N/A"
         else: data['market_cap'] = "N/A"
         
-        # 決算月 (多層検索)
         month_m = re.search(r'\"dpsPeriod\":\"\d{4}-(\d{2})-\d{2}\"', json_q)
         if not month_m:
             month_m = re.search(r'\"settlementDate\":\"\d{4}/(\d{2})\"', json_q)
         if not month_m:
-            # 業績データの最新日付から推測
             date_m = re.search(r'\"date\":\"\d{4}(\d{2})\"', json_q)
             if date_m: month_m = date_m
-            
         data['settlement_month'] = f"{int(month_m.group(1))}月" if month_m else "N/A"
 
         cp = None
@@ -300,14 +306,17 @@ class InvestTrustScraper(BaseScraper):
         logger.info(f"Fetching Invest Trust: {code}")
         res = self._make_request(f"https://finance.yahoo.co.jp/quote/{code}")
         if not res: return {"code": code, "error": "通信エラー"}
+        
         json_text = self._extract_next_data(res.text)
+        if not json_text:
+            json_text = self._extract_legacy_data(res.text)
+            
         data = self._scavenge_common_data(res.text, json_text)
         
-        # 投資信託特有の項目 (前日比など)
-        # "fundPrices":{"price":"35,766","changePrice":"+123","changePriceRate":"+0.34"
-        change_m = re.search(r'\"changePrice\":\"([\+\-\d,\.]+)\"', json_text)
+        # 投資信託特有の前日比 (クォート柔軟対応)
+        change_m = re.search(r'\"?changePrice\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
         data['change'] = change_m.group(1).replace(',', '') if change_m else "N/A"
-        rate_m = re.search(r'\"changePriceRate\":\"([\+\-\d,\.]+)\"', json_text)
+        rate_m = re.search(r'\"?changePriceRate\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
         data['change_percent'] = rate_m.group(1) if rate_m else "N/A"
         
         data.update({"code": code, "asset_type": "investment_trust", "currency": "JPY"})
@@ -318,15 +327,41 @@ class USStockScraper(BaseScraper):
         logger.info(f"Fetching US Stock: {code}")
         res = self._make_request(f"https://finance.yahoo.co.jp/quote/{code}")
         if not res: return {"code": code, "error": "通信エラー"}
+        
         json_text = self._extract_next_data(res.text)
+        if not json_text:
+            json_text = self._extract_legacy_data(res.text)
+
         data = self._scavenge_common_data(res.text, json_text)
         
-        # 米国株特有の項目
-        # "priceChange":{"value":"-1.23"},"priceChangeRate":{"value":"-0.45"}
-        change_m = re.search(r'\"priceChange\":\{\"value\":\"([\+\-\d,\.]+)\"\}', json_text)
+        # 米国株特有の指標 (クォート柔軟対応)
+        per_m = re.search(r'\"?per\"?:\{[^{}]*?\"?value\"?:\s*\"?([\d\.\-\,]+)\"?', json_text)
+        data['per'] = per_m.group(1).replace(',', '') if per_m and per_m.group(1) != "---" else "N/A"
+        
+        y_m = re.search(r'\"?(shareDividendYield|dividendYield|dividend)\"?:\{[^{}]*?\"?value\"?:\s*\"?([\d\.\-\,]+)\"?', json_text)
+        if not y_m:
+            y_m = re.search(r'\"?(dividendYield|yield)\"?:\s*\"?([\d\.\,]+)\"?', json_text)
+            data['yield'] = y_m.group(2) if y_m else "N/A"
+        else:
+            data['yield'] = y_m.group(2).replace(',', '') if y_m.group(2) != "---" else "N/A"
+
+        change_m = re.search(r'\"?priceChange\"?:\{[^{}]*?\"?value\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
+        if not change_m:
+             change_m = re.search(r'\"?priceChange\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
         data['change'] = change_m.group(1).replace(',', '') if change_m else "N/A"
-        rate_m = re.search(r'\"priceChangeRate\":\{\"value\":\"([\+\-\d,\.]+)\"\}', json_text)
+        
+        rate_m = re.search(r'\"?priceChangeRate\"?:\{[^{}]*?\"?value\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
+        if not rate_m:
+             rate_m = re.search(r'\"?priceChangeRate\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
         data['change_percent'] = rate_m.group(1) if rate_m else "N/A"
+
+        # 決算月 (推測)
+        month_m = re.search(r'\"?updateDate\"?:\s*\"?(\d{2})/', json_text)
+        if not month_m:
+            month_m = re.search(r'\"?date\"?:\s*\"?(\d{4})(\d{2})\"?', json_text)
+            data['settlement_month'] = f"{int(month_m.group(2))}月" if month_m else "N/A"
+        else:
+            data['settlement_month'] = f"{int(month_m.group(1))}月"
 
         data.update({"code": code, "asset_type": "us_stock", "currency": "USD"})
         return data
@@ -336,7 +371,12 @@ class IndexScraper(BaseScraper):
         logger.info(f"Fetching Market Index: {code}")
         res = self._make_request(f"https://finance.yahoo.co.jp/quote/{code}")
         if not res: return {"code": code, "error": "通信エラー"}
-        data = self._scavenge_common_data(res.text, "")
+        
+        json_text = self._extract_next_data(res.text)
+        if not json_text:
+            json_text = self._extract_legacy_data(res.text)
+            
+        data = self._scavenge_common_data(res.text, json_text)
         data.update({"code": code, "asset_type": "market_index", "currency": "JPY"})
         return data
 

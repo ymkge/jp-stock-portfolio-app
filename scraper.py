@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # 定数
 MAX_RETRIES = 3
-RETRY_DELAY = 2
+RETRY_DELAY = 5
 CACHE_TTL = 3600  # 1時間
 
 DEFAULT_HEADERS = {
@@ -211,12 +211,12 @@ class JPStockScraper(BaseScraper):
         data = self._scavenge_common_data(res_h.text, json_h)
         histories = self._parse_histories(json_h)
 
-        time.sleep(0.5)
+        time.sleep(1.2)
         url_p2 = f"{url_h}?page=2&_data=app%2Fpc%2F%5Btype%5D%2Fquote%2F%5Bcode%5D%2Fhistory%2Fpage"
         res_p2 = self._make_request(url_p2)
         if res_p2: histories.extend(self._parse_histories(res_p2.text))
 
-        time.sleep(0.5)
+        time.sleep(1.2)
         url_q = f"https://finance.yahoo.co.jp/quote/{code}.T"
         res_q = self._make_request(url_q)
         if not res_q: return {"code": code, "error": "メインページの取得に失敗しました"}
@@ -258,7 +258,7 @@ class JPStockScraper(BaseScraper):
         div_history = {}
         
         # 1. 配当ページから詳細かつ長期の履歴を取得 (直近2-3年しか取れないメインページの制約を回避)
-        time.sleep(0.5)
+        time.sleep(1.2)
         url_div = f"https://finance.yahoo.co.jp/quote/{code}.T/dividend"
         res_div = self._make_request(url_div)
         if res_div:

@@ -128,21 +128,30 @@ class BaseScraper(ABC):
         start_idx = json_text.find('"histories":[')
         if start_idx == -1: start_idx = json_text.find('\"histories\":[')
         if start_idx == -1: return []
-        
+
         search_area = json_text[start_idx:start_idx + 150000]
         # 日付と数値のペアを抽出
-        records = re.findall(r'\"?date\"?:\s*\"?(\d{4}/\d{1,2}/\d{1,2})\"?,\s*\"?values\"?:\s*\[(.*?\])', search_area, re.S)
-        for dt, val_block in records:
+        records = re.findall(r'\"?date\"?:\s*\"?(\d{4}[-/]\d{1,2}[-/]\d{1,2})\"?,\s*\"?values\"?:\s*\[(.*?\])', search_area, re.S)
+        for dt_str, val_block in records:
             vals = re.findall(r'\"?value\"?:\s*\"?([\d\.\,]+)\"?', val_block)
             if len(vals) >= 4:
-                histories.append({"baseDatetime": dt, "closePrice": vals[3].replace(',', '')})
-        
+                histories.append({"baseDatetime": dt_str, "closePrice": vals[3].replace(',', '')})
+
+        # 日付オブジェクトで重複排除とソートを行う
         unique_histories = {}
         for h in histories:
-            if h['baseDatetime'] not in unique_histories:
-                unique_histories[h['baseDatetime']] = h
-        return sorted(unique_histories.values(), key=lambda x: x['baseDatetime'], reverse=True)
+            dt_s = h['baseDatetime'].replace('-', '/')
+            try:
+                # ゼロ埋めなし (2026/4/9) と ゼロ埋めあり (2026/04/09) の両方に対応
+                dt_obj = datetime.strptime(dt_s, '%Y/%m/%d')
+                if dt_obj not in unique_histories:
+                    unique_histories[dt_obj] = h
+            except ValueError:
+                continue
 
+        # 新しい順にソートして返す
+        sorted_keys = sorted(unique_histories.keys(), reverse=True)
+        return [unique_histories[k] for k in sorted_keys]
     @abstractmethod
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
         pass
@@ -236,6 +245,21 @@ class JPStockScraper(BaseScraper):
         data['change'] = change_m.group(1).replace(',', '') if change_m else "N/A"
         rate_m = re.search(r'\"priceChangeRate\":\{[^{}]*?\"value\":\"([\+\-\d\.\,]+)\"', json_q)
         data['change_percent'] = rate_m.group(1) if rate_m else "N/A"
+
+        # EPSの抽出
+        eps_m = re.search(r'\"eps\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
+        data['eps'] = eps_m.group(1).replace(',', '') if eps_m and eps_m.group(1) != "---" else "N/A"
+
+        # PERのリカバリ (現在株価 / EPS)
+        if (data.get('per') == "N/A" or data.get('per') == "---") and data.get('eps') not in ["N/A", "---"]:
+            try:
+                p = float(data.get('price', 0))
+                e = float(data.get('eps'))
+                if p > 0 and e > 0:
+                    calc_per = p / e
+                    data['per'] = f"{calc_per:.2f}"
+                    logger.info(f"Recovered PER for {code} from EPS: {data['per']}")
+            except: pass
 
         # ROE (多層検索の強化: 負の値対応と実績ラベル優先)
         roe_label_m = re.search(r'\"name\":\"ROE\",.*?\"value\":\"([\d\.\-\,]+)\"', json_q)

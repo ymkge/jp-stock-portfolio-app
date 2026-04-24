@@ -5,6 +5,7 @@ import re
 import time
 import logging
 import asyncio
+from datetime import datetime
 from typing import Dict, Any, Optional, List
 from abc import ABC, abstractmethod
 from cachetools import cachedmethod, TTLCache, cached
@@ -250,7 +251,8 @@ class JPStockScraper(BaseScraper):
                 data['roe'] = roe_list[-1] if roe_list else "N/A"
 
         dps_m = re.search(r'\"dps\":\{[^{}]*?\"value\":\"([\d\.\,]+)\"', json_q)
-        data['annual_dividend'] = float(dps_m.group(1).replace(',', '')) if dps_m and dps_m.group(1) != "---" else 0.0
+        dps_raw = dps_m.group(1) if dps_m else "N/A"
+        data['annual_dividend'] = float(dps_raw.replace(',', '')) if dps_raw not in ["N/A", "---"] else 0.0
 
         # 配当履歴の抽出 (メインページからは最新のみ、詳細は専用ページから)
         div_history = {}
@@ -293,6 +295,18 @@ class JPStockScraper(BaseScraper):
                         div_history[year] = v
                         
         data['dividend_history'] = div_history
+
+        # 1株配当のリカバリ (メインページが未定 '---' の場合、詳細タブの履歴から当期・来期の値を拾う)
+        if dps_raw == "---" and div_history:
+            current_year = datetime.now().year
+            # 当期(current) または 来期(current+1) のデータを対象とする
+            valid_years = [str(current_year), str(current_year + 1)]
+            recovery_candidates = {y: v for y, v in div_history.items() if y in valid_years}
+            if recovery_candidates:
+                # 最新の予想（最大年）を優先
+                best_year = max(recovery_candidates.keys())
+                data['annual_dividend'] = recovery_candidates[best_year]
+                logger.info(f"Recovered annual_dividend for {code} from dividend_history: {data['annual_dividend']} (Year: {best_year})")
 
         # 利回りリカバリ
         if (data.get('yield') == "N/A" or data.get('yield') == "---") and data['annual_dividend'] > 0:

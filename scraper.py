@@ -274,31 +274,29 @@ class JPStockScraper(BaseScraper):
                 roe_list = [r for r in roe_list if r != "$undefined"]
                 data['roe'] = roe_list[-1] if roe_list else "N/A"
 
-        dps_m = re.search(r'\"dps\":\{[^{}]*?\"value\":\"([\d\.\,]+)\"', json_q)
+        dps_m = re.search(r'\"dps\":\{[^{}]*?\"value\":\"([\d\.\,\-]+)\"', json_q)
         dps_raw = dps_m.group(1) if dps_m else "N/A"
         data['annual_dividend'] = float(dps_raw.replace(',', '')) if dps_raw not in ["N/A", "---"] else 0.0
 
         # 配当履歴の抽出 (メインページからは最新のみ、詳細は専用ページから)
         div_history = {}
         
-        # 1. 配当ページから詳細かつ長期の履歴を取得 (直近2-3年しか取れないメインページの制約を回避)
+        # 1. 配当ページから詳細かつ長期の履歴を取得
         time.sleep(1.2)
         url_div = f"https://finance.yahoo.co.jp/quote/{code}.T/dividend"
         res_div = self._make_request(url_div)
         if res_div:
             json_div = self._extract_next_data(res_div.text) or self._extract_legacy_data(res_div.text)
             if json_div:
-                # 基準日ごとの年間合計値 (annualForecastValue, annualCorrectedActualValue等)
-                # 境界制約を加えて誤検知を防ぎつつ、異常な巨大数値（売上高等）を弾く
-                dps_matches_ext = re.findall(r'\"settlementDate\":\"(\d{4})\d{2}\"[^{}]*?\"(?:annualForecastValue|annualCorrectedActualValue|annualActualValue)\":\s*([\d\.]+)', json_div)
+                # 基準日ごとの年間合計値
+                dps_matches_ext = re.findall(r'\"settlementDate\":\"(\d{4})\d{2}\"[^{}]*?\"(?:annualForecastValue|annualCorrectedActualValue|annualActualValue|annualActualDividend)\":\s*([\d\.]+)', json_div)
                 for year, val in dps_matches_ext:
                     v = float(val)
-                    if v < 100000: # 10万円以上の1株配当は通常ありえないため除外 (誤検知対策)
+                    if v < 100000:
                         if year not in div_history or v > div_history[year]:
                             div_history[year] = v
 
-        # 2. メインページからの補足 (最新の予想値などが配当ページに未反映の場合に備える)
-        # "dps" オブジェクトまたは "dividend" リスト内に限定して探索
+        # 2. メインページからの補足
         dps_area = re.search(r'\"dps\":\{.*?\}', json_q)
         if dps_area:
             ctx = dps_area.group(0)
@@ -320,14 +318,14 @@ class JPStockScraper(BaseScraper):
                         
         data['dividend_history'] = div_history
 
-        # 1株配当のリカバリ (メインページが未定 '---' の場合、詳細タブの履歴から当期・来期の値を拾う)
-        if dps_raw == "---" and div_history:
+        # 1株配当のリカバリ (メインページが未定 '---' や 'N/A'、または 0.0 の場合、詳細タブの履歴から値を拾う)
+        if (dps_raw in ["---", "N/A"] or data['annual_dividend'] == 0.0) and div_history:
             current_year = datetime.now().year
-            # 当期(current) または 来期(current+1) のデータを対象とする
-            valid_years = [str(current_year), str(current_year + 1)]
+            # 当期(current) または 来期(current+1) または 前期(current-1, 9月決算等のため) のデータを対象とする
+            valid_years = [str(current_year - 1), str(current_year), str(current_year + 1)]
             recovery_candidates = {y: v for y, v in div_history.items() if y in valid_years}
             if recovery_candidates:
-                # 最新の予想（最大年）を優先
+                # 未来の予想があればそれを優先、なければ最新
                 best_year = max(recovery_candidates.keys())
                 data['annual_dividend'] = recovery_candidates[best_year]
                 logger.info(f"Recovered annual_dividend for {code} from dividend_history: {data['annual_dividend']} (Year: {best_year})")

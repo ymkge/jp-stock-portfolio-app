@@ -466,6 +466,14 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
     # 2. スナップショットの保存 (DB更新) - 全アセットタイプ対象
     if scraped_data and "error" not in scraped_data:
         try:
+            # 修正: history_manager.get_daily_data によって merged_data 側は補完されている可能性がある
+            # scraped_data (DBレコード実体) が不完全な場合、補完済みの merged_data から属性を引き継いで
+            # DB側のレコードも「完全な状態」へ修復（上書き）させる
+            if not scraped_data.get("name") and merged_data.get("name"):
+                for key in ["name", "per", "pbr", "roe", "yield", "eps", "settlement_month", "industry", "asset_type", "market"]:
+                    if key in merged_data and key not in scraped_data:
+                        scraped_data[key] = merged_data[key]
+
             # 変更検知用のフラグ
             is_changed = False
             

@@ -203,9 +203,30 @@ def get_historical_data_for_analysis(code: str, limit: int = 300) -> List[Dict[s
         logger.info(f"Historical data not available for {code} in DB yet: {e}")
         return []
 
+def get_latest_metadata(code: str) -> Optional[Dict[str, Any]]:
+    """DB内の全履歴から、名称などの属性が含まれている最新のレコードを取得する（自己修復用）"""
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            # data_json 内に "name" キーが含まれる最新の1件を取得
+            cursor.execute("""
+                SELECT data_json FROM daily_stock_history 
+                WHERE code = ? AND data_json LIKE '%"name"%'
+                ORDER BY date DESC
+                LIMIT 1
+            """, (code,))
+            row = cursor.fetchone()
+            if row:
+                return json.loads(row["data_json"])
+    except Exception as e:
+        logger.error(f"Failed to get latest metadata for {code}: {e}")
+    return None
+
 def get_daily_data(code: str, date_str: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     指定された日付（デフォルトは当日JST）のキャッシュデータをDBから取得する。
+    データが不完全（名称なし）な場合は、過去の履歴から属性を補完する。
     """
     if not date_str:
         date_str = get_now_jst().strftime("%Y-%m-%d")
@@ -221,7 +242,26 @@ def get_daily_data(code: str, date_str: Optional[str] = None) -> Optional[Dict[s
             row = cursor.fetchone()
             if row:
                 data = json.loads(row["data_json"])
-                # 取得したデータに更新日時情報を付与して返す
+                
+                # メタデータ補完ロジック (インテリジェント・リカバリ)
+                if "name" not in data:
+                    metadata = get_latest_metadata(code)
+                    if metadata:
+                        # 名称や基本指標など、現在のデータに足りないものを過去から引き継ぐ
+                        keys_to_restore = [
+                            "name", "price", "per", "pbr", "roe", "yield", "eps", 
+                            "settlement_month", "industry", "asset_type", "market"
+                        ]
+                        for key in keys_to_restore:
+                            if key not in data and key in metadata:
+                                data[key] = metadata[key]
+                        
+                        # 特殊対応: price がどうしてもない場合、closePrice で代用を試みる
+                        if not data.get("price") and data.get("closePrice"):
+                            data["price"] = data["closePrice"]
+                            
+                        logger.debug(f"Recovered metadata for {code} from history.")
+
                 data["_db_updated_at_jst"] = row["updated_at_jst"]
                 return data
     except (sqlite3.Error, json.JSONDecodeError) as e:

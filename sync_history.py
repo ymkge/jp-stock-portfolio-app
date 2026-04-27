@@ -98,9 +98,28 @@ class HistorySyncTool:
         all_histories_to_save = []
         base_url = f"https://finance.yahoo.co.jp/quote/{code}.T/history"
         
+        # まず現在値を把握 (動的フィルタ用)
+        current_price = 0.0
+        try:
+            main_url = f"https://finance.yahoo.co.jp/quote/{code}.T"
+            res_m = self.scraper._make_request(main_url)
+            if res_m:
+                json_m = self.scraper._extract_next_data(res_m.text)
+                m_data = self.scraper._scavenge_common_data(res_m.text, json_m)
+                p_val = m_data.get('price')
+                if isinstance(p_val, str): p_val = p_val.replace(',', '')
+                current_price = float(p_val) if p_val not in [None, "N/A", "--", "---", ""] else 0.0
+        except: pass
+
         for page in range(1, self.max_pages + 1):
             logger.info(f"  Fetching page {page} for {code}...")
-            url = f"{base_url}?page={page}" if page > 1 else base_url
+            
+            # Next.js のデータエンドポイント用パラメータを付与 (2ページ目以降で必須)
+            if page == 1:
+                url = base_url
+            else:
+                params = f"page={page}&_data=app%2Fpc%2F%5Btype%5D%2Fquote%2F%5Bcode%5D%2Fhistory%2Fpage"
+                url = f"{base_url}?{params}"
             
             res = self.scraper._make_request(url)
             if not res:
@@ -110,10 +129,11 @@ class HistorySyncTool:
             if res.status_code == 403:
                 logger.critical("!!! 403 Forbidden detected. Circuit breaker activated !!!")
                 sys.exit(1)
-            
+            # JSONデータの抽出
             json_data = self.scraper._extract_next_data(res.text)
-            # scraper._parse_histories は BaseScraperまたはJPStockScraperのものを使用
-            raw_histories = self.scraper._parse_histories(json_data if json_data else res.text)
+            # scraper._parse_histories は 現在値を基準にフィルタリングを行う
+            raw_histories = self.scraper._parse_histories(json_data if json_data else res.text, current_price=current_price)
+
             
             if not raw_histories:
                 logger.info("  No more history data found.")

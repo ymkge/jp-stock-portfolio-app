@@ -121,44 +121,47 @@ class BaseScraper(ABC):
 
         return data
 
-    def _parse_histories(self, json_text: str) -> List[Dict[str, Any]]:
-        """JSONテキストの正しい階層(histories)からのみ時系列データを回収する"""
+    def _parse_histories(self, json_text: str, current_price: float = None) -> List[Dict[str, Any]]:
+        """株価履歴のみを抽出し、現在値に基づいた動的フィルタで異常値を除外する"""
         histories = []
-        # エスケープの有無に配慮
-        start_idx = json_text.find('"histories":[')
-        if start_idx == -1: start_idx = json_text.find('\"histories\":[')
-        if start_idx == -1: return []
-
-        search_area = json_text[start_idx:start_idx + 150000]
-        # 日付と数値のペアを抽出
-        records = re.findall(r'\"?date\"?:\s*\"?(\d{4}[-/]\d{1,2}[-/]\d{1,2})\"?,\s*\"?values\"?:\s*\[(.*?\])', search_area, re.S)
+        norm_text = json_text.replace('\\"', '"')
+        
+        records = re.findall(r'\{"date":"(\d{4}[-/]\d{1,2}[-/]\d{1,2})",\s*"values":\s*\[(.*?\}\s*\])', norm_text, re.S)
+        
         for dt_str, val_block in records:
-            vals = re.findall(r'\"?value\"?:\s*\"?([\d\.\,]+)\"?', val_block)
-            if len(vals) >= 5:
+            vals = re.findall(r'"value":"([\d\.\-\,]+)"', val_block)
+            
+            if len(vals) < 5: continue
+                
+            try:
+                cl_p = float(vals[3].replace(',', ''))
+                vol  = float(vals[4].replace(',', ''))
+                
+                # --- 厳格な動的バリデーション ---
+                if cl_p <= 0: continue
+                
+                # 現在値がわかっている場合、それと比較して異常な値(出来高混入や未補正分割)を排除
+                if current_price and current_price > 0:
+                    # 現在値の 1/5 以下、または 5倍以上は異常値として除外
+                    if cl_p < current_price * 0.2 or cl_p > current_price * 5.0:
+                        continue
+                
                 histories.append({
                     "baseDatetime": dt_str, 
-                    "closePrice": vals[3].replace(',', ''),
-                    "volume": vals[4].replace(',', '')
+                    "closePrice": str(cl_p),
+                    "volume": str(int(vol))
                 })
-            elif len(vals) >= 4:
-                histories.append({
-                    "baseDatetime": dt_str, 
-                    "closePrice": vals[3].replace(',', '')
-                })
+            except (ValueError, IndexError): continue
 
-        # 日付オブジェクトで重複排除とソートを行う
         unique_histories = {}
         for h in histories:
             dt_s = h['baseDatetime'].replace('-', '/')
             try:
-                # ゼロ埋めなし (2026/4/9) と ゼロ埋めあり (2026/04/09) の両方に対応
                 dt_obj = datetime.strptime(dt_s, '%Y/%m/%d')
                 if dt_obj not in unique_histories:
                     unique_histories[dt_obj] = h
-            except ValueError:
-                continue
+            except ValueError: continue
 
-        # 新しい順にソートして返す
         sorted_keys = sorted(unique_histories.keys(), reverse=True)
         return [unique_histories[k] for k in sorted_keys]
     @abstractmethod
@@ -221,14 +224,30 @@ class JPStockScraper(BaseScraper):
     @cachedmethod(lambda self: self.cache, key=lambda self, code, **kwargs: code)
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
         logger.info(f"Fetching JP Stock (Hybrid): {code}.T")
+        
+        # 1. まずメインページから「現在値」を取得する (分析の基準値にするため)
+        url_q = f"https://finance.yahoo.co.jp/quote/{code}.T"
+        res_q = self._make_request(url_q)
+        if not res_q: return {"code": code, "error": "メインページの取得に失敗しました"}
+        json_q = self._extract_next_data(res_q.text)
+        
+        # 基本データの抽出
+        data = self._scavenge_common_data(res_q.text, json_q)
+        cur_p = 0.0
+        try:
+            p_val = data.get('price', 0)
+            if isinstance(p_val, str): p_val = p_val.replace(',', '')
+            cur_p = float(p_val) if p_val not in [None, "N/A", "--", "---", ""] else 0.0
+        except: pass
+
+        # 2. 履歴ページを取得し、現在値を基準にパース
+        time.sleep(1.2)
         url_h = f"https://finance.yahoo.co.jp/quote/{code}.T/history"
         res_h = self._make_request(url_h)
-        if not res_h: return {"code": code, "error": "通信エラー"}
-
-        # 1. 最新の1ページ分をパース
+        if not res_h: return {"code": code, "error": "履歴の取得に失敗しました"}
+        
         json_h = self._extract_next_data(res_h.text)
-        data = self._scavenge_common_data(res_h.text, json_h)
-        scraped_histories = self._parse_histories(json_h)
+        scraped_histories = self._parse_histories(json_h if json_h else res_h.text, current_price=cur_p)
         for h in scraped_histories: h['date'] = h.get('baseDatetime', '').replace('/', '-')
 
         # 2. DBから過去データを取得してマージ
@@ -245,7 +264,13 @@ class JPStockScraper(BaseScraper):
         histories = [combined_map[d] for d in sorted_dates]
 
         # 3. 分析の実行 (1年分のデータがあれば200日線、52週高安が算出可能)
-        cur_p = float(data.get('price', 0))
+        price_raw = data.get('price', 0)
+        try:
+            if isinstance(price_raw, str):
+                price_raw = price_raw.replace(',', '')
+            cur_p = float(price_raw) if price_raw not in [None, "N/A", "--", "---", ""] else 0.0
+        except (ValueError, TypeError):
+            cur_p = 0.0
         
         # 移動平均 (25, 75, 200)
         data['ma25'] = self._calculate_moving_average(histories, 25, cur_p)
@@ -270,6 +295,9 @@ class JPStockScraper(BaseScraper):
         res_q = self._make_request(url_q)
         if not res_q: return {"code": code, "error": "メインページの取得に失敗しました"}
         json_q = self._extract_next_data(res_q.text)
+        
+        # 追加: メインページから正確な名称、価格、時価総額等を確定させる
+        data.update(self._scavenge_common_data(res_q.text, json_q))
         
         # 基本指標 (境界制約 [^{}]*? を導入して他項目への飛び越しを防止)
         per_m = re.search(r'\"per\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)

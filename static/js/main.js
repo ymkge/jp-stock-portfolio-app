@@ -384,7 +384,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const fib = jpStock.fibonacci;
             if (fib && fib.retracement !== undefined) {
                 const fibVal = `${fib.retracement.toFixed(1)}%`;
-                const fibTooltip = `算出期間: ${fib.period || '不明'}日\n直近高値: ${fib.high?.toLocaleString() || '-'}円\n直近安値: ${fib.low?.toLocaleString() || '-'}円`;
+                const hCount = jpStock.history_count || fib.period || '不明';
+                const fibTooltip = `算出期間: ${hCount}日\n直近高値: ${fib.high?.toLocaleString() || '-'}円\n直近安値: ${fib.low?.toLocaleString() || '-'}円`;
                 createCellWithTooltip(fibVal, 'numeric', fibTooltip);
             } else {
                 createCell('-', 'numeric');
@@ -555,7 +556,8 @@ document.addEventListener('DOMContentLoaded', () => {
             themeClass = 'theme-unreliable';
         }
 
-        const title = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${signal.reasons.join('\n')}`;
+        const reliabilityNote = signal.is_unreliable ? `\n\n【注意】時系列データが不足しています。` : '';
+        const title = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${signal.reasons.join('\n')}` + reliabilityNote;
         return `<span class="signal-badge-base ${themeClass}" title="${title}"><span class="signal-badge-text"><span class="buy-signal-icon-inner">${signal.icon}</span>${signal.label}</span></span>`;
     }
 
@@ -581,7 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderScoreAsStars(score, details, assetType) {
         if (assetType !== 'jp_stock' || score === undefined || score === null) return 'N/A';
         if (score === -1) return `<span class="score-na" title="評価指標なし">N/A</span>`;
-        const trendScore = (details.trend_short || 0) + (details.trend_medium || 0) + (details.trend_signal || 0) + (details.fibonacci || 0) + (details.rci || 0);
+        const trendScore = (details.trend_short || 0) + (details.trend_medium || 0) + (details.trend_long || 0) + (details.trend_signal || 0) + (details.fibonacci || 0) + (details.rci || 0) + (details.range_yearly || 0);
         const fundamentalScore = score - trendScore;
         let html = '';
         for (let i = 0; i < 16; i++) {
@@ -589,7 +591,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const cls = i < fundamentalScore ? 'score-fundamental' : (i < score ? 'score-trend' : 'score-empty');
             html += `<span class="${cls}">${i < score ? '★' : '☆'}</span>`;
         }
-        const tooltip = `合計: ${score}/15 (PER: ${details.per||0}, PBR: ${details.pbr||0}, ROE: ${details.roe||0}, 利回り: ${details.yield||0}, 連続増配: ${details.consecutive_increase||0}, テクニカル: ${trendScore})`;
+        const tooltip = `合計: ${score}/15 (PER: ${details.per||0}, PBR: ${details.pbr||0}, ROE: ${details.roe||0}, 利回り: ${details.yield||0}, 増配: ${details.consecutive_increase||0}, 短中トレンド: ${(details.trend_short||0)+(details.trend_medium||0)+(details.trend_signal||0)}, 200日線: ${details.trend_long||0}, 年間位置: ${details.range_yearly||0})`;
         const warning = details.is_reliable === false ? `<span class="score-unreliable-icon" title="不完全: ${details.missing_items.join(', ')}">⚠️</span>` : '';
         return `<span class="score-container" title="${tooltip}">${html}</span>${warning}`;
     }

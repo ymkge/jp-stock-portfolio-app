@@ -134,8 +134,17 @@ class BaseScraper(ABC):
         records = re.findall(r'\"?date\"?:\s*\"?(\d{4}[-/]\d{1,2}[-/]\d{1,2})\"?,\s*\"?values\"?:\s*\[(.*?\])', search_area, re.S)
         for dt_str, val_block in records:
             vals = re.findall(r'\"?value\"?:\s*\"?([\d\.\,]+)\"?', val_block)
-            if len(vals) >= 4:
-                histories.append({"baseDatetime": dt_str, "closePrice": vals[3].replace(',', '')})
+            if len(vals) >= 5:
+                histories.append({
+                    "baseDatetime": dt_str, 
+                    "closePrice": vals[3].replace(',', ''),
+                    "volume": vals[4].replace(',', '')
+                })
+            elif len(vals) >= 4:
+                histories.append({
+                    "baseDatetime": dt_str, 
+                    "closePrice": vals[3].replace(',', '')
+                })
 
         # 日付オブジェクトで重複排除とソートを行う
         unique_histories = {}
@@ -211,20 +220,51 @@ class JPStockScraper(BaseScraper):
 
     @cachedmethod(lambda self: self.cache, key=lambda self, code, **kwargs: code)
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
-        logger.info(f"Fetching JP Stock: {code}.T")
+        logger.info(f"Fetching JP Stock (Hybrid): {code}.T")
         url_h = f"https://finance.yahoo.co.jp/quote/{code}.T/history"
         res_h = self._make_request(url_h)
         if not res_h: return {"code": code, "error": "通信エラー"}
 
+        # 1. 最新の1ページ分をパース
         json_h = self._extract_next_data(res_h.text)
         data = self._scavenge_common_data(res_h.text, json_h)
-        histories = self._parse_histories(json_h)
+        scraped_histories = self._parse_histories(json_h)
+        for h in scraped_histories: h['date'] = h.get('baseDatetime', '').replace('/', '-')
 
-        time.sleep(1.2)
-        url_p2 = f"{url_h}?page=2&_data=app%2Fpc%2F%5Btype%5D%2Fquote%2F%5Bcode%5D%2Fhistory%2Fpage"
-        res_p2 = self._make_request(url_p2)
-        if res_p2: histories.extend(self._parse_histories(res_p2.text))
+        # 2. DBから過去データを取得してマージ
+        from history_manager import get_historical_data_for_analysis
+        db_histories = get_historical_data_for_analysis(code, limit=300)
+        
+        # マージロジック (日付をキーにして重複排除)
+        combined_map = {h['date']: h for h in db_histories}
+        for h in scraped_histories:
+            combined_map[h['date']] = h # 通信データを優先
+        
+        # 新しい順にソート
+        sorted_dates = sorted(combined_map.keys(), reverse=True)
+        histories = [combined_map[d] for d in sorted_dates]
 
+        # 3. 分析の実行 (1年分のデータがあれば200日線、52週高安が算出可能)
+        cur_p = float(data.get('price', 0))
+        
+        # 移動平均 (25, 75, 200)
+        data['ma25'] = self._calculate_moving_average(histories, 25, cur_p)
+        data['ma75'] = self._calculate_moving_average(histories, 75, cur_p)
+        data['ma200'] = self._calculate_moving_average(histories, 200, cur_p)
+        
+        # 52週（全期間）高安レンジ
+        data['range_52w'] = self._calculate_fibonacci(histories, cur_p)
+        # 後方互換性のため fibonacci キーも保持
+        data['fibonacci'] = data['range_52w']
+
+        data['rci26'] = self._calculate_rci(histories, 26, cur_p)
+        data['rsi14'] = self._calculate_rsi(histories, 14, cur_p)
+        
+        # 判定の信頼性 (200日分あれば最高、最低でも75日は欲しい)
+        data['is_reliable'] = len(histories) >= 75
+        data['history_count'] = len(histories)
+
+        # メインページの基本情報取得 (PER, PBR, 利回り等)
         time.sleep(1.2)
         url_q = f"https://finance.yahoo.co.jp/quote/{code}.T"
         res_q = self._make_request(url_q)

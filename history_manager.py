@@ -147,17 +147,61 @@ def save_daily_data(code: str, asset_type: str, data: Dict[str, Any]) -> bool:
     
     try:
         data_json = json.dumps(data, ensure_ascii=False)
+        # 修正: close_price と volume を抽出して保存 (数値変換含む)
+        close_price = data.get("price")
+        if isinstance(close_price, str):
+            # 文字列の場合はカンマを除去して変換
+            try:
+                close_price = float(close_price.replace(",", "")) if close_price not in ["N/A", "--", ""] else None
+            except ValueError:
+                close_price = None
+            
+        volume = data.get("volume")
+        if isinstance(volume, str):
+            try:
+                volume = int(float(volume.replace(",", ""))) if volume not in ["N/A", "--", ""] else None
+            except ValueError:
+                volume = None
+
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT OR REPLACE INTO daily_stock_history (date, code, asset_type, data_json, updated_at_jst)
-                VALUES (?, ?, ?, ?, ?)
-            """, (date_str, code, asset_type, data_json, updated_at_str))
+                INSERT OR REPLACE INTO daily_stock_history 
+                (date, code, asset_type, data_json, updated_at_jst, close_price, volume)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (date_str, code, asset_type, data_json, updated_at_str, close_price, volume))
             conn.commit()
         return True
     except (sqlite3.Error, TypeError) as e:
         logger.error(f"Failed to save daily data for {code}: {e}")
         return False
+
+def get_historical_data_for_analysis(code: str, limit: int = 300) -> List[Dict[str, Any]]:
+    """分析用にDBから過去の履歴データを取得する（最新順、最大約1年分）"""
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT date, close_price, volume 
+                FROM daily_stock_history 
+                WHERE code = ? AND close_price IS NOT NULL
+                ORDER BY date DESC 
+                LIMIT ?
+            """, (code, limit))
+            
+            rows = cursor.fetchall()
+            results = []
+            for row in rows:
+                results.append({
+                    "date": row["date"],
+                    "closePrice": row["close_price"],
+                    "volume": row["volume"]
+                })
+            return results
+    except Exception as e:
+        logger.info(f"Historical data not available for {code} in DB yet: {e}")
+        return []
 
 def get_daily_data(code: str, date_str: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """

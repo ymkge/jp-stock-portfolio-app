@@ -347,7 +347,7 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     if is_diamond:
         reasons.insert(0, f"高確信(ファンダ{f_diamond}点以上)")
 
-    # --- 長期調整の追加判定 ---
+    # --- 長期調整およびトレンド抑制の追加判定 ---
     label = config["label"]
     if not is_reliable:
         label += " (判定不完全)"
@@ -357,24 +357,51 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     if not is_reliable:
         current_status += f" 【注意】以下の項目が取得できていません: {', '.join(missing_items)}"
     
+    # 200日線によるトレンド抑制判定
+    is_downward_trend = False
     try:
-        ma_75 = stock_data.get("moving_average_75")
+        ma_200 = stock_data.get("ma200")
+        if price > 0 and ma_200:
+            deviation_200 = (price - ma_200) / ma_200 * 100
+            if deviation_200 <= -5.0: # 200日線から5%以上下
+                is_downward_trend = True
+    except: pass
+
+    # 長期調整判定 (75日線 または 200日線)
+    is_long_adjustment = False
+    max_deviation = 0.0
+    try:
+        ma_75 = stock_data.get("ma75") or stock_data.get("moving_average_75")
         ma_75_threshold = get_config("buy_signal.thresholds.ma_75_diff_threshold", -10.0)
-        if price > 0 and ma_75:
-            deviation_75 = (price - ma_75) / ma_75 * 100
-            if deviation_75 <= ma_75_threshold:
-                long_config = get_config("buy_signal.display.long_adjustment", {})
-                label += long_config.get("suffix", "＋長期調整中")
-                recommended_action = long_config.get("recommended_action_override", recommended_action)
-                current_status += " " + long_config.get("current_status_append", "")
-                reasons.append(f"75日線乖離過大({deviation_75:.1f}%)")
-    except (ValueError, TypeError, KeyError): pass
+        ma_200 = stock_data.get("ma200")
+        
+        if price > 0:
+            dev_75 = (price - ma_75) / ma_75 * 100 if ma_75 else 0
+            dev_200 = (price - ma_200) / ma_200 * 100 if ma_200 else 0
+            
+            if dev_75 <= ma_75_threshold or dev_200 <= -15.0:
+                is_long_adjustment = True
+                max_deviation = min(dev_75, dev_200)
+    except: pass
+
+    # ロジック統合: 下降トレンド中は慎重に、ただし優良株の長期調整はチャンス
+    if is_long_adjustment:
+        long_config = get_config("buy_signal.display.long_adjustment", {})
+        label += long_config.get("suffix", "＋長期調整中")
+        recommended_action = long_config.get("recommended_action_override", recommended_action)
+        current_status += " " + long_config.get("current_status_append", "")
+        reasons.append(f"長期乖離過大({max_deviation:.1f}%)")
+    elif is_downward_trend and not is_diamond:
+        # 優良株以外で長期下降トレンド中の場合は、シグナルを抑制（格下げ）
+        label = "⚠️長期下降トレンド"
+        recommended_action = "長期的な下落基調にあります。安易なリバウンド狙いは避け、底打ちを確認してください。"
+        icon = "📉"
 
     return {
         "level": level,
         "is_diamond": is_diamond,
         "is_unreliable": not is_reliable,
-        "icon": config["icon_diamond"] if is_diamond else config["icon"],
+        "icon": icon if 'icon' in locals() else (config["icon_diamond"] if is_diamond else config["icon"]),
         "label": label,
         "recommended_action": recommended_action,
         "current_status": current_status,
@@ -499,11 +526,13 @@ def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
 def calculate_score(stock_data: dict) -> tuple[int, dict]:
     details = {
         "per": 0, "pbr": 0, "roe": 0, "yield": 0, "consecutive_increase": 0,
-        "trend_short": 0, "trend_medium": 0, "trend_signal": 0,
-        "fibonacci": 0, "rci": 0
+        "trend_short": 0, "trend_medium": 0, "trend_long": 0, "trend_signal": 0,
+        "fibonacci": 0, "rci": 0, "range_yearly": 0
     }
     missing_items = []
     is_calculable = False
+
+    # (中略: ファンダメンタルズ評価は変更なし)
     
     # --- 既存のファンダメンタルズ評価 ---
     try:
@@ -572,22 +601,26 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
             if isinstance(price_val, str):
                 price_val = price_val.replace(',', '')
             price = float(price_val or 0)
-            ma_25 = stock_data.get("moving_average_25")
-            ma_75 = stock_data.get("moving_average_75")
-            
+            ma_25 = stock_data.get("ma25") or stock_data.get("moving_average_25")
+            ma_75 = stock_data.get("ma75") or stock_data.get("moving_average_75")
+            ma_200 = stock_data.get("ma200")
+
             if price > 0:
-                if ma_25 and price > ma_25: 
+                if ma_25 and price > ma_25:
                     is_calculable = True
                     details["trend_short"] += 1
-                if ma_75 and price > ma_75: 
+                if ma_75 and price > ma_75:
                     is_calculable = True
                     details["trend_medium"] += 1
-                if ma_25 and ma_75 and ma_25 > ma_75: 
+                if ma_200 and price > ma_200:
+                    is_calculable = True
+                    details["trend_long"] += 1
+                if ma_25 and ma_75 and ma_25 > ma_75:
                     is_calculable = True
                     details["trend_signal"] += 1
 
-            # --- フィボナッチ判定 ---
-            fib = stock_data.get("fibonacci")
+            # --- フィボナッチ判定 (全期間/52週ベース) ---
+            fib = stock_data.get("range_52w") or stock_data.get("fibonacci")
             if fib and isinstance(fib, dict):
                 retracement = fib.get("retracement")
                 min_ret = get_config("trend.fibonacci.min_retracement", 50.0)
@@ -595,6 +628,12 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
                 if retracement is not None and min_ret <= retracement <= max_ret:
                     is_calculable = True
                     details["fibonacci"] += 1
+
+                # 年間安値圏判定 (下位25%以内)
+                if retracement is not None and retracement >= 75.0:
+                    is_calculable = True
+                    details["range_yearly"] += 1
+
             elif get_config("trend.fibonacci.enabled", True):
                 missing_items.append("フィボナッチ")
 

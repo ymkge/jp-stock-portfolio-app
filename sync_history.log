@@ -667,3 +667,5 @@
 2026-04-27 19:43:42,456 [INFO]   Reached already synced data for 9684. Stopping.
 2026-04-27 19:43:42,457 [INFO] Saved 1 records for 9684
 2026-04-27 19:43:42,457 [INFO] Sync completed. Processed 107 stocks.
+2026-04-28 22:22:13,618 [INFO] Database backup created: portfolio_history.db.sync_bak_20260428_222213
+2026-04-28 22:22:13,619 [INFO] Cleaned up 114 potentially invalid records for 2026-04-27

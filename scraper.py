@@ -83,7 +83,12 @@ class BaseScraper(ABC):
         else:
             data['name'] = "N/A"
 
-        # 2. 現在値 (JSON優先、特定構造を優先的に探索)
+        # 2. 出来高 (JSON優先)
+        vol_m = re.search(r'\"?volume\"?:\{[^{}]*?\"?value\"?:\s*\"?([\d\.\-\,]+)\"?', json_text)
+        if vol_m:
+            data['volume'] = vol_m.group(1).replace(',', '')
+
+        # 3. 現在値 (JSON優先、特定構造を優先的に探索)
         # 投資信託の価格 (fundPrices) を優先
         it_p_match = re.search(r'\"?fundPrices\"?:\{[^{}]*?\"?price\"?:\s*\"?([\d\.\,]+)\"?', json_text)
         if it_p_match:
@@ -131,19 +136,28 @@ class BaseScraper(ABC):
         for dt_str, val_block in records:
             vals = re.findall(r'"value":"([\d\.\-\,]+)"', val_block)
             
-            if len(vals) < 5: continue
+            # 日本株の履歴行は通常7要素。5要素以下のものは配当・分割行の可能性が高いため除外
+            if len(vals) < 7: continue
                 
             try:
-                cl_p = float(vals[3].replace(',', ''))
-                vol  = float(vals[4].replace(',', ''))
+                cl_p_raw = vals[3].replace(',', '')
+                vol_raw  = vals[4].replace(',', '')
+                
+                cl_p = float(cl_p_raw)
+                
+                # 出来高が小数（19.08など）の場合は株価行ではないため除外
+                if '.' in vol_raw and not vol_raw.endswith('.0'):
+                    continue
+                
+                vol = float(vol_raw)
                 
                 # --- 厳格な動的バリデーション ---
                 if cl_p <= 0: continue
                 
-                # 現在値がわかっている場合、それと比較して異常な値(出来高混入や未補正分割)を排除
+                # 現在値がわかっている場合、それと比較して異常な値(出来高混入など)を排除
                 if current_price and current_price > 0:
-                    # 現在値の 1/5 以下、または 5倍以上は異常値として除外
-                    if cl_p < current_price * 0.2 or cl_p > current_price * 5.0:
+                    # 乖離率が50%を超える場合は異常値とみなす
+                    if abs(cl_p - current_price) / current_price > 0.5:
                         continue
                 
                 histories.append({

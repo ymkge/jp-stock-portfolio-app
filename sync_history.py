@@ -36,6 +36,8 @@ class HistorySyncTool:
         self.scraper = JPStockScraper()
         self.max_pages = 13
         self.processed_count = 0
+        self.success_count = 0
+        self.error_list = []
         
     def backup_db(self):
         """実行前にDBの物理バックアップを作成する"""
@@ -48,13 +50,26 @@ class HistorySyncTool:
             logger.warning("DB_FILE not found. Initializing new DB.")
             init_db()
 
+    def cleanup_invalid_data(self, date_str="2026-04-27"):
+        """特定の日付の不正データを削除する"""
+        try:
+            with sqlite3.connect(DB_FILE) as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM daily_stock_history WHERE date = ?", (date_str,))
+                deleted = cursor.rowcount
+                conn.commit()
+                if deleted > 0:
+                    logger.info(f"Cleaned up {deleted} potentially invalid records for {date_str}")
+        except Exception as e:
+            logger.error(f"Failed to cleanup data: {e}")
+
     def get_latest_date_in_db(self, code):
         """指定銘柄のDB内最新日付を取得する"""
         try:
             with sqlite3.connect(DB_FILE) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "SELECT MAX(date) FROM daily_stock_history WHERE code = ?", 
+                    "SELECT MAX(date) FROM daily_stock_history WHERE code = ? AND close_price IS NOT NULL", 
                     (code,)
                 )
                 res = cursor.fetchone()
@@ -64,16 +79,35 @@ class HistorySyncTool:
             return "1970-01-01"
 
     def save_histories(self, histories):
-        """取得した時系列データをDBに保存する"""
+        """取得した時系列データをDBに保存し、統計情報を返す"""
         if not histories:
-            return
+            return None
         
         try:
+            # 価格の統計計算
+            prices = [float(h['closePrice']) for h in histories if h.get('closePrice') and h.get('closePrice') != "N/A"]
+            stats = {
+                'count': len(histories),
+                'start_date': min(h['date'] for h in histories),
+                'end_date': max(h['date'] for h in histories),
+                'min_price': min(prices) if prices else 0,
+                'max_price': max(prices) if prices else 0,
+                'avg_price': sum(prices) / len(prices) if prices else 0
+            }
+
             with sqlite3.connect(DB_FILE) as conn:
                 cursor = conn.cursor()
                 for h in histories:
-                    # DB用の生データを準備
                     data_json = json.dumps(h)
+                    
+                    # 数値へのキャストを確実に実行
+                    try:
+                        c_p = float(h.get('closePrice')) if h.get('closePrice') else None
+                        v_ol = int(float(h.get('volume'))) if h.get('volume') else None
+                    except (ValueError, TypeError):
+                        c_p = None
+                        v_ol = None
+
                     cursor.execute("""
                         INSERT INTO daily_stock_history (date, code, asset_type, close_price, volume, data_json, updated_at_jst)
                         VALUES (?, ?, 'jp_stock', ?, ?, ?, ?)
@@ -82,18 +116,20 @@ class HistorySyncTool:
                             volume = COALESCE(excluded.volume, volume),
                             updated_at_jst = excluded.updated_at_jst
                     """, (
-                        h['date'], h['code'], h.get('closePrice'), h.get('volume'),
+                        h['date'], h['code'], c_p, v_ol,
                         data_json, datetime.now(JST).isoformat()
                     ))
                 conn.commit()
-                logger.info(f"Saved {len(histories)} records for {histories[0]['code']}")
+            return stats
         except Exception as e:
             logger.error(f"Failed to save to DB: {e}")
+            raise e
 
     def sync_stock(self, code):
         """1銘柄の履歴を同期する"""
         latest_date = self.get_latest_date_in_db(code)
-        logger.info(f"Syncing {code}: DB latest date is {latest_date}")
+        # JSTでの今日の日付を取得 (当日分は除外するため)
+        today_jst = datetime.now(JST).strftime("%Y-%m-%d")
         
         all_histories_to_save = []
         base_url = f"https://finance.yahoo.co.jp/quote/{code}.T/history"
@@ -112,9 +148,6 @@ class HistorySyncTool:
         except: pass
 
         for page in range(1, self.max_pages + 1):
-            logger.info(f"  Fetching page {page} for {code}...")
-            
-            # Next.js のデータエンドポイント用パラメータを付与 (2ページ目以降で必須)
             if page == 1:
                 url = base_url
             else:
@@ -123,26 +156,22 @@ class HistorySyncTool:
             
             res = self.scraper._make_request(url)
             if not res:
-                logger.error(f"  Failed to fetch page {page}")
-                break
+                raise Exception(f"HTTP Error or connection failed at page {page}")
                 
             if res.status_code == 403:
                 logger.critical("!!! 403 Forbidden detected. Circuit breaker activated !!!")
                 sys.exit(1)
-            # JSONデータの抽出
-            json_data = self.scraper._extract_next_data(res.text)
-            # scraper._parse_histories は 現在値を基準にフィルタリングを行う
-            raw_histories = self.scraper._parse_histories(json_data if json_data else res.text, current_price=current_price)
 
+            json_data = self.scraper._extract_next_data(res.text)
+            # scraper._parse_histories が強化版フィルタリングを実行する
+            raw_histories = self.scraper._parse_histories(json_data if json_data else res.text, current_price=current_price)
             
             if not raw_histories:
-                logger.info("  No more history data found.")
                 break
             
             new_data_found = False
             page_data_to_add = []
             for h in raw_histories:
-                # 日付の正規化 (YYYY/M/D -> YYYY-MM-DD)
                 raw_dt = h.get('baseDatetime')
                 if not raw_dt: continue
                 
@@ -150,12 +179,16 @@ class HistorySyncTool:
                     dt_obj = datetime.strptime(raw_dt.replace('-', '/'), '%Y/%m/%d')
                     iso_date = dt_obj.strftime('%Y-%m-%d')
                 except ValueError:
-                    logger.warning(f"  Invalid date format: {raw_dt}")
                     continue
                 
                 h['date'] = iso_date
                 h['code'] = code
                 
+                # 1. 範囲制限: 当日以降のデータは除外（前日まで）
+                if h['date'] >= today_jst:
+                    continue
+                
+                # 2. 既存データとの重複チェック
                 if h['date'] <= latest_date:
                     continue
                 
@@ -165,20 +198,19 @@ class HistorySyncTool:
             all_histories_to_save.extend(page_data_to_add)
             
             if not new_data_found and page > 1:
-                logger.info(f"  Reached already synced data for {code}. Stopping.")
                 break
                 
-            # ページ間待機
-            time.sleep(2.0 + random.uniform(0, 1.5))
+            # ページ間待機 (Yahoo負荷軽減)
+            time.sleep(1.5 + random.uniform(0, 1.0))
             
-        self.save_histories(all_histories_to_save)
+        return self.save_histories(all_histories_to_save)
 
     def run(self):
         """メイン実行ループ"""
         self.backup_db()
+        self.cleanup_invalid_data("2026-04-27") # 4/27の不正データを掃除
         
         portfolio = load_portfolio()
-        # テスト用に1銘柄のみ
         jp_stocks = [s for s in portfolio if s.get('asset_type') == 'jp_stock']
         
         total = len(jp_stocks)
@@ -186,21 +218,45 @@ class HistorySyncTool:
         
         for i, stock in enumerate(jp_stocks, 1):
             code = stock['code']
-            logger.info(f"[{i}/{total}] Processing {code} ({stock.get('name', 'Unknown')})")
+            name = stock.get('name', 'Unknown')
             
             try:
-                self.sync_stock(code)
-                self.processed_count += 1
+                stats = self.sync_stock(code)
+                if stats:
+                    self.success_count += 1
+                    msg = (f"[{i}/{total}] SUCCESS: {code} ({name}) | "
+                           f"New Records: {stats['count']} | "
+                           f"Period: {stats['start_date']} to {stats['end_date']} | "
+                           f"Price: Min={stats['min_price']:.1f}, Max={stats['max_price']:.1f}, Avg={stats['avg_price']:.1f}")
+                    logger.info(msg)
+                else:
+                    logger.info(f"[{i}/{total}] SKIP: {code} ({name}) | No new records to sync.")
+                
             except Exception as e:
-                logger.error(f"Unexpected error syncing {code}: {e}", exc_info=True)
+                self.error_list.append((code, name, str(e)))
+                logger.error(f"[{i}/{total}] FAILED: {code} ({name}) | Reason: {e}")
             
+            self.processed_count += 1
+            
+            # クールダウン (10銘柄ごとに深呼吸、それ以外も一定間隔)
             if i % 10 == 0 and i < total:
-                logger.info("Taking a deep breath (60s wait)...")
-                time.sleep(60)
+                logger.info("Taking a deep breath (30s wait to avoid 403)...")
+                time.sleep(30)
             elif i < total:
-                time.sleep(5.0 + random.uniform(0, 3.0))
+                time.sleep(3.0 + random.uniform(0, 2.0))
         
-        logger.info(f"Sync completed. Processed {self.processed_count} stocks.")
+        # 最終サマリーレポート
+        logger.info("-" * 60)
+        logger.info(f"Sync Process Completed at {datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"Total Portfolio Stocks: {total}")
+        logger.info(f"Successfully Synced : {self.success_count}")
+        logger.info(f"Failed/Errors       : {len(self.error_list)}")
+        
+        if self.error_list:
+            logger.info("Detailed Error List:")
+            for code, name, reason in self.error_list:
+                logger.info(f"  - {code} ({name}): {reason}")
+        logger.info("-" * 60)
 
 if __name__ == "__main__":
     tool = HistorySyncTool()

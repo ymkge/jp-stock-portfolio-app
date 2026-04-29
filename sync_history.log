@@ -669,3 +669,26 @@
 2026-04-27 19:43:42,457 [INFO] Sync completed. Processed 107 stocks.
 2026-04-28 22:22:13,618 [INFO] Database backup created: portfolio_history.db.sync_bak_20260428_222213
 2026-04-28 22:22:13,619 [INFO] Cleaned up 114 potentially invalid records for 2026-04-27
+2026-04-29 21:22:47,947 [INFO] Database backup created: portfolio_history.db.sync_bak_20260429_212247
+2026-04-29 21:22:47,951 [INFO] Starting TEST sync for 3 JP stocks.
+2026-04-29 21:22:50,770 [INFO] [1/3] SKIP: 1605 (Unknown) | No new records to sync.
+2026-04-29 21:22:58,242 [INFO] [2/3] SKIP: 1662 (Unknown) | No new records to sync.
+2026-04-29 21:23:05,703 [INFO] [3/3] SKIP: 1802 (Unknown) | No new records to sync.
+2026-04-29 21:23:05,703 [INFO] ------------------------------------------------------------
+2026-04-29 21:23:05,703 [INFO] Sync Process Completed at 2026-04-29 21:23:05
+2026-04-29 21:23:05,703 [INFO] Total Portfolio Stocks: 3
+2026-04-29 21:23:05,704 [INFO] Successfully Synced : 0
+2026-04-29 21:23:05,704 [INFO] Failed/Errors       : 0
+2026-04-29 21:23:05,704 [INFO] ------------------------------------------------------------
+2026-04-29 21:23:38,734 [INFO] Database backup created: portfolio_history.db.sync_bak_20260429_212338
+2026-04-29 21:23:38,741 [INFO] Cleaned up 244 records from 2026-04-27 onwards for re-sync
+2026-04-29 21:23:38,741 [INFO] Starting TEST sync for 3 JP stocks.
+2026-04-29 21:23:41,383 [INFO] [1/3] SUCCESS: 1605 (Unknown) | New Records: 2 | Period: 2026-04-27 to 2026-04-28 | Price: Min=3930.0, Max=4123.0, Avg=4026.5
+2026-04-29 21:23:47,641 [INFO] [2/3] SUCCESS: 1662 (Unknown) | New Records: 2 | Period: 2026-04-27 to 2026-04-28 | Price: Min=2181.0, Max=2295.0, Avg=2238.0
+2026-04-29 21:23:53,824 [INFO] [3/3] SUCCESS: 1802 (Unknown) | New Records: 2 | Period: 2026-04-27 to 2026-04-28 | Price: Min=3606.0, Max=3844.0, Avg=3725.0
+2026-04-29 21:23:53,825 [INFO] ------------------------------------------------------------
+2026-04-29 21:23:53,825 [INFO] Sync Process Completed at 2026-04-29 21:23:53
+2026-04-29 21:23:53,825 [INFO] Total Portfolio Stocks: 3
+2026-04-29 21:23:53,825 [INFO] Successfully Synced : 3
+2026-04-29 21:23:53,825 [INFO] Failed/Errors       : 0
+2026-04-29 21:23:53,825 [INFO] ------------------------------------------------------------

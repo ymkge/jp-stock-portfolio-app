@@ -51,15 +51,15 @@ class HistorySyncTool:
             init_db()
 
     def cleanup_invalid_data(self, date_str="2026-04-27"):
-        """特定の日付の不正データを削除する"""
+        """指定日以降のデータを削除して再同期を可能にする"""
         try:
             with sqlite3.connect(DB_FILE) as conn:
                 cursor = conn.cursor()
-                cursor.execute("DELETE FROM daily_stock_history WHERE date = ?", (date_str,))
+                cursor.execute("DELETE FROM daily_stock_history WHERE date >= ?", (date_str,))
                 deleted = cursor.rowcount
                 conn.commit()
                 if deleted > 0:
-                    logger.info(f"Cleaned up {deleted} potentially invalid records for {date_str}")
+                    logger.info(f"Cleaned up {deleted} records from {date_str} onwards for re-sync")
         except Exception as e:
             logger.error(f"Failed to cleanup data: {e}")
 

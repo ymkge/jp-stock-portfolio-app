@@ -58,9 +58,12 @@ class BaseScraper(ABC):
     def _extract_next_data(self, html: str) -> str:
         """Next.jsのストリーミングデータ(self.__next_f.push)を外科的に抽出・結合する"""
         chunks = []
-        for match in re.finditer(r'self\.__next_f\.push\(\[\d+,"(.*?)"\]\)', html):
+        # re.S を追加して、チャンクが複数行に渡る可能性に対応
+        # また、\"] \) などの並びを考慮し、より安全な終端マッチングを行う
+        for match in re.finditer(r'self\.__next_f\.push\(\[\d+,\s*"(.*?)"\]\)', html, re.S):
             chunk = match.group(1)
-            chunk = chunk.replace('\\"', '"').replace('\\\\', '\\').replace('\\n', '\n')
+            # JSONとしてのエスケープをデコード
+            chunk = chunk.replace('\\"', '"').replace('\\\\', '\\').replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t')
             chunks.append(chunk)
         return "".join(chunks)
 

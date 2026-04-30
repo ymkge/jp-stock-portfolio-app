@@ -65,20 +65,19 @@ class HistorySyncTool:
         except Exception as e:
             logger.error(f"Failed to cleanup data: {e}")
 
-    def get_latest_date_in_db(self, code):
-        """指定銘柄のDB内最新日付を取得する"""
+    def get_existing_dates(self, code):
+        """指定銘柄のDB内にある日付セットを取得する"""
         try:
             with sqlite3.connect(DB_FILE) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "SELECT MAX(date) FROM stock_price_history WHERE code = ? AND close_price IS NOT NULL", 
+                    "SELECT date FROM stock_price_history WHERE code = ? AND close_price IS NOT NULL", 
                     (code,)
                 )
-                res = cursor.fetchone()
-                return res[0] if res and res[0] else "1970-01-01"
+                return {row[0] for row in cursor.fetchall()}
         except Exception as e:
             logger.error(f"Error checking DB for {code}: {e}")
-            return "1970-01-01"
+            return set()
 
     def save_histories(self, histories):
         """取得した時系列データをDBに保存し、統計情報を返す"""
@@ -126,23 +125,29 @@ class HistorySyncTool:
             logger.error(f"Failed to save to DB: {e}")
             raise e
 
-    def sync_stock(self, code):
+    def sync_stock(self, code, name="Unknown"):
         """1銘柄の履歴を同期する"""
-        latest_date = self.get_latest_date_in_db(code)
+        existing_dates = self.get_existing_dates(code)
         # JSTでの今日の日付を取得 (当日分は除外するため)
         today_jst = datetime.now(JST).strftime("%Y-%m-%d")
         
         all_histories_to_save = []
         base_url = f"https://finance.yahoo.co.jp/quote/{code}.T/history"
         
-        # まず現在値を把握 (動的フィルタ用)
+        # まず現在値を把握 (動的フィルタ用) と銘柄名の取得
         current_price = 0.0
+        stock_name = name
         try:
             main_url = f"https://finance.yahoo.co.jp/quote/{code}.T"
             res_m = self.scraper._make_request(main_url)
             if res_m:
                 json_m = self.scraper._extract_next_data(res_m.text)
                 m_data = self.scraper._scavenge_common_data(res_m.text, json_m)
+                
+                # 名前の更新
+                scraped_name = m_data.get('name')
+                if scraped_name: stock_name = scraped_name
+
                 p_val = m_data.get('price')
                 if isinstance(p_val, str): p_val = p_val.replace(',', '')
                 current_price = float(p_val) if p_val not in [None, "N/A", "--", "---", ""] else 0.0
@@ -152,8 +157,7 @@ class HistorySyncTool:
             if page == 1:
                 url = base_url
             else:
-                params = f"page={page}&_data=app%2Fpc%2F%5Btype%5D%2Fquote%2F%5Bcode%5D%2Fhistory%2Fpage"
-                url = f"{base_url}?{params}"
+                url = f"{base_url}?page={page}"
             
             res = self.scraper._make_request(url)
             if not res:
@@ -164,13 +168,13 @@ class HistorySyncTool:
                 sys.exit(1)
 
             json_data = self.scraper._extract_next_data(res.text)
-            # scraper._parse_histories が強化版フィルタリングを実行する
             raw_histories = self.scraper._parse_histories(json_data if json_data else res.text, current_price=current_price)
             
             if not raw_histories:
+                logger.debug(f"No histories found on page {page} for {code}")
                 break
             
-            new_data_found = False
+            new_data_found_on_page = False
             page_data_to_add = []
             for h in raw_histories:
                 raw_dt = h.get('baseDatetime')
@@ -190,21 +194,23 @@ class HistorySyncTool:
                     continue
                 
                 # 2. 既存データとの重複チェック
-                if h['date'] <= latest_date:
+                if h['date'] in existing_dates:
                     continue
                 
                 page_data_to_add.append(h)
-                new_data_found = True
+                new_data_found_on_page = True
             
             all_histories_to_save.extend(page_data_to_add)
             
-            if not new_data_found and page > 1:
+            # 最適化: このページで新しいデータがなく、かつDBに十分な件数（250件=約1年分強）があれば、遡りを終了
+            if not new_data_found_on_page and len(existing_dates) >= 250:
                 break
                 
             # ページ間待機 (Yahoo負荷軽減)
             time.sleep(1.5 + random.uniform(0, 1.0))
             
-        return self.save_histories(all_histories_to_save)
+        stats = self.save_histories(all_histories_to_save)
+        return stats, stock_name
 
     def run(self):
         """メイン実行ループ"""
@@ -222,16 +228,16 @@ class HistorySyncTool:
             name = stock.get('name', 'Unknown')
             
             try:
-                stats = self.sync_stock(code)
+                stats, real_name = self.sync_stock(code, name)
                 if stats:
                     self.success_count += 1
-                    msg = (f"[{i}/{total}] SUCCESS: {code} ({name}) | "
+                    msg = (f"[{i}/{total}] SUCCESS: {code} ({real_name}) | "
                            f"New Records: {stats['count']} | "
                            f"Period: {stats['start_date']} to {stats['end_date']} | "
                            f"Price: Min={stats['min_price']:.1f}, Max={stats['max_price']:.1f}, Avg={stats['avg_price']:.1f}")
                     logger.info(msg)
                 else:
-                    logger.info(f"[{i}/{total}] SKIP: {code} ({name}) | No new records to sync.")
+                    logger.info(f"[{i}/{total}] SKIP: {code} ({real_name}) | No new records to sync.")
                 
             except Exception as e:
                 self.error_list.append((code, name, str(e)))
@@ -241,10 +247,10 @@ class HistorySyncTool:
             
             # クールダウン (10銘柄ごとに深呼吸、それ以外も一定間隔)
             if i % 10 == 0 and i < total:
-                logger.info("Taking a deep breath (30s wait to avoid 403)...")
-                time.sleep(30)
+                logger.info("Taking a deep breath (25s wait to avoid 403)...")
+                time.sleep(25)
             elif i < total:
-                time.sleep(3.0 + random.uniform(0, 2.0))
+                time.sleep(2.0 + random.uniform(0, 1.5))
         
         # 最終サマリーレポート
         logger.info("-" * 60)

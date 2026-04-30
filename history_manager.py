@@ -42,9 +42,9 @@ def init_db():
                 )
             """)
             
-            # 日次の時系列・キャッシュ用テーブル
+            # --- 新規テーブル：分析スナップショット ---
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS daily_stock_history (
+                CREATE TABLE IF NOT EXISTS daily_analysis (
                     date TEXT NOT NULL,
                     code TEXT NOT NULL,
                     asset_type TEXT,
@@ -53,11 +53,27 @@ def init_db():
                     PRIMARY KEY (date, code)
                 )
             """)
+
+            # --- 新規テーブル：株価時系列データ ---
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS stock_price_history (
+                    date TEXT NOT NULL,
+                    code TEXT NOT NULL,
+                    close_price REAL,
+                    volume REAL,
+                    updated_at_jst TEXT,
+                    PRIMARY KEY (date, code)
+                )
+            """)
             
             # インデックス作成（検索高速化）
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_snapshot_month ON portfolio_history (snapshot_month)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_date ON daily_stock_history (date)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_code_date ON daily_stock_history (code, date)")
+            
+            # 新規テーブル用インデックス
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_date ON daily_analysis (date)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_code_date ON daily_analysis (code, date)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_price_date ON stock_price_history (date)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_price_code_date ON stock_price_history (code, date)")
 
             # --- ポートフォリオサマリーテーブルの移行処理 (snapshot_month PK -> snapshot_date PK) ---
             cursor.execute("PRAGMA table_info(portfolio_summary_history)")
@@ -129,6 +145,7 @@ def save_daily_data(code: str, asset_type: str, data: Dict[str, Any]) -> bool:
     """
     スクレイピング結果をDBに保存する（バリデーション付き）。
     1日1銘柄につき最新の1レコードのみ保持する (INSERT OR REPLACE)。
+    分析データは daily_analysis、株価・出来高は stock_price_history に保存する。
     """
     # 基本的なバリデーション
     if not data or "error" in data:
@@ -147,10 +164,10 @@ def save_daily_data(code: str, asset_type: str, data: Dict[str, Any]) -> bool:
     
     try:
         data_json = json.dumps(data, ensure_ascii=False)
-        # 修正: close_price と volume を抽出して保存 (数値変換含む)
+        
+        # 数値変換
         close_price = data.get("price")
         if isinstance(close_price, str):
-            # 文字列の場合はカンマを除去して変換
             try:
                 close_price = float(close_price.replace(",", "")) if close_price not in ["N/A", "--", ""] else None
             except ValueError:
@@ -165,11 +182,20 @@ def save_daily_data(code: str, asset_type: str, data: Dict[str, Any]) -> bool:
 
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
+            # 1. 分析データの保存
             cursor.execute("""
-                INSERT OR REPLACE INTO daily_stock_history 
-                (date, code, asset_type, data_json, updated_at_jst, close_price, volume)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (date_str, code, asset_type, data_json, updated_at_str, close_price, volume))
+                INSERT OR REPLACE INTO daily_analysis 
+                (date, code, asset_type, data_json, updated_at_jst)
+                VALUES (?, ?, ?, ?, ?)
+            """, (date_str, code, asset_type, data_json, updated_at_str))
+            
+            # 2. 株価履歴の保存
+            cursor.execute("""
+                INSERT OR REPLACE INTO stock_price_history 
+                (date, code, close_price, volume, updated_at_jst)
+                VALUES (?, ?, ?, ?, ?)
+            """, (date_str, code, close_price, volume, updated_at_str))
+            
             conn.commit()
         return True
     except (sqlite3.Error, TypeError) as e:
@@ -184,7 +210,7 @@ def get_historical_data_for_analysis(code: str, limit: int = 300) -> List[Dict[s
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT date, close_price, volume 
-                FROM daily_stock_history 
+                FROM stock_price_history 
                 WHERE code = ? AND close_price IS NOT NULL
                 ORDER BY date DESC 
                 LIMIT ?
@@ -209,10 +235,10 @@ def get_latest_metadata(code: str) -> Optional[Dict[str, Any]]:
         with sqlite3.connect(DB_FILE) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            # data_json 内に "name" キーが含まれる最新の1件を取得
+            # daily_analysis から最新の1件を取得
             cursor.execute("""
-                SELECT data_json FROM daily_stock_history 
-                WHERE code = ? AND data_json LIKE '%"name"%'
+                SELECT data_json FROM daily_analysis 
+                WHERE code = ?
                 ORDER BY date DESC
                 LIMIT 1
             """, (code,))
@@ -226,7 +252,6 @@ def get_latest_metadata(code: str) -> Optional[Dict[str, Any]]:
 def get_daily_data(code: str, date_str: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     指定された日付（デフォルトは当日JST）のキャッシュデータをDBから取得する。
-    データが不完全（名称なし）な場合は、過去の履歴から属性を補完する。
     """
     if not date_str:
         date_str = get_now_jst().strftime("%Y-%m-%d")
@@ -236,32 +261,12 @@ def get_daily_data(code: str, date_str: Optional[str] = None) -> Optional[Dict[s
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT data_json, updated_at_jst FROM daily_stock_history 
+                SELECT data_json, updated_at_jst FROM daily_analysis 
                 WHERE date = ? AND code = ?
             """, (date_str, code))
             row = cursor.fetchone()
             if row:
                 data = json.loads(row["data_json"])
-                
-                # メタデータ補完ロジック (インテリジェント・リカバリ)
-                if "name" not in data:
-                    metadata = get_latest_metadata(code)
-                    if metadata:
-                        # 名称や基本指標など、現在のデータに足りないものを過去から引き継ぐ
-                        keys_to_restore = [
-                            "name", "price", "per", "pbr", "roe", "yield", "eps", 
-                            "settlement_month", "industry", "asset_type", "market"
-                        ]
-                        for key in keys_to_restore:
-                            if key not in data and key in metadata:
-                                data[key] = metadata[key]
-                        
-                        # 特殊対応: price がどうしてもない場合、closePrice で代用を試みる
-                        if not data.get("price") and data.get("closePrice"):
-                            data["price"] = data["closePrice"]
-                            
-                        logger.debug(f"Recovered metadata for {code} from history.")
-
                 data["_db_updated_at_jst"] = row["updated_at_jst"]
                 return data
     except (sqlite3.Error, json.JSONDecodeError) as e:
@@ -271,14 +276,13 @@ def get_daily_data(code: str, date_str: Optional[str] = None) -> Optional[Dict[s
 def get_historical_data_before(code: str, date_str: str) -> Optional[Dict[str, Any]]:
     """
     指定された日付（date_str）以前で、最も新しいキャッシュデータをDBから取得する。
-    休業日などを考慮し、指定日にデータがない場合に過去に遡って最新のものを取得する。
     """
     try:
         with sqlite3.connect(DB_FILE) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT data_json, updated_at_jst, date FROM daily_stock_history 
+                SELECT data_json, updated_at_jst, date FROM daily_analysis 
                 WHERE code = ? AND date <= ?
                 ORDER BY date DESC
                 LIMIT 1
@@ -305,7 +309,7 @@ def get_all_daily_data_for_date(date_str: Optional[str] = None) -> Dict[str, Dic
         with sqlite3.connect(DB_FILE) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT code, data_json, updated_at_jst FROM daily_stock_history WHERE date = ?", (date_str,))
+            cursor.execute("SELECT code, data_json, updated_at_jst FROM daily_analysis WHERE date = ?", (date_str,))
             rows = cursor.fetchall()
             for row in rows:
                 try:
@@ -470,10 +474,10 @@ def get_latest_daily_data_all() -> Dict[str, Dict[str, Any]]:
             # 各銘柄(code)ごとに最大のdateを持つレコードを取得
             cursor.execute("""
                 SELECT t1.code, t1.data_json, t1.updated_at_jst
-                FROM daily_stock_history t1
+                FROM daily_analysis t1
                 INNER JOIN (
                     SELECT code, MAX(date) as max_date
-                    FROM daily_stock_history
+                    FROM daily_analysis
                     GROUP BY code
                 ) t2 ON t1.code = t2.code AND t1.date = t2.max_date
             """)

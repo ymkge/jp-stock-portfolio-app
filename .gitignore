@@ -18,3 +18,9 @@ GEMINI.md
 
 notebooks/
 portfolio_history.db.bak*
+
+# Logs
+*.log
+
+*bak_*
+debug*

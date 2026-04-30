@@ -55,11 +55,13 @@ class HistorySyncTool:
         try:
             with sqlite3.connect(DB_FILE) as conn:
                 cursor = conn.cursor()
-                cursor.execute("DELETE FROM daily_stock_history WHERE date >= ?", (date_str,))
+                # 新テーブル両方を掃除
+                cursor.execute("DELETE FROM daily_analysis WHERE date >= ?", (date_str,))
+                cursor.execute("DELETE FROM stock_price_history WHERE date >= ?", (date_str,))
                 deleted = cursor.rowcount
                 conn.commit()
                 if deleted > 0:
-                    logger.info(f"Cleaned up {deleted} records from {date_str} onwards for re-sync")
+                    logger.info(f"Cleaned up records from {date_str} onwards for re-sync")
         except Exception as e:
             logger.error(f"Failed to cleanup data: {e}")
 
@@ -69,7 +71,7 @@ class HistorySyncTool:
             with sqlite3.connect(DB_FILE) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "SELECT MAX(date) FROM daily_stock_history WHERE code = ? AND close_price IS NOT NULL", 
+                    "SELECT MAX(date) FROM stock_price_history WHERE code = ? AND close_price IS NOT NULL", 
                     (code,)
                 )
                 res = cursor.fetchone()
@@ -98,8 +100,6 @@ class HistorySyncTool:
             with sqlite3.connect(DB_FILE) as conn:
                 cursor = conn.cursor()
                 for h in histories:
-                    data_json = json.dumps(h)
-                    
                     # 数値へのキャストを確実に実行
                     try:
                         c_p = float(h.get('closePrice')) if h.get('closePrice') else None
@@ -108,16 +108,17 @@ class HistorySyncTool:
                         c_p = None
                         v_ol = None
 
+                    # 純粋な株価履歴テーブルにのみ保存
                     cursor.execute("""
-                        INSERT INTO daily_stock_history (date, code, asset_type, close_price, volume, data_json, updated_at_jst)
-                        VALUES (?, ?, 'jp_stock', ?, ?, ?, ?)
+                        INSERT INTO stock_price_history (date, code, close_price, volume, updated_at_jst)
+                        VALUES (?, ?, ?, ?, ?)
                         ON CONFLICT(date, code) DO UPDATE SET
                             close_price = COALESCE(excluded.close_price, close_price),
                             volume = COALESCE(excluded.volume, volume),
                             updated_at_jst = excluded.updated_at_jst
                     """, (
                         h['date'], h['code'], c_p, v_ol,
-                        data_json, datetime.now(JST).isoformat()
+                        datetime.now(JST).isoformat()
                     ))
                 conn.commit()
             return stats

@@ -170,6 +170,8 @@ class HistorySyncTool:
             json_data = self.scraper._extract_next_data(res.text)
             raw_histories = self.scraper._parse_histories(json_data if json_data else res.text, current_price=current_price)
             
+            logger.info(f"Page {page}: Found {len(raw_histories) if raw_histories else 0} raw records.")
+
             if not raw_histories:
                 logger.debug(f"No histories found on page {page} for {code}")
                 break
@@ -200,6 +202,7 @@ class HistorySyncTool:
                 page_data_to_add.append(h)
                 new_data_found_on_page = True
             
+            logger.info(f"Page {page}: {len(page_data_to_add)} records are new.")
             all_histories_to_save.extend(page_data_to_add)
             
             # 最適化: このページで新しいデータがなく、かつDBに十分な件数（250件=約1年分強）があれば、遡りを終了

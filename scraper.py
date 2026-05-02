@@ -137,10 +137,12 @@ class BaseScraper(ABC):
         records = re.findall(r'\{"date":"(\d{4}[-/]\d{1,2}[-/]\d{1,2})",\s*"values":\s*\[(.*?\}\s*\])', norm_text, re.S)
         
         for dt_str, val_block in records:
-            vals = re.findall(r'"value":"([\d\.\-\,]+)"', val_block)
+            vals = re.findall(r'"value":"([\d\.\-\,]*)"', val_block)
             
-            # 日本株の履歴行は通常7要素。5要素以下のものは配当・分割行の可能性が高いため除外
-            if len(vals) < 7: continue
+            # 日本株の履歴行は通常7要素。
+            # 最近の仕様では空の要素が含まれることがあり、実質的な値が6〜8要素程度。
+            # 4要素以下は確実に配当・分割等の特殊行。
+            if len(vals) < 6: continue
                 
             try:
                 cl_p_raw = vals[3].replace(',', '')

@@ -409,7 +409,7 @@ document.addEventListener('DOMContentLoaded', () => {
         holdings.forEach(item => {
             const mv = parseFloat(item.market_value) || 0; if (mv > 0 && item.code) assetMarketValues[item.code] = (assetMarketValues[item.code] || 0) + mv;
             metrics.forEach(m => {
-                let val = item[m]; if (m === 'momentum' && item.score_details) { const d = item.score_details; val = (d.trend_short || 0) + (d.trend_medium || 0) + (d.trend_signal || 0) + (d.fibonacci || 0) + (d.rci || 0); }
+                let val = item[m]; if (m === 'momentum' && item.score_details) { const d = item.score_details; val = (d.trend_short || 0) + (d.trend_medium || 0) + (d.trend_long || 0) + (d.trend_signal || 0); }
                 if (typeof val === 'string') val = parseFloat(val.replace(/,/g, '').replace(/%|倍/g, '').trim());
                 if (typeof val === 'number' && !isNaN(val) && isFinite(val) && mv > 0) { weightedSums[m] += val * mv; weightsTotal[m] += mv; }
             });

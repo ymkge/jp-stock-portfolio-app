@@ -9,6 +9,8 @@ from datetime import datetime
 import sqlite3
 import json
 
+import argparse
+
 # 既存のモジュールをインポート
 try:
     from scraper import JPStockScraper
@@ -64,6 +66,17 @@ class HistorySyncTool:
                     logger.info(f"Cleaned up records from {date_str} onwards for re-sync")
         except Exception as e:
             logger.error(f"Failed to cleanup data: {e}")
+
+    def delete_stock_history(self, code):
+        """指定銘柄の履歴データをDBから完全に削除する"""
+        try:
+            with sqlite3.connect(DB_FILE) as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM daily_analysis WHERE code = ?", (code,))
+                cursor.execute("DELETE FROM stock_price_history WHERE code = ?", (code,))
+                logger.info(f"Deleted existing history for {code} from DB.")
+        except Exception as e:
+            logger.error(f"Failed to delete history for {code}: {e}")
 
     def get_existing_dates(self, code):
         """指定銘柄のDB内にある日付セットを取得する"""
@@ -215,7 +228,7 @@ class HistorySyncTool:
         stats = self.save_histories(all_histories_to_save)
         return stats, stock_name
 
-    def run(self):
+    def run(self, force_resync_code=None):
         """メイン実行ループ"""
         self.backup_db()
         self.cleanup_invalid_data("2026-04-27") # 4/27の不正データを掃除
@@ -223,6 +236,17 @@ class HistorySyncTool:
         portfolio = load_portfolio()
         jp_stocks = [s for s in portfolio if s.get('asset_type') == 'jp_stock']
         
+        # force_resyncが指定されている場合は、その銘柄のみを対象にする
+        if force_resync_code:
+            target_stocks = [s for s in jp_stocks if s['code'] == force_resync_code]
+            if not target_stocks:
+                # ポートフォリオにない場合も直接指定可能にする
+                target_stocks = [{'code': force_resync_code, 'name': 'Target Stock'}]
+            
+            logger.info(f"FORCE RESYNC mode for {force_resync_code}")
+            self.delete_stock_history(force_resync_code)
+            jp_stocks = target_stocks
+
         total = len(jp_stocks)
         logger.info(f"Starting sync for {total} JP stocks.")
         
@@ -252,7 +276,7 @@ class HistorySyncTool:
             if i % 10 == 0 and i < total:
                 logger.info("Taking a deep breath (25s wait to avoid 403)...")
                 time.sleep(25)
-            elif i < total:
+            elif i < total and not force_resync_code:
                 time.sleep(2.0 + random.uniform(0, 1.5))
         
         # 最終サマリーレポート
@@ -269,5 +293,9 @@ class HistorySyncTool:
         logger.info("-" * 60)
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Yahoo Finance JP Stock History Sync Tool')
+    parser.add_argument('--force-resync', type=str, help='銘柄コードを指定して、DB内の履歴を削除し1年分を再同期する')
+    args = parser.parse_args()
+
     tool = HistorySyncTool()
-    tool.run()
+    tool.run(force_resync_code=args.force_resync)

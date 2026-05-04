@@ -299,12 +299,16 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
 
     fib_min = get_config("buy_signal.thresholds.fibonacci_min", 61.8)
     fib_max = get_config("buy_signal.thresholds.fibonacci_max", 78.6)
-    fib = stock_data.get("fibonacci")
-    if fib and isinstance(fib, dict):
-        ret = fib.get("retracement")
-        if ret is not None and fib_min <= ret <= fib_max:
-            is_level1 = True
-            reasons.append(f"フィボナッチ押し目({ret:.1f}%)")
+    
+    fib_keys = ["fibonacci_3m", "fibonacci_6m", "fibonacci_1y", "fibonacci"]
+    for k in fib_keys:
+        fib = stock_data.get(k)
+        if fib and isinstance(fib, dict):
+            ret = fib.get("retracement")
+            if ret is not None and fib_min <= ret <= fib_max:
+                is_level1 = True
+                reasons.append(f"フィボナッチ押し目({ret:.1f}%)")
+                break # いずれかの期間でヒットすればOK
 
     if not is_level1:
         # スコアは高いがテクニカル指標が取れないためにレベル1にならない場合も「判定不能」を検討
@@ -405,7 +409,8 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
         "label": label,
         "recommended_action": recommended_action,
         "current_status": current_status,
-        "reasons": reasons + level2_reasons
+        "reasons": reasons + level2_reasons,
+        "is_downward_trend": is_downward_trend
     }
 
 def reconcile_signals(buy_signal: Optional[dict], sell_signal: Optional[dict]) -> tuple[Optional[dict], Optional[dict]]:
@@ -627,23 +632,37 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
                     is_calculable = True
                     details["trend_signal"] += 1
 
-            # --- フィボナッチ判定 (全期間/52週ベース) ---
-            fib = stock_data.get("range_52w") or stock_data.get("fibonacci")
-            if fib and isinstance(fib, dict):
-                retracement = fib.get("retracement")
-                min_ret = get_config("trend.fibonacci.min_retracement", 50.0)
-                max_ret = get_config("trend.fibonacci.max_retracement", 78.6)
-                if retracement is not None and min_ret <= retracement <= max_ret:
-                    is_calculable = True
-                    details["fibonacci"] += 1
-
-                # 年間安値圏判定 (下位25%以内)
-                if retracement is not None and retracement >= 75.0:
+            # --- フィボナッチ判定 (マルチウィンドウ対応) ---
+            fib_keys = ["fibonacci_3m", "fibonacci_6m", "fibonacci_1y", "fibonacci"]
+            fib_hit = None
+            min_ret = get_config("trend.fibonacci.min_retracement", 50.0)
+            max_ret = get_config("trend.fibonacci.max_retracement", 78.6)
+            
+            for k in fib_keys:
+                f = stock_data.get(k)
+                if f and isinstance(f, dict):
+                    ret = f.get("retracement")
+                    if ret is not None and min_ret <= ret <= max_ret:
+                        details["fibonacci"] = 1 # いずれかでヒットすれば1点
+                        fib_hit = f
+                        is_calculable = True
+                        break # 短い期間を優先して終了
+            
+            # ヒットしたフィボナッチ、またはデフォルト(1y)を表示用にセット
+            if fib_hit:
+                stock_data["fibonacci"] = fib_hit
+            
+            # 年間安値圏判定 (下位25%以内) は引き続き1年ベースで判定
+            fib_1y = stock_data.get("fibonacci_1y") or stock_data.get("fibonacci")
+            if fib_1y and isinstance(fib_1y, dict):
+                ret_1y = fib_1y.get("retracement")
+                if ret_1y is not None and ret_1y >= 75.0:
                     is_calculable = True
                     details["range_yearly"] += 1
-
-            elif get_config("trend.fibonacci.enabled", True):
-                missing_items.append("フィボナッチ")
+            
+            if not fib_hit and get_config("trend.fibonacci.enabled", True) and "フィボナッチ" not in missing_items:
+                if not stock_data.get("fibonacci"):
+                    missing_items.append("フィボナッチ")
 
             # --- RCI判定 ---
             rci_val = stock_data.get("rci_26")

@@ -93,15 +93,30 @@ class BaseScraper(ABC):
 
         # 3. 現在値 (JSON優先、特定構造を優先的に探索)
         # 投資信託の価格 (fundPrices) を優先
-        it_p_match = re.search(r'\"?fundPrices\"?:\{[^{}]*?\"?price\"?:\s*\"?([\d\.\,]+)\"?', json_text)
+        it_p_match = re.search(r'\"?(fundPrices|mainFundPriceBoard)\"?:\{[^{}]*?\"?price\"?:\s*\"?([\d\.\,]+)\"?', json_text)
         if it_p_match:
-            data['price'] = it_p_match.group(1).replace(',', '')
+            data['price'] = it_p_match.group(2).replace(',', '')
+            # 投資信託の前日比
+            it_c_match = re.search(r'\"?(fundPrices|mainFundPriceBoard)\"?:\{[^{}]*?\"?priceChange\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
+            if it_c_match: data['change'] = it_c_match.group(2).replace(',', '')
+            it_r_match = re.search(r'\"?(fundPrices|mainFundPriceBoard)\"?:\{[^{}]*?\"?priceChangeRate\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
+            if it_r_match: data['change_percent'] = it_r_match.group(2)
             return data
             
-        # 指数の価格 (indexPrices)
-        idx_p_match = re.search(r'\"?indexPrices\"?:\{[^{}]*?\"?previousPrice\"?:\s*\"?([\d\.\,]+)\"?', json_text)
+        # 指数・先物の価格 (indexPrices / futurePrices)
+        idx_p_match = re.search(r'\"?(indexPrices|futurePrices|mainDomesticIndexPriceBoard)\"?:\{[^{}]*?\"?price\"?:\s*\"?([\d\.\,]+)\"?', json_text)
         if idx_p_match:
-            data['price'] = idx_p_match.group(1).replace(',', '')
+            data['price'] = idx_p_match.group(2).replace(',', '')
+            # 前日比
+            idx_c_match = re.search(r'\"?(indexPrices|futurePrices|mainDomesticIndexPriceBoard)\"?:\{[^{}]*?\"?priceChange\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
+            if idx_c_match: data['change'] = idx_c_match.group(2).replace(',', '')
+            idx_r_match = re.search(r'\"?(indexPrices|futurePrices|mainDomesticIndexPriceBoard)\"?:\{[^{}]*?\"?priceChangeRate\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
+            if idx_r_match: data['change_percent'] = idx_r_match.group(2)
+        elif not it_p_match:
+            # フォールバック: previousPrice (本来は現在値が取れない場合の最終手段)
+            idx_p_match_fallback = re.search(r'\"?(indexPrices|futurePrices)\"?:\{[^{}]*?\"?previousPrice\"?:\s*\"?([\d\.\,]+)\"?', json_text)
+            if idx_p_match_fallback:
+                data['price'] = idx_p_match_fallback.group(2).replace(',', '')
 
         # 一般的な価格オブジェクト (新・旧両方の構造に対応)
         price_match = re.search(r'\"?price\"?:\{[^{}]*?\"?value\"?:\s*\"?([\d\.\-\,]+)\"?', json_text)
@@ -296,10 +311,13 @@ class JPStockScraper(BaseScraper):
         data['ma75'] = self._calculate_moving_average(histories, 75, cur_p)
         data['ma200'] = self._calculate_moving_average(histories, 200, cur_p)
         
-        # 52週（全期間）高安レンジ
-        data['range_52w'] = self._calculate_fibonacci(histories, cur_p)
-        # 後方互換性のため fibonacci キーも保持
-        data['fibonacci'] = data['range_52w']
+        # フィボナッチ（マルチウィンドウ）: 1年、半年、3ヶ月
+        data['fibonacci_1y'] = self._calculate_fibonacci(histories, cur_p)
+        data['fibonacci_6m'] = self._calculate_fibonacci(histories[:125], cur_p)
+        data['fibonacci_3m'] = self._calculate_fibonacci(histories[:63], cur_p)
+        
+        # 後方互換性のため fibonacci キーも保持 (デフォルトは1年)
+        data['fibonacci'] = data['fibonacci_1y']
 
         data['rci26'] = self._calculate_rci(histories, 26, cur_p)
         data['rsi14'] = self._calculate_rsi(histories, 14, cur_p)

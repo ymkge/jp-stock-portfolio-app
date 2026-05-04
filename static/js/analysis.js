@@ -303,9 +303,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const matchesBuySignal = !selectedBuySignal || (
                 (selectedBuySignal === 'strict-dip' && isDiamond && item.buy_signal && item.buy_signal.level >= 1) ||
                 (selectedBuySignal === 'strict-low' && isDiamond && item.sell_signal && item.sell_signal.level === 3) ||
-                (selectedBuySignal === 'overheated' && item.sell_signal && (item.sell_signal.level === 1 || item.sell_signal.level === 2))
-            );
-            return matchesText && matchesIndustry && matchesAccountType && matchesSecurityCompany && matchesBuySignal;
+                (selectedBuySignal === 'overheated' && (
+                    (item.sell_signal && (item.sell_signal.level === 1 || item.sell_signal.level === 2)) ||
+                    (item.buy_signal && item.buy_signal.is_downward_trend === true)
+                ))
+                );            return matchesText && matchesIndustry && matchesAccountType && matchesSecurityCompany && matchesBuySignal;
         });
         sortHoldings(filteredHoldingsData);
         renderAnalysisTable(filteredHoldingsData);

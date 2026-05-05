@@ -16,11 +16,36 @@ import recent_stocks_manager
 import history_manager
 import json
 import logging
+try:
+    import jpholiday
+except ImportError:
+    jpholiday = None
 
 # --- ロギング設定 ---
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 # --------------------
+
+def is_jp_market_holiday(dt: datetime) -> bool:
+    """
+    指定された日が日本市場（東証）の休業日かどうかを判定する。
+    1. 土日判定
+    2. 国民の祝日判定 (jpholidayを使用)
+    3. 証券取引所特有の休日 (年末年始: 12/31, 1/2, 1/3)
+    """
+    # 1. 土日判定
+    if dt.weekday() >= 5:
+        return True
+    
+    # 2. 国民の祝日判定
+    if jpholiday and jpholiday.is_holiday(dt):
+        return True
+    
+    # 3. 証券取引所特有の休日 (1/1は祝日として上記で判定されるため、1/2, 1/3, 12/31を補完)
+    if (dt.month == 1 and dt.day in [2, 3]) or (dt.month == 12 and dt.day == 31):
+        return True
+        
+    return False
 
 # --- クールダウン設定 ---
 # 以前は過度なスクレイピングを防ぐために10分間の制限を設けていましたが、
@@ -692,25 +717,30 @@ def get_cache_threshold_time(asset_type: str, now_jst: datetime, market_times: d
     「直近の市場開始」と「直近の市場終了」の遅い方を返す。
     """
     config = market_times.get(asset_type, market_times.get("jp_stock", {}))
-    
+
     def get_last_time(h_m_str, is_open_time=False):
         hour, minute = map(int, h_m_str.split(":"))
         t = now_jst.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if now_jst < t:
             t -= timedelta(days=1)
-        
-        # 市場ごとの休場曜日判定
-        if asset_type in ['us_stock', 'market_index']:
+
+        # 市場ごとの休場判定
+        if asset_type in ['jp_stock', 'investment_trust']:
+            # 日本市場（祝日・年末年始を考慮）
+            while is_jp_market_holiday(t):
+                t -= timedelta(days=1)
+        elif asset_type in ['us_stock', 'market_index']:
+            # 米国株/指標（現状は土日ベース、将来的に米国祝日対応も検討可能）
             if is_open_time:
-                # 米国株/指標開始(JST 23:30/09:00)が発生しないのは 土(5) と 日(6)
+                # 開始が発生しないのは 土(5) と 日(6)
                 while t.weekday() >= 5:
                     t -= timedelta(days=1)
             else:
-                # 米国株/指標終了(JST 07:00/06:00)が発生しないのは 日(6) と 月(0)
+                # 終了が発生しないのは 日(6) と 月(0) (時差考慮)
                 while t.weekday() in [0, 6]:
                     t -= timedelta(days=1)
         else:
-            # 日本株・投信の開始/終了が発生しないのは 土(5) と 日(6)
+            # デフォルト（土日）
             while t.weekday() >= 5:
                 t -= timedelta(days=1)
         return t
@@ -719,7 +749,6 @@ def get_cache_threshold_time(asset_type: str, now_jst: datetime, market_times: d
     last_close = get_last_time(config.get("close_time_jst", "15:30"), False)
 
     return max(last_open, last_close)
-
 async def _fetch_scraped_data_with_cache(code: str, asset_type: str, scraper_instance: Any, db_cache: Optional[dict] = None) -> Dict[str, Any]:
     """
     スマートキャッシュロジックを適用して単一の銘柄データを取得する。

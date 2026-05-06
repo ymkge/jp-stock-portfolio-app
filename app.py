@@ -170,8 +170,16 @@ SELL_SIGNAL_DISPLAY = get_config("sell_signal.display", {
         "label": "トレンド崩壊",
         "recommended_action": "逆張り・仕込み検討。業績が良ければ将来の仕込み場です。",
         "current_status": "75日移動平均線から大きく下方乖離しており、中長期的にトレンドが崩れた状態です。"
+    },
+    "level_4": {
+        "icon": "📉",
+        "label": "落ちるナイフ",
+        "recommended_action": "手出し無用。長期下降トレンドの真っ只中です。優良株であっても安易なリバウンド狙いは避け、底打ち（200日線の回復）を確認してください。",
+        "current_status": "200日移動平均線を大きく下回っており、マクロな資金抜けが続いています。非常に高い継続下落リスクがあります。"
     }
 })
+
+# --- 購入シグナルの表示設定 ---
 
 def calculate_sell_signal(stock_data: dict) -> Optional[dict]:
     """
@@ -201,6 +209,16 @@ def calculate_sell_signal(stock_data: dict) -> Optional[dict]:
     ma_5 = stock_data.get("moving_average_5")
     ma_25 = stock_data.get("moving_average_25")
     ma_75 = stock_data.get("moving_average_75")
+    ma_200 = stock_data.get("ma200")
+
+    # --- Level 4: 落ちるナイフ (長期下降トレンド) ---
+    # 最も緊急かつ重大なリスクとして最優先で判定
+    is_level4 = False
+    if price > 0 and ma_200:
+        deviation_200 = (price - ma_200) / ma_200 * 100
+        if deviation_200 <= -5.0:
+            is_level4 = True
+            reasons.append(f"長期下降トレンド(200日線乖離 {deviation_200:.1f}%)")
 
     # 25日乖離率
     deviation_25 = 0.0
@@ -241,11 +259,14 @@ def calculate_sell_signal(stock_data: dict) -> Optional[dict]:
         reasons.append("75日線割れ(長期調整)")
 
     # レベルの決定 (緊急度・判断の明確さを優先)
-    # 1. ピークアウト (Lv2): 反転下落の初動であり、最も売却アクションの緊急度が高い。
-    # 2. 加熱気味 (Lv1): まだ上がっているが、買われすぎの状態。
-    # 3. 長期調整 (Lv3): トレンドがすでに崩れている状態。
+    # 1. 落ちるナイフ (Lv4): 長期下降トレンドであり、手出し無用の最優先リスク。
+    # 2. ピークアウト (Lv2): 反転下落の初動であり、売却アクションの緊急度が高い。
+    # 3. 加熱気味 (Lv1): まだ上がっているが、買われすぎの状態。
+    # 4. トレンド崩壊 (Lv3): 75日線割れ。
     level = 0
-    if is_level2:
+    if is_level4:
+        level = 4
+    elif is_level2:
         level = 2
     elif is_level1:
         level = 1
@@ -386,16 +407,6 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     if not is_reliable:
         current_status += f" 【注意】以下の項目が取得できていません: {', '.join(missing_items)}"
     
-    # 200日線によるトレンド抑制判定
-    is_downward_trend = False
-    try:
-        ma_200 = stock_data.get("ma200")
-        if price > 0 and ma_200:
-            deviation_200 = (price - ma_200) / ma_200 * 100
-            if deviation_200 <= -5.0: # 200日線から5%以上下
-                is_downward_trend = True
-    except: pass
-
     # 長期調整判定 (75日線 または 200日線)
     is_long_adjustment = False
     max_deviation = 0.0
@@ -413,29 +424,23 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
                 max_deviation = min(dev_75, dev_200)
     except: pass
 
-    # ロジック統合: 下降トレンド中は慎重に、ただし優良株の長期調整はチャンス
+    # ロジック統合: 優良株の長期調整はチャンス（Level 4 以外の緩やかな調整を拾う）
     if is_long_adjustment:
         long_config = get_config("buy_signal.display.long_adjustment", {})
         label += long_config.get("suffix", "＋長期調整中")
         recommended_action = long_config.get("recommended_action_override", recommended_action)
         current_status += " " + long_config.get("current_status_append", "")
         reasons.append(f"長期乖離過大({max_deviation:.1f}%)")
-    elif is_downward_trend and not is_diamond:
-        # 優良株以外で長期下降トレンド中の場合は、シグナルを抑制（格下げ）
-        label = "⚠️長期下降トレンド"
-        recommended_action = "長期的な下落基調にあります。安易なリバウンド狙いは避け、底打ちを確認してください。"
-        icon = "📉"
 
     return {
         "level": level,
         "is_diamond": is_diamond,
         "is_unreliable": not is_reliable,
-        "icon": icon if 'icon' in locals() else (config["icon_diamond"] if is_diamond else config["icon"]),
+        "icon": config["icon_diamond"] if is_diamond else config["icon"],
         "label": label,
         "recommended_action": recommended_action,
         "current_status": current_status,
-        "reasons": reasons + level2_reasons,
-        "is_downward_trend": is_downward_trend
+        "reasons": reasons + level2_reasons
     }
 
 def reconcile_signals(buy_signal: Optional[dict], sell_signal: Optional[dict]) -> tuple[Optional[dict], Optional[dict]]:
@@ -446,7 +451,13 @@ def reconcile_signals(buy_signal: Optional[dict], sell_signal: Optional[dict]) -
     if not buy_signal or not sell_signal:
         return buy_signal, sell_signal
 
-    # 1. 売却側が「ピークアウト (Lv2)」または「過熱気味 (Lv1)」の場合
+    # 1. 売却側が「落ちるナイフ (Lv4)」の場合
+    # 長期的な下落トレンドは、ファンダメンタルズがどれだけ良くても最優先のリスク。
+    # すべての購入シグナルを無効化する。
+    if sell_signal.get("level") == 4:
+        return None, sell_signal
+
+    # 2. 売却側が「ピークアウト (Lv2)」または「過熱気味 (Lv1)」の場合
     # これらはテクニカル的な買われすぎからの反転リスクを示しており、
     # たとえ押し目買いの条件（フィボナッチ等）を満たしていても、短期的には警戒が勝る。
     if sell_signal.get("level") in [1, 2]:

@@ -313,10 +313,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (showOnlyManaged) filteredAssets = filteredAssets.filter(asset => asset.holdings && asset.holdings.length > 0);
         if (showStrictDip) filteredAssets = filteredAssets.filter(asset => (asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true)) && asset.buy_signal && asset.buy_signal.level >= 1);
         if (showStrictLow) filteredAssets = filteredAssets.filter(asset => (asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true)) && asset.sell_signal && asset.sell_signal.level === 3);
-        if (showOverheated) filteredAssets = filteredAssets.filter(asset => 
-            (asset.sell_signal && (asset.sell_signal.level === 1 || asset.sell_signal.level === 2)) ||
-            (asset.buy_signal && asset.buy_signal.is_downward_trend === true)
-        );
+        if (showOverheated) filteredAssets = filteredAssets.filter(asset => asset.sell_signal && asset.sell_signal.level >= 1);
 
         if (filterText) {
             filteredAssets = filteredAssets.filter(asset =>
@@ -569,7 +566,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // 売却はダイヤモンド属性に関わらず警告色を100%優先
         let themeClass = '';
-        if (signal.level === 2) {
+        if (signal.level === 4) {
+            themeClass = 'theme-sell-lv4';
+        } else if (signal.level === 2) {
             themeClass = 'theme-sell-lv2';
         } else if (signal.level === 1) {
             themeClass = 'theme-sell-lv1';

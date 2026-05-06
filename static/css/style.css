@@ -474,6 +474,25 @@ button {
     animation: shimmer-effect 4.0s infinite linear;
 }
 
+/* 売却：Lv4 落ちるナイフ (📉) - 警告の点滅と黒赤 */
+.theme-sell-lv4 {
+    background-color: #1a1a1a !important; /* 真っ黒背景 */
+    color: #ff4757 !important; /* 警告の赤文字 */
+    border: 1px solid #ff4757 !important;
+    font-weight: 900 !important;
+}
+.theme-sell-lv4::after {
+    background: linear-gradient(
+        110deg,
+        rgba(255, 71, 87, 0) 0%,
+        rgba(255, 71, 87, 0.4) 40%,
+        rgba(255, 71, 87, 0.8) 50%,
+        rgba(255, 71, 87, 0.4) 60%,
+        rgba(255, 71, 87, 0) 100%
+    );
+    animation: shimmer-effect 1.0s infinite linear;
+}
+
 /* 購入：虹色 (最強) - 特別な流動グラデーション */
 .theme-rainbow {
     background: linear-gradient(45deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #8b00ff) !important;

@@ -586,7 +586,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // 売却はダイヤモンド属性に関わらず警告色を100%優先
         let themeClass = '';
-        if (signal.level === 2) {
+        if (signal.level === 4) {
+            themeClass = 'theme-sell-lv4';
+        } else if (signal.level === 2) {
             themeClass = 'theme-sell-lv2';
         } else if (signal.level === 1) {
             themeClass = 'theme-sell-lv1';

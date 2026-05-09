@@ -259,14 +259,84 @@ class JPStockScraper(BaseScraper):
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
         logger.info(f"Fetching JP Stock (Hybrid): {code}.T")
         
-        # 1. まずメインページから「現在値」を取得する (分析の基準値にするため)
+        # 1. メインページから基本情報、現在値、財務指標を一括取得する
         url_q = f"https://finance.yahoo.co.jp/quote/{code}.T"
         res_q = self._make_request(url_q)
         if not res_q: return {"code": code, "error": "メインページの取得に失敗しました"}
         json_q = self._extract_next_data(res_q.text)
         
-        # 基本データの抽出
+        # 基本データの抽出 (名称、現在値、出来高、騰落)
         data = self._scavenge_common_data(res_q.text, json_q)
+        
+        # 財務指標の抽出 (境界制約 [^{}]*? を導入して他項目への飛び越しを防止)
+        per_m = re.search(r'\"per\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
+        data['per'] = per_m.group(1).replace(',', '') if per_m and per_m.group(1) != "---" else "N/A"
+        
+        pbr_m = re.search(r'\"pbr\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
+        data['pbr'] = pbr_m.group(1).replace(',', '') if pbr_m and pbr_m.group(1) != "---" else "N/A"
+        
+        y_m = re.search(r'\"shareDividendYield\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
+        data['yield'] = y_m.group(1).replace(',', '') if y_m and y_m.group(1) != "---" else "N/A"
+        
+        change_m = re.search(r'\"priceChange\":\{[^{}]*?\"value\":\"([\+\-\d\.\,]+)\"', json_q)
+        data['change'] = change_m.group(1).replace(',', '') if change_m else "N/A"
+        rate_m = re.search(r'\"priceChangeRate\":\{[^{}]*?\"value\":\"([\+\-\d\.\,]+)\"', json_q)
+        data['change_percent'] = rate_m.group(1) if rate_m else "N/A"
+
+        # EPSの抽出
+        eps_m = re.search(r'\"eps\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
+        data['eps'] = eps_m.group(1).replace(',', '') if eps_m and eps_m.group(1) != "---" else "N/A"
+
+        # PERのリカバリ (現在株価 / EPS)
+        if (data.get('per') == "N/A" or data.get('per') == "---") and data.get('eps') not in ["N/A", "---"]:
+            try:
+                p = float(data.get('price', 0))
+                e = float(data.get('eps'))
+                if p > 0 and e > 0:
+                    calc_per = p / e
+                    data['per'] = f"{calc_per:.2f}"
+            except: pass
+
+        # ROE (多層検索の強化: 負の値対応と実績ラベル優先)
+        roe_label_m = re.search(r'\"name\":\"ROE\",.*?\"value\":\"([\d\.\-\,]+)\"', json_q)
+        if roe_label_m and roe_label_m.group(1) != "---":
+            data['roe'] = roe_label_m.group(1).replace(',', '')
+        else:
+            roe_m = re.search(r'\"roe\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
+            if roe_m and roe_m.group(1) != "---":
+                data['roe'] = roe_m.group(1).replace(',', '')
+            else:
+                roe_list = re.findall(r'\"roe\":([\d\.\-]+)', json_q)
+                roe_list = [r for r in roe_list if r != "$undefined"]
+                data['roe'] = roe_list[-1] if roe_list else "N/A"
+
+        dps_m = re.search(r'\"dps\":\{[^{}]*?\"value\":\"([\d\.\,\-]+)\"', json_q)
+        dps_raw = dps_m.group(1) if dps_m else "N/A"
+        data['annual_dividend'] = float(dps_raw.replace(',', '')) if dps_raw not in ["N/A", "---"] else 0.0
+
+        ind_m = re.search(r'\"industryName\":\"(.*?)\"', json_q)
+        data['industry'] = ind_m.group(1) if ind_m else "N/A"
+        
+        cap_m = re.search(r'\"totalPrice\":\{.*?\"value\":\"([\d,\.]+)\".*?\"suffix\":\"(.*?)\"', json_q)
+        if cap_m:
+            v_str, s = cap_m.group(1).replace(',', ''), cap_m.group(2)
+            try:
+                v = float(v_str)
+                if "兆" in s: data['market_cap'] = str(int(v * 1_000_000_000_000))
+                elif "億" in s: data['market_cap'] = str(int(v * 100_000_000))
+                elif "百万" in s: data['market_cap'] = str(int(v * 1_000_000))
+                else: data['market_cap'] = v_str.split('.')[0]
+            except: data['market_cap'] = "N/A"
+        else: data['market_cap'] = "N/A"
+        
+        month_m = re.search(r'\"dpsPeriod\":\"\d{4}-(\d{2})-\d{2}\"', json_q)
+        if not month_m:
+            month_m = re.search(r'\"settlementDate\":\"\d{4}/(\d{2})\"', json_q)
+        if not month_m:
+            date_m = re.search(r'\"date\":\"\d{4}(\d{2})\"', json_q)
+            if date_m: month_m = date_m
+        data['settlement_month'] = f"{int(month_m.group(1))}月" if month_m else "N/A"
+
         cur_p = 0.0
         try:
             p_val = data.get('price', 0)
@@ -298,14 +368,6 @@ class JPStockScraper(BaseScraper):
         histories = [combined_map[d] for d in sorted_dates]
 
         # 3. 分析の実行 (1年分のデータがあれば200日線、52週高安が算出可能)
-        price_raw = data.get('price', 0)
-        try:
-            if isinstance(price_raw, str):
-                price_raw = price_raw.replace(',', '')
-            cur_p = float(price_raw) if price_raw not in [None, "N/A", "--", "---", ""] else 0.0
-        except (ValueError, TypeError):
-            cur_p = 0.0
-        
         # 移動平均 (25, 75, 200)
         data['ma25'] = self._calculate_moving_average(histories, 25, cur_p)
         data['ma75'] = self._calculate_moving_average(histories, 75, cur_p)
@@ -326,67 +388,8 @@ class JPStockScraper(BaseScraper):
         data['is_reliable'] = len(histories) >= 75
         data['history_count'] = len(histories)
 
-        # メインページの基本情報取得 (PER, PBR, 利回り等)
-        time.sleep(1.2)
-        url_q = f"https://finance.yahoo.co.jp/quote/{code}.T"
-        res_q = self._make_request(url_q)
-        if not res_q: return {"code": code, "error": "メインページの取得に失敗しました"}
-        json_q = self._extract_next_data(res_q.text)
-        
-        # 追加: メインページから正確な名称、価格、時価総額等を確定させる
-        data.update(self._scavenge_common_data(res_q.text, json_q))
-        
-        # 基本指標 (境界制約 [^{}]*? を導入して他項目への飛び越しを防止)
-        per_m = re.search(r'\"per\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
-        data['per'] = per_m.group(1).replace(',', '') if per_m and per_m.group(1) != "---" else "N/A"
-        
-        pbr_m = re.search(r'\"pbr\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
-        data['pbr'] = pbr_m.group(1).replace(',', '') if pbr_m and pbr_m.group(1) != "---" else "N/A"
-        
-        y_m = re.search(r'\"shareDividendYield\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
-        data['yield'] = y_m.group(1).replace(',', '') if y_m and y_m.group(1) != "---" else "N/A"
-        
-        change_m = re.search(r'\"priceChange\":\{[^{}]*?\"value\":\"([\+\-\d\.\,]+)\"', json_q)
-        data['change'] = change_m.group(1).replace(',', '') if change_m else "N/A"
-        rate_m = re.search(r'\"priceChangeRate\":\{[^{}]*?\"value\":\"([\+\-\d\.\,]+)\"', json_q)
-        data['change_percent'] = rate_m.group(1) if rate_m else "N/A"
-
-        # EPSの抽出
-        eps_m = re.search(r'\"eps\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
-        data['eps'] = eps_m.group(1).replace(',', '') if eps_m and eps_m.group(1) != "---" else "N/A"
-
-        # PERのリカバリ (現在株価 / EPS)
-        if (data.get('per') == "N/A" or data.get('per') == "---") and data.get('eps') not in ["N/A", "---"]:
-            try:
-                p = float(data.get('price', 0))
-                e = float(data.get('eps'))
-                if p > 0 and e > 0:
-                    calc_per = p / e
-                    data['per'] = f"{calc_per:.2f}"
-                    logger.info(f"Recovered PER for {code} from EPS: {data['per']}")
-            except: pass
-
-        # ROE (多層検索の強化: 負の値対応と実績ラベル優先)
-        roe_label_m = re.search(r'\"name\":\"ROE\",.*?\"value\":\"([\d\.\-\,]+)\"', json_q)
-        if roe_label_m and roe_label_m.group(1) != "---":
-            data['roe'] = roe_label_m.group(1).replace(',', '')
-        else:
-            roe_m = re.search(r'\"roe\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
-            if roe_m and roe_m.group(1) != "---":
-                data['roe'] = roe_m.group(1).replace(',', '')
-            else:
-                roe_list = re.findall(r'\"roe\":([\d\.\-]+)', json_q)
-                roe_list = [r for r in roe_list if r != "$undefined"]
-                data['roe'] = roe_list[-1] if roe_list else "N/A"
-
-        dps_m = re.search(r'\"dps\":\{[^{}]*?\"value\":\"([\d\.\,\-]+)\"', json_q)
-        dps_raw = dps_m.group(1) if dps_m else "N/A"
-        data['annual_dividend'] = float(dps_raw.replace(',', '')) if dps_raw not in ["N/A", "---"] else 0.0
-
-        # 配当履歴の抽出 (メインページからは最新のみ、詳細は専用ページから)
+        # 4. 配当履歴の抽出 (詳細ページ)
         div_history = {}
-        
-        # 1. 配当ページから詳細かつ長期の履歴を取得
         time.sleep(1.2)
         url_div = f"https://finance.yahoo.co.jp/quote/{code}.T/dividend"
         res_div = self._make_request(url_div)
@@ -401,7 +404,7 @@ class JPStockScraper(BaseScraper):
                         if year not in div_history or v > div_history[year]:
                             div_history[year] = v
 
-        # 2. メインページからの補足
+        # メインページのJSONデータからの配当補足 (1回目で取得済みの json_q を再利用)
         dps_area = re.search(r'\"dps\":\{.*?\}', json_q)
         if dps_area:
             ctx = dps_area.group(0)
@@ -444,42 +447,15 @@ class JPStockScraper(BaseScraper):
                     data['yield'] = f"{calc_yield:.2f}"
             except: pass
 
-        ind_m = re.search(r'\"industryName\":\"(.*?)\"', json_q)
-        data['industry'] = ind_m.group(1) if ind_m else "N/A"
-        
-        cap_m = re.search(r'\"totalPrice\":\{.*?\"value\":\"([\d,\.]+)\".*?\"suffix\":\"(.*?)\"', json_q)
-        if cap_m:
-            v_str, s = cap_m.group(1).replace(',', ''), cap_m.group(2)
-            try:
-                v = float(v_str)
-                if "兆" in s: data['market_cap'] = str(int(v * 1_000_000_000_000))
-                elif "億" in s: data['market_cap'] = str(int(v * 100_000_000))
-                elif "百万" in s: data['market_cap'] = str(int(v * 1_000_000))
-                else: data['market_cap'] = v_str.split('.')[0]
-            except: data['market_cap'] = "N/A"
-        else: data['market_cap'] = "N/A"
-        
-        month_m = re.search(r'\"dpsPeriod\":\"\d{4}-(\d{2})-\d{2}\"', json_q)
-        if not month_m:
-            month_m = re.search(r'\"settlementDate\":\"\d{4}/(\d{2})\"', json_q)
-        if not month_m:
-            date_m = re.search(r'\"date\":\"\d{4}(\d{2})\"', json_q)
-            if date_m: month_m = date_m
-        data['settlement_month'] = f"{int(month_m.group(1))}月" if month_m else "N/A"
-
-        cp = None
-        try: cp = float(data['price'])
-        except: pass
-
         data.update({
             "code": code,
-            "moving_average_5": self._calculate_moving_average(histories, 5, cp),
-            "moving_average_25": self._calculate_moving_average(histories, 25, cp),
-            "moving_average_75": self._calculate_moving_average(histories, 75, cp),
-            "rci_26": self._calculate_rci(histories, 26, cp),
-            "rsi_14": self._calculate_rsi(histories, 14, cp),
-            "rsi_14_prev": self._calculate_rsi(histories[1:], 14, cp) if len(histories) > 15 else None,
-            "fibonacci": self._calculate_fibonacci(histories, cp),
+            "moving_average_5": self._calculate_moving_average(histories, 5, cur_p),
+            "moving_average_25": self._calculate_moving_average(histories, 25, cur_p),
+            "moving_average_75": self._calculate_moving_average(histories, 75, cur_p),
+            "rci_26": self._calculate_rci(histories, 26, cur_p),
+            "rsi_14": self._calculate_rsi(histories, 14, cur_p),
+            "rsi_14_prev": self._calculate_rsi(histories[1:], 14, cur_p) if len(histories) > 15 else None,
+            "fibonacci": self._calculate_fibonacci(histories, cur_p),
             "asset_type": "jp_stock", "currency": "JPY"
         })
         return data

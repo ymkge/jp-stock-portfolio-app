@@ -304,8 +304,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 (selectedBuySignal === 'strict-dip' && isDiamond && item.buy_signal && item.buy_signal.level >= 1) ||
                 (selectedBuySignal === 'strict-low' && isDiamond && item.sell_signal && item.sell_signal.level === 3) ||
                 (selectedBuySignal === 'overheated' && (
-                    (item.sell_signal && (item.sell_signal.level === 1 || item.sell_signal.level === 2)) ||
-                    (item.buy_signal && item.buy_signal.is_downward_trend === true)
+                    (item.sell_signal && (item.sell_signal.level === 1 || item.sell_signal.level === 2 || item.sell_signal.level === 4)) ||
+                    (item.sell_signal && item.sell_signal.level === 3 && !isDiamond)
                 ))
                 );            return matchesText && matchesIndustry && matchesAccountType && matchesSecurityCompany && matchesBuySignal;
         });

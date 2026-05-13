@@ -313,7 +313,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (showOnlyManaged) filteredAssets = filteredAssets.filter(asset => asset.holdings && asset.holdings.length > 0);
         if (showStrictDip) filteredAssets = filteredAssets.filter(asset => (asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true)) && asset.buy_signal && asset.buy_signal.level >= 1);
         if (showStrictLow) filteredAssets = filteredAssets.filter(asset => (asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true)) && asset.sell_signal && asset.sell_signal.level === 3);
-        if (showOverheated) filteredAssets = filteredAssets.filter(asset => asset.sell_signal && asset.sell_signal.level >= 1);
+        if (showOverheated) filteredAssets = filteredAssets.filter(asset => {
+            if (!asset.sell_signal) return false;
+            const level = asset.sell_signal.level;
+            // 過熱(1, 2)および下降トレンド(4)は常にリスク
+            if (level === 1 || level === 2 || level === 4) return true;
+            // 長期調整(3)は、ダイヤモンド銘柄以外の場合のみリスクとする（ダイヤモンド銘柄なら「格安」枠）
+            if (level === 3) {
+                const isDiamond = asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true);
+                return !isDiamond;
+            }
+            return false;
+        });
 
         if (filterText) {
             filteredAssets = filteredAssets.filter(asset =>

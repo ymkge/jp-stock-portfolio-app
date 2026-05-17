@@ -84,89 +84,192 @@ button {
 /* --- 全体レイアウト --- */
 .container {
     display: flex;
-    min-height: 100vh; /* height から min-height に変更 */
+    min-height: 100vh;
 }
 
-.sidebar {
-    width: var(--sidebar-width);
-    flex-shrink: 0;
-    background-color: var(--content-background-color);
-    border-right: 1px solid var(--border-color);
-    display: flex;
-    flex-direction: column;
-    padding: 1.5rem;
-    box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+.container.full-width {
+    width: 100%;
+    max-width: 100%;
+    display: block;
 }
 
 .main-content {
     flex-grow: 1;
-    /* display: flex; と flex-direction: column; を削除 */
+    padding: 0;
 }
 
-/* --- サイドバー --- */
-.sidebar header {
-    margin-bottom: 2rem;
+.container.full-width .main-content {
+    padding: 0 1.5rem 1.5rem;
 }
 
-.sidebar section {
-    margin-bottom: 2rem;
-}
-
-.sidebar footer {
-    margin-top: auto; /* フッターを一番下に配置 */
-    font-size: 0.9rem;
-    color: #777;
-}
-
-/* 銘柄管理フォーム */
-#add-asset-form {
+/* --- 上部ナビゲーションバー --- */
+.top-nav-bar {
     display: flex;
-    flex-direction: column;
-    gap: 10px;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 0;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
 }
 
-#asset-code-input {
-    padding: 10px;
+.nav-left h1 {
+    font-size: 1.4rem;
+    margin: 0;
+    white-space: nowrap;
+}
+
+.nav-center {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex-grow: 1;
+    justify-content: center;
+}
+
+.compact-form {
+    display: flex;
+    gap: 8px;
+}
+
+.compact-form input {
+    padding: 8px 12px;
     border: 1px solid var(--border-color);
     border-radius: 4px;
-    font-size: 1rem;
+    width: 250px;
+    background: var(--content-background-color);
+    color: var(--text-color);
 }
 
-#add-asset-form button {
-    background-color: var(--primary-color);
-}
-
-#add-asset-form button:hover {
-    background-color: var(--primary-hover-color);
-}
-
-/* ポートフォリオ操作 */
-.portfolio-actions {
+.nav-right {
     display: flex;
-    flex-direction: column;
-    gap: 10px; /* ボタン間のスペース */
+    align-items: center;
+    gap: 1rem;
 }
 
-#download-csv-button {
-    width: 100%;
-    background-color: var(--badge-bg-color);
-}
-#download-csv-button:hover {
-    background-color: #218838;
-}
-
-/* 選択した銘柄を削除ボタンのスタイル */
-#delete-selected-stocks-button {
-    width: 100%; /* 幅を100%にする */
-    background-color: var(--danger-color); /* 赤色に設定 */
+.nav-link-btn {
+    padding: 8px 16px;
+    background-color: var(--button-bg-color);
+    color: var(--text-color);
+    text-decoration: none;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    border: 1px solid var(--border-color);
+    transition: background-color 0.2s;
 }
 
-#delete-selected-stocks-button:hover {
-    background-color: var(--danger-hover-color); /* ホバー時の色 */
+.nav-link-btn:hover {
+    background-color: var(--button-hover-bg-color);
 }
 
+/* --- 最近の銘柄ドロップダウン --- */
+.recent-stocks-dropdown {
+    position: relative;
+}
 
-/* --- メインコンテンツ --- */
+.btn-outline {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.btn-outline:hover {
+    background: var(--button-hover-bg-color);
+}
+
+.dropdown-content {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    background: var(--content-background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    list-style: none;
+    padding: 0.5rem 0;
+    margin: 5px 0 0;
+    min-width: 180px;
+    box-shadow: var(--card-shadow);
+}
+
+.recent-stock-item {
+    padding: 8px 15px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.recent-stock-item:hover {
+    background: var(--button-hover-bg-color);
+}
+
+/* --- メインリストヘッダー (分析ページ風) --- */
+.main-list-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 0.8rem 1.5rem !important;
+    height: auto !important; /* 内容に合わせて可変 */
+    min-height: 60px;
+}
+
+.main-list-header .tab-nav {
+    margin-bottom: 0 !important;
+    border-bottom: none !important;
+}
+
+.main-filters {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-grow: 1;
+}
+
+.main-filters input, .main-filters select {
+    padding: 7px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--header-bg-color);
+    color: var(--text-color);
+    font-size: 0.85rem;
+}
+
+.main-filters input {
+    width: 180px;
+}
+
+.main-filters select {
+    max-width: 160px;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-primary { background-color: var(--primary-color); }
+.btn-success { background-color: var(--badge-bg-color); }
+.btn-danger { background-color: var(--danger-color); }
+
+.action-buttons button {
+    padding: 7px 14px;
+    font-size: 0.85rem;
+}
+
+/* ダークモード時のトグル調整 */
+.theme-switch {
+    cursor: pointer;
+    font-size: 1.2rem;
+    user-select: none;
+}
+
+.theme-switch input {
+    display: none;
+}
+
+/* --- メインコンテンツ (旧) --- */
 #alert-container {
     position: fixed;
     top: 20px;

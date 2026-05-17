@@ -10,12 +10,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const updateReportContainer = document.getElementById('update-report-container');
     const filterInput = document.getElementById('filter-input');
     const showOnlyManagedAssetsCheckbox = document.getElementById('show-only-managed-assets-checkbox');
-    const showOnlyAttentionAssetsCheckbox = document.getElementById('show-only-attention-assets-checkbox');
-    const showOnlyOpportunityAssetsCheckbox = document.getElementById('show-only-opportunity-assets-checkbox');
-    const showOnlyOverheatedAssetsCheckbox = document.getElementById('show-only-overheated-assets-checkbox');
+    const signalFilter = document.getElementById('signal-filter');
     const industryFilter = document.getElementById('industry-filter');
+    const recentStocksToggleBtn = document.getElementById('recent-stocks-toggle-btn');
     const tabNav = document.querySelector('.tab-nav');
     const darkModeToggle = document.getElementById('dark-mode-toggle');
+
+    // --- 最近の銘柄ドロップダウン制御 ---
+    if (recentStocksToggleBtn) {
+        recentStocksToggleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            recentStocksList.classList.toggle('hidden');
+        });
+        document.addEventListener('click', () => {
+            recentStocksList.classList.add('hidden');
+        });
+    }
 
     // --- テーマ管理 ---
     function initTheme() {
@@ -343,9 +353,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function filterAndRender() {
         const filterText = filterInput.value.toLowerCase();
         const showOnlyManaged = showOnlyManagedAssetsCheckbox.checked;
-        const showStrictDip = showOnlyAttentionAssetsCheckbox.checked;
-        const showStrictLow = showOnlyOpportunityAssetsCheckbox.checked;
-        const showOverheated = showOnlyOverheatedAssetsCheckbox.checked;
+        const selectedSignal = signalFilter.value;
         const selectedIndustry = industryFilter.value;
         
         let filteredAssets = allAssetsData.filter(asset => asset.asset_type === activeTab);
@@ -363,20 +371,25 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        if (showStrictDip) filteredAssets = filteredAssets.filter(asset => (asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true)) && asset.buy_signal && asset.buy_signal.level >= 1);
-        if (showStrictLow) filteredAssets = filteredAssets.filter(asset => (asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true)) && asset.sell_signal && asset.sell_signal.level === 3);
-        if (showOverheated) filteredAssets = filteredAssets.filter(asset => {
-            if (!asset.sell_signal) return false;
-            const level = asset.sell_signal.level;
-            // 過熱(1, 2)および下降トレンド(4)は常にリスク
-            if (level === 1 || level === 2 || level === 4) return true;
-            // 長期調整(3)は、ダイヤモンド銘柄以外の場合のみリスクとする（ダイヤモンド銘柄なら「格安」枠）
-            if (level === 3) {
-                const isDiamond = asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true);
-                return !isDiamond;
+        // シグナルフィルタの適用 (国内株タブのみ)
+        if (activeTab === 'jp_stock' && selectedSignal) {
+            if (selectedSignal === 'strict-dip') {
+                filteredAssets = filteredAssets.filter(asset => (asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true)) && asset.buy_signal && asset.buy_signal.level >= 1);
+            } else if (selectedSignal === 'strict-low') {
+                filteredAssets = filteredAssets.filter(asset => (asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true)) && asset.sell_signal && asset.sell_signal.level === 3);
+            } else if (selectedSignal === 'overheated') {
+                filteredAssets = filteredAssets.filter(asset => {
+                    if (!asset.sell_signal) return false;
+                    const level = asset.sell_signal.level;
+                    if (level === 1 || level === 2 || level === 4) return true;
+                    if (level === 3) {
+                        const isDiamond = asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true);
+                        return !isDiamond;
+                    }
+                    return false;
+                });
             }
-            return false;
-        });
+        }
 
         if (filterText) {
             filteredAssets = filteredAssets.filter(asset =>
@@ -758,7 +771,8 @@ document.addEventListener('DOMContentLoaded', () => {
     downloadCsvButton.addEventListener('click', () => { window.location.href = '/api/stocks/csv'; });
     filterInput.addEventListener('input', filterAndRender);
     industryFilter.addEventListener('change', filterAndRender);
-    [showOnlyManagedAssetsCheckbox, showOnlyAttentionAssetsCheckbox, showOnlyOpportunityAssetsCheckbox, showOnlyOverheatedAssetsCheckbox].forEach(c => c.addEventListener('input', filterAndRender));
+    signalFilter.addEventListener('change', filterAndRender);
+    showOnlyManagedAssetsCheckbox.addEventListener('input', filterAndRender);
     
     document.querySelectorAll('.select-all-assets').forEach(checkbox => checkbox.addEventListener('change', (e) => {
         document.querySelectorAll(`#portfolio-table-${e.target.dataset.assetType} .asset-checkbox:not(:disabled)`).forEach(cb => cb.checked = e.target.checked);

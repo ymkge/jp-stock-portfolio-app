@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const showOnlyAttentionAssetsCheckbox = document.getElementById('show-only-attention-assets-checkbox');
     const showOnlyOpportunityAssetsCheckbox = document.getElementById('show-only-opportunity-assets-checkbox');
     const showOnlyOverheatedAssetsCheckbox = document.getElementById('show-only-overheated-assets-checkbox');
+    const industryFilter = document.getElementById('industry-filter');
     const tabNav = document.querySelector('.tab-nav');
     const darkModeToggle = document.getElementById('dark-mode-toggle');
 
@@ -116,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (cachedState.metadata) {
                 renderUpdateReport(cachedState.metadata);
             }
+            updateIndustryFilterOptions();
             filterAndRender();
         } else {
             showSkeletons();
@@ -148,6 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
             window.appState.updateTimestamp();
             saveAssetsToStorage(); 
             
+            updateIndustryFilterOptions(); // 業種リストを更新
             if (assetsResponse.metadata) {
                 renderUpdateReport(assetsResponse.metadata);
             }
@@ -294,10 +297,46 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const parsed = JSON.parse(storedAssets);
                 allAssetsData = Array.isArray(parsed) ? parsed : (parsed.data || []);
+                updateIndustryFilterOptions();
                 filterAndRender();
             } catch (e) {
                 console.error('Error parsing stored assets:', e);
             }
+        }
+    }
+
+    function updateIndustryFilterOptions() {
+        if (!industryFilter) return;
+        
+        // 現在の選択値を保持
+        const currentValue = industryFilter.value;
+        
+        // 国内株式から一意な業種リストを抽出（N/A等を除外）
+        const industries = [...new Set(allAssetsData
+            .filter(a => a.asset_type === 'jp_stock' && a.industry)
+            .map(a => {
+                const ind = a.industry;
+                if (ind === 'N/A' || ind === '--' || ind === '-') return null;
+                return ind;
+            })
+            .filter(ind => ind !== null)
+        )].sort();
+
+        let options = '<option value="">すべての業種</option>';
+        industries.forEach(ind => {
+            options += `<option value="${ind}">${ind}</option>`;
+        });
+        
+        // 常に「その他」を選択肢の最後に追加（無効な業種名を持つ銘柄の受け皿）
+        options += '<option value="その他">その他（不明・N/A）</option>';
+        
+        industryFilter.innerHTML = options;
+        
+        // 以前の選択値が新しいリストにも存在すれば復元、そうでなければ「すべて」
+        if ([...industryFilter.options].some(opt => opt.value === currentValue)) {
+            industryFilter.value = currentValue;
+        } else {
+            industryFilter.value = "";
         }
     }
 
@@ -307,10 +346,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const showStrictDip = showOnlyAttentionAssetsCheckbox.checked;
         const showStrictLow = showOnlyOpportunityAssetsCheckbox.checked;
         const showOverheated = showOnlyOverheatedAssetsCheckbox.checked;
+        const selectedIndustry = industryFilter.value;
         
         let filteredAssets = allAssetsData.filter(asset => asset.asset_type === activeTab);
 
         if (showOnlyManaged) filteredAssets = filteredAssets.filter(asset => asset.holdings && asset.holdings.length > 0);
+        
+        // 業種フィルタの適用 (国内株タブのみ)
+        if (activeTab === 'jp_stock' && selectedIndustry) {
+            if (selectedIndustry === "その他") {
+                filteredAssets = filteredAssets.filter(asset => 
+                    !asset.industry || asset.industry === 'N/A' || asset.industry === '--' || asset.industry === '-' || asset.industry === 'その他'
+                );
+            } else {
+                filteredAssets = filteredAssets.filter(asset => asset.industry === selectedIndustry);
+            }
+        }
+
         if (showStrictDip) filteredAssets = filteredAssets.filter(asset => (asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true)) && asset.buy_signal && asset.buy_signal.level >= 1);
         if (showStrictLow) filteredAssets = filteredAssets.filter(asset => (asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true)) && asset.sell_signal && asset.sell_signal.level === 3);
         if (showOverheated) filteredAssets = filteredAssets.filter(asset => {
@@ -705,6 +757,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     downloadCsvButton.addEventListener('click', () => { window.location.href = '/api/stocks/csv'; });
     filterInput.addEventListener('input', filterAndRender);
+    industryFilter.addEventListener('change', filterAndRender);
     [showOnlyManagedAssetsCheckbox, showOnlyAttentionAssetsCheckbox, showOnlyOpportunityAssetsCheckbox, showOnlyOverheatedAssetsCheckbox].forEach(c => c.addEventListener('input', filterAndRender));
     
     document.querySelectorAll('.select-all-assets').forEach(checkbox => checkbox.addEventListener('change', (e) => {
@@ -751,6 +804,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (initialCachedState) {
         allAssetsData = Array.isArray(initialCachedState) ? initialCachedState : (initialCachedState.data || []);
         if (initialCachedState.metadata) renderUpdateReport(initialCachedState.metadata);
+        updateIndustryFilterOptions();
         filterAndRender();
     } else { loadAssetsFromStorage(); }
     fetchAndRenderAllData(false);

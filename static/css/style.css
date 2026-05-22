@@ -1486,12 +1486,11 @@ button {
 }
 
 #refresh-all-button {
-    width: 100%;
-    background-color: var(--primary-color);
+    /* 特定のスタイルが必要な場合のみ記述。背景色はクラス側に任せる */
 }
 
 #refresh-all-button:hover {
-    background-color: var(--primary-hover-color);
+    /* ホバー時もクラス側に任せる */
 }
 
 /* --- シグナル強度別の特別色（虹・金・銀） --- */

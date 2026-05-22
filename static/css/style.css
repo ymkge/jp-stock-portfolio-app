@@ -155,10 +155,26 @@ button {
     font-size: 0.9rem;
     border: 1px solid var(--border-color);
     transition: background-color 0.2s;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.nav-link-btn.btn-primary {
+    color: white;
+}
+
+.nav-link-btn.btn-outline {
+    background-color: transparent;
 }
 
 .nav-link-btn:hover {
     background-color: var(--button-hover-bg-color);
+}
+
+.btn-primary, .btn-outline {
+    white-space: nowrap;
 }
 
 /* --- 最近の銘柄ドロップダウン --- */
@@ -168,15 +184,27 @@ button {
 
 .btn-outline {
     background: transparent;
-    border: 1px solid var(--border-color);
-    color: var(--text-color);
+    border: 1px solid var(--primary-color);
+    color: var(--primary-color);
     padding: 8px 12px;
     border-radius: 4px;
     font-size: 0.9rem;
+    transition: all 0.2s ease;
 }
 
 .btn-outline:hover {
-    background: var(--button-hover-bg-color);
+    background: var(--primary-color);
+    color: white !important;
+}
+
+.dark-mode .btn-outline {
+    border-color: #4da3ff; /* ダークモードで見やすい少し明るい青 */
+    color: #4da3ff;
+}
+
+.dark-mode .btn-outline:hover {
+    background: #4da3ff;
+    color: white !important;
 }
 
 .dropdown-content {

@@ -11,6 +11,8 @@ import json
 
 import argparse
 
+import statistics
+
 # 既存のモジュールをインポート
 try:
     from scraper import JPStockScraper
@@ -92,6 +94,42 @@ class HistorySyncTool:
             logger.error(f"Error checking DB for {code}: {e}")
             return set()
 
+    def get_db_prices_for_dates(self, code, dates):
+        """指定された日付リストに対応するDB内の終値を取得する"""
+        if not dates: return {}
+        try:
+            placeholders = ','.join(['?'] * len(dates))
+            with sqlite3.connect(DB_FILE) as conn:
+                cursor = conn.cursor()
+                query = f"SELECT date, close_price FROM stock_price_history WHERE code = ? AND date IN ({placeholders})"
+                cursor.execute(query, [code] + list(dates))
+                return {row[0]: row[1] for row in cursor.fetchall() if row[1] is not None}
+        except Exception as e:
+            logger.error(f"Error fetching DB prices for {code}: {e}")
+            return {}
+
+    def apply_split_adjustment(self, code, ratio):
+        """DB内の価格と出来高を一括補正する"""
+        try:
+            with sqlite3.connect(DB_FILE) as conn:
+                cursor = conn.cursor()
+                # 価格を割り、出来高を掛ける (整数化)
+                cursor.execute(\"\"\"
+                    UPDATE stock_price_history 
+                    SET close_price = close_price / ?, 
+                        volume = CAST(volume * ? AS INTEGER),
+                        updated_at_jst = ?
+                    WHERE code = ?
+                \"\"\", (ratio, ratio, datetime.now(JST).isoformat(), code))
+                
+                updated_rows = cursor.rowcount
+                conn.commit()
+                logger.info(f"Successfully applied split adjustment (Ratio: {ratio:.4f}) to {updated_rows} records for {code}")
+                return updated_rows
+        except Exception as e:
+            logger.error(f"Failed to apply split adjustment for {code}: {e}")
+            return 0
+
     def save_histories(self, histories):
         """取得した時系列データをDBに保存し、統計情報を返す"""
         if not histories:
@@ -121,14 +159,14 @@ class HistorySyncTool:
                         v_ol = None
 
                     # 純粋な株価履歴テーブルにのみ保存
-                    cursor.execute("""
+                    cursor.execute(\"\"\"
                         INSERT INTO stock_price_history (date, code, close_price, volume, updated_at_jst)
                         VALUES (?, ?, ?, ?, ?)
                         ON CONFLICT(date, code) DO UPDATE SET
                             close_price = COALESCE(excluded.close_price, close_price),
                             volume = COALESCE(excluded.volume, volume),
                             updated_at_jst = excluded.updated_at_jst
-                    """, (
+                    \"\"\", (
                         h['date'], h['code'], c_p, v_ol,
                         datetime.now(JST).isoformat()
                     ))
@@ -147,8 +185,7 @@ class HistorySyncTool:
         all_histories_to_save = []
         base_url = f"https://finance.yahoo.co.jp/quote/{code}.T/history"
         
-        # まず現在値を把握 (動的フィルタ用) と銘柄名の取得
-        current_price = 0.0
+        # まず現在値を把握 (銘柄名の取得のみに使用)
         stock_name = name
         try:
             main_url = f"https://finance.yahoo.co.jp/quote/{code}.T"
@@ -156,15 +193,11 @@ class HistorySyncTool:
             if res_m:
                 json_m = self.scraper._extract_next_data(res_m.text)
                 m_data = self.scraper._scavenge_common_data(res_m.text, json_m)
-                
-                # 名前の更新
                 scraped_name = m_data.get('name')
                 if scraped_name: stock_name = scraped_name
-
-                p_val = m_data.get('price')
-                if isinstance(p_val, str): p_val = p_val.replace(',', '')
-                current_price = float(p_val) if p_val not in [None, "N/A", "--", "---", ""] else 0.0
         except: pass
+
+        split_adjusted = False
 
         for page in range(1, self.max_pages + 1):
             if page == 1:
@@ -181,13 +214,37 @@ class HistorySyncTool:
                 sys.exit(1)
 
             json_data = self.scraper._extract_next_data(res.text)
-            raw_histories = self.scraper._parse_histories(json_data if json_data else res.text, current_price=current_price)
+            # 分割チェックを正確に行うため、current_priceによる厳格バリデーションは無効化して取得
+            raw_histories = self.scraper._parse_histories(json_data if json_data else res.text, current_price=None)
             
             logger.info(f"Page {page}: Found {len(raw_histories) if raw_histories else 0} raw records.")
 
             if not raw_histories:
                 logger.debug(f"No histories found on page {page} for {code}")
                 break
+
+            # ページ1において株式分割の検知と補正を行う
+            if page == 1 and raw_histories and not split_adjusted:
+                yahoo_dates = [h['date'] for h in raw_histories if 'date' in h]
+                db_prices = self.get_db_prices_for_dates(code, yahoo_dates)
+                
+                if db_prices:
+                    ratios = []
+                    for h in raw_histories:
+                        d = h.get('date')
+                        y_p = float(h.get('closePrice', 0))
+                        if d in db_prices and y_p > 0:
+                            ratios.append(db_prices[d] / y_p)
+                    
+                    if ratios:
+                        median_ratio = statistics.median(ratios)
+                        # 15%以上の乖離があれば分割・併合とみなす
+                        if abs(median_ratio - 1.0) > 0.15:
+                            logger.warning(f"!!! SPLIT DETECTED for {code} !!! Estimated Ratio: {median_ratio:.4f}")
+                            self.apply_split_adjustment(code, median_ratio)
+                            split_adjusted = True
+                            # 補正後は、最新の調整値をDBに上書き反映させるため既存日付リストを空にする
+                            existing_dates = set()
             
             new_data_found_on_page = False
             page_data_to_add = []
@@ -208,7 +265,7 @@ class HistorySyncTool:
                 if h['date'] >= today_jst:
                     continue
                 
-                # 2. 既存データとの重複チェック
+                # 2. 既存データとの重複チェック (分割検知時は常に上書き)
                 if h['date'] in existing_dates:
                     continue
                 

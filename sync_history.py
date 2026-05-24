@@ -114,13 +114,13 @@ class HistorySyncTool:
             with sqlite3.connect(DB_FILE) as conn:
                 cursor = conn.cursor()
                 # 価格を割り、出来高を掛ける (整数化)
-                cursor.execute(\"\"\"
+                cursor.execute("""
                     UPDATE stock_price_history 
                     SET close_price = close_price / ?, 
                         volume = CAST(volume * ? AS INTEGER),
                         updated_at_jst = ?
                     WHERE code = ?
-                \"\"\", (ratio, ratio, datetime.now(JST).isoformat(), code))
+                """, (ratio, ratio, datetime.now(JST).isoformat(), code))
                 
                 updated_rows = cursor.rowcount
                 conn.commit()
@@ -159,14 +159,14 @@ class HistorySyncTool:
                         v_ol = None
 
                     # 純粋な株価履歴テーブルにのみ保存
-                    cursor.execute(\"\"\"
+                    cursor.execute("""
                         INSERT INTO stock_price_history (date, code, close_price, volume, updated_at_jst)
                         VALUES (?, ?, ?, ?, ?)
                         ON CONFLICT(date, code) DO UPDATE SET
                             close_price = COALESCE(excluded.close_price, close_price),
                             volume = COALESCE(excluded.volume, volume),
                             updated_at_jst = excluded.updated_at_jst
-                    \"\"\", (
+                    """, (
                         h['date'], h['code'], c_p, v_ol,
                         datetime.now(JST).isoformat()
                     ))
@@ -243,8 +243,7 @@ class HistorySyncTool:
                             logger.warning(f"!!! SPLIT DETECTED for {code} !!! Estimated Ratio: {median_ratio:.4f}")
                             self.apply_split_adjustment(code, median_ratio)
                             split_adjusted = True
-                            # 補正後は、最新の調整値をDBに上書き反映させるため既存日付リストを空にする
-                            existing_dates = set()
+                            # 補正後は、Page 1の全データを最新調整後データとして上書きするため既存チェックを無視させる
             
             new_data_found_on_page = False
             page_data_to_add = []
@@ -266,7 +265,7 @@ class HistorySyncTool:
                     continue
                 
                 # 2. 既存データとの重複チェック (分割検知時は常に上書き)
-                if h['date'] in existing_dates:
+                if not split_adjusted and h['date'] in existing_dates:
                     continue
                 
                 page_data_to_add.append(h)
@@ -275,8 +274,15 @@ class HistorySyncTool:
             logger.info(f"Page {page}: {len(page_data_to_add)} records are new.")
             all_histories_to_save.extend(page_data_to_add)
             
-            # 最適化: このページで新しいデータがなく、かつDBに十分な件数（250件=約1年分強）があれば、遡りを終了
+            # 最適化（早期終了判定）: 
+            # 1. 株式分割が発生した場合：Page 1を保存して即時終了
+            if split_adjusted:
+                logger.info(f"Splits adjusted and Page 1 records prepared. Stopping early for {code}.")
+                break
+
+            # 2. 通常時：このページで新しいデータがなく、かつDBに十分な件数（250件=約1年分）があれば終了
             if not new_data_found_on_page and len(existing_dates) >= 250:
+                logger.info(f"No new data on page {page} and DB has sufficient records ({len(existing_dates)}). Stopping early.")
                 break
                 
             # ページ間待機 (Yahoo負荷軽減)

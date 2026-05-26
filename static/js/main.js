@@ -459,10 +459,17 @@ document.addEventListener('DOMContentLoaded', () => {
             // フィボナッチ (ツールチップで詳細情報を表示)
             const fib = jpStock.fibonacci;
             if (fib && fib.retracement !== undefined) {
-                const fibVal = `${fib.retracement.toFixed(1)}%`;
+                let fibVal = `${fib.retracement.toFixed(1)}%`;
+                const isConvergence = jpStock.score_details && jpStock.score_details.is_fib_convergence;
+                if (isConvergence) {
+                    fibVal = `<span class="fib-convergence-badge">Wフィボ</span> ${fibVal}`;
+                }
                 const hCount = jpStock.history_count || fib.period || '不明';
-                const fibTooltip = `算出期間: ${hCount}日\n直近高値: ${fib.high?.toLocaleString() || '-'}円\n直近安値: ${fib.low?.toLocaleString() || '-'}円`;
-                createCellWithTooltip(fibVal, 'numeric', fibTooltip);
+                let fibTooltip = `算出期間: ${hCount}日\n直近高値: ${fib.high?.toLocaleString() || '-'}円\n直近安値: ${fib.low?.toLocaleString() || '-'}円`;
+                if (isConvergence) {
+                    fibTooltip = `【Wフィボ】短期と長期の押し目水準が一致する強いサポート帯です。\n` + fibTooltip;
+                }
+                createCellWithTooltip(fibVal, (isConvergence ? 'badge-cell' : 'numeric'), fibTooltip);
             } else {
                 createCell('-', 'numeric');
             }

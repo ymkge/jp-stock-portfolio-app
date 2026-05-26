@@ -346,15 +346,32 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     fib_min = get_config("buy_signal.thresholds.fibonacci_min", 61.8)
     fib_max = get_config("buy_signal.thresholds.fibonacci_max", 78.6)
     
-    fib_keys = ["fibonacci_3m", "fibonacci_6m", "fibonacci_1y", "fibonacci"]
-    for k in fib_keys:
+    fib_keys_short = ["fibonacci_3m", "fibonacci_6m"]
+    fib_key_long = "fibonacci_1y"
+    fib_short_hit = False
+    fib_long_hit = False
+    
+    # 短期の判定
+    for k in fib_keys_short:
         fib = stock_data.get(k)
         if fib and isinstance(fib, dict):
             ret = fib.get("retracement")
             if ret is not None and fib_min <= ret <= fib_max:
                 is_level1 = True
-                reasons.append(f"フィボナッチ押し目({ret:.1f}%)")
-                break # いずれかの期間でヒットすればOK
+                fib_short_hit = True
+                reasons.append(f"フィボナッチ短期押し目({ret:.1f}%)")
+                break
+
+    # 長期の判定
+    fib_l = stock_data.get(fib_key_long) or stock_data.get("fibonacci")
+    if fib_l and isinstance(fib_l, dict):
+        ret = fib_l.get("retracement")
+        if ret is not None and fib_min <= ret <= fib_max:
+            is_level1 = True
+            fib_long_hit = True
+            reasons.append(f"フィボナッチ長期押し目({ret:.1f}%)")
+
+    is_fib_convergence = fib_short_hit and fib_long_hit
 
     if not is_level1:
         # スコアは高いがテクニカル指標が取れないためにレベル1にならない場合も「判定不能」を検討
@@ -371,6 +388,10 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     # --- Level 2 判定条件 (反転確認) ---
     is_level2 = False
     level2_reasons = []
+
+    if is_fib_convergence:
+        is_level2 = True
+        level2_reasons.append("Wフィボ(短期&長期一致)")
 
     # 5日線突破
     price = 0.0
@@ -576,7 +597,8 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
     details = {
         "per": 0, "pbr": 0, "roe": 0, "yield": 0, "consecutive_increase": 0,
         "trend_short": 0, "trend_medium": 0, "trend_long": 0, "trend_signal": 0,
-        "fibonacci": 0, "rci": 0, "range_yearly": 0
+        "fibonacci": 0, "rci": 0, "range_yearly": 0,
+        "is_fib_convergence": False
     }
     missing_items = []
     is_calculable = False
@@ -668,35 +690,54 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
                     is_calculable = True
                     details["trend_signal"] += 1
 
-            # --- フィボナッチ判定 (マルチウィンドウ対応) ---
-            fib_keys = ["fibonacci_3m", "fibonacci_6m", "fibonacci_1y", "fibonacci"]
-            fib_hit = None
+            # --- フィボナッチ判定 (短期・長期統合) ---
+            fib_keys_short = ["fibonacci_3m", "fibonacci_6m"]
+            fib_key_long = "fibonacci_1y"
+            
+            fib_short_hit = None
+            fib_long_hit = None
             min_ret = get_config("trend.fibonacci.min_retracement", 50.0)
             max_ret = get_config("trend.fibonacci.max_retracement", 78.6)
             
-            for k in fib_keys:
+            # 短期（3m, 6m）の判定
+            for k in fib_keys_short:
                 f = stock_data.get(k)
                 if f and isinstance(f, dict):
                     ret = f.get("retracement")
                     if ret is not None and min_ret <= ret <= max_ret:
-                        details["fibonacci"] = 1 # いずれかでヒットすれば1点
-                        fib_hit = f
-                        is_calculable = True
-                        break # 短い期間を優先して終了
+                        fib_short_hit = f
+                        break # 短い期間を優先
+
+            # 長期（1y）の判定
+            f_long = stock_data.get(fib_key_long) or stock_data.get("fibonacci")
+            if f_long and isinstance(f_long, dict):
+                ret = f_long.get("retracement")
+                if ret is not None and min_ret <= ret <= max_ret:
+                    fib_long_hit = f_long
             
-            # ヒットしたフィボナッチ、またはデフォルト(1y)を表示用にセット
+            # スコアリング（いずれかヒットで1点、インフレ防止のため1点のまま維持）
+            if fib_short_hit or fib_long_hit:
+                details["fibonacci"] = 1
+                is_calculable = True
+            
+            # コンバージェンス（Wフィボ）判定
+            if fib_short_hit and fib_long_hit:
+                details["is_fib_convergence"] = True
+            
+            # 表示用データのセット（短い方を優先）
+            fib_hit = fib_short_hit or fib_long_hit
             if fib_hit:
                 stock_data["fibonacci"] = fib_hit
             
             # 年間安値圏判定 (下位25%以内) は引き続き1年ベースで判定
-            fib_1y = stock_data.get("fibonacci_1y") or stock_data.get("fibonacci")
-            if fib_1y and isinstance(fib_1y, dict):
-                ret_1y = fib_1y.get("retracement")
+            fib_1y_val = stock_data.get("fibonacci_1y") or stock_data.get("fibonacci")
+            if fib_1y_val and isinstance(fib_1y_val, dict):
+                ret_1y = fib_1y_val.get("retracement")
                 if ret_1y is not None and ret_1y >= 75.0:
                     is_calculable = True
                     details["range_yearly"] += 1
             
-            if not fib_hit and get_config("trend.fibonacci.enabled", True) and "フィボナッチ" not in missing_items:
+            if not fib_short_hit and not fib_long_hit and get_config("trend.fibonacci.enabled", True) and "フィボナッチ" not in missing_items:
                 if not stock_data.get("fibonacci"):
                     missing_items.append("フィボナッチ")
 

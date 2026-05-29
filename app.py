@@ -431,6 +431,7 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     # 長期調整判定 (75日線 または 200日線)
     is_long_adjustment = False
     max_deviation = 0.0
+    is_contrarian = False # 逆張りフラグ
     try:
         ma_75 = stock_data.get("ma75") or stock_data.get("moving_average_75")
         ma_75_threshold = get_config("buy_signal.thresholds.ma_75_diff_threshold", -10.0)
@@ -440,28 +441,49 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
             dev_75 = (price - ma_75) / ma_75 * 100 if ma_75 else 0
             dev_200 = (price - ma_200) / ma_200 * 100 if ma_200 else 0
             
+            # 75日線の下にある場合は「逆張り」として扱う
+            if ma_75 and price < ma_75:
+                is_contrarian = True
+                
             if dev_75 <= ma_75_threshold or dev_200 <= -15.0:
                 is_long_adjustment = True
                 max_deviation = min(dev_75, dev_200)
     except: pass
 
+    # トレンド判定をラベルとアクションに反映
+    if is_contrarian:
+        # 逆張り（下落トレンド中）のラベル・アクション修正
+        label = f"⚡ 逆張り{label}"
+        recommended_action = "短期リバウンド狙い。トレンドは下向きのため、深追いは厳禁です。"
+        current_status = f"【逆張り】{current_status} ただし、中長期トレンド（75日線）の下にあるため、リスクは高めです。"
+    else:
+        # 順張り（上昇トレンド中）のラベル修正
+        label = f"📈 {label}(順張り)"
+        recommended_action = f"トレンド追随。{recommended_action}"
+
     # ロジック統合: 優良株の長期調整はチャンス（Level 4 以外の緩やかな調整を拾う）
     if is_long_adjustment:
         long_config = get_config("buy_signal.display.long_adjustment", {})
         label += long_config.get("suffix", "＋長期調整中")
-        recommended_action = long_config.get("recommended_action_override", recommended_action)
+        recommended_action = "高リスク・自律反発狙い。底打ちを確認するまで慎重に。"
         current_status += " " + long_config.get("current_status_append", "")
         reasons.append(f"長期乖離過大({max_deviation:.1f}%)")
+
+    icon = config["icon_diamond"] if is_diamond else config["icon"]
+    # 逆張りの場合はアイコンに雷を追加
+    if is_contrarian:
+        icon = f"⚡{icon}"
 
     return {
         "level": level,
         "is_diamond": is_diamond,
         "is_unreliable": not is_reliable,
-        "icon": config["icon_diamond"] if is_diamond else config["icon"],
+        "icon": icon,
         "label": label,
         "recommended_action": recommended_action,
         "current_status": current_status,
-        "reasons": reasons + level2_reasons
+        "reasons": reasons + level2_reasons,
+        "is_long_adjustment": is_long_adjustment # UI互換性のために明示的に返す
     }
 
 def reconcile_signals(buy_signal: Optional[dict], sell_signal: Optional[dict]) -> tuple[Optional[dict], Optional[dict]]:
@@ -485,9 +507,10 @@ def reconcile_signals(buy_signal: Optional[dict], sell_signal: Optional[dict]) -
         # 売却側（警告）を優先し、購入側を非表示にする。
         return None, sell_signal
 
-    # 2. 売却側が「長期調整 (Lv3: 75日線割れ)」の場合
-    # 購入シグナル（注目・チャンス）が出ているなら、売却側を非表示にする。
-    # ※購入シグナルのラベルに「＋長期調整」として統合されるため、情報の欠落はない。
+    # 3. 売却側が「長期調整 (Lv3: 75日線割れ)」の場合
+    # 購入シグナル（注目・チャンス）が出ているなら、購入側を優先する。
+    # 新しいロジックでは、購入側のラベルに「逆張り」が明示されるため、
+    # トレンドが下向きであるというリスク情報は維持される。
     if sell_signal.get("level") == 3:
         return buy_signal, None
 

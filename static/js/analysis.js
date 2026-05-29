@@ -388,14 +388,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const momSuffixDiv = !isFiltered ? formatDiff(calcDiff(currentTotalDiv, prev ? prev.total_dividend : 0), prevDate) : '';
         
         const summaryContent = document.getElementById('summary-content');
+        const compareDateLabel = document.getElementById('compare-date-label');
+        
         if (summaryContent) {
             if (holdings.length === 0 && !loadingIndicator.classList.contains('hidden')) return;
             
-            // 比較対象日の表示用ラベル
-            const compareLabel = (prevDate && !isFiltered) ? `<div class="text-muted mb-2" style="font-size: 0.8rem;">(比較対象: ${prevDate})</div>` : '';
+            // 比較対象日の表示 (ヘッダー横のラベルへ)
+            if (compareDateLabel) {
+                compareDateLabel.textContent = (prevDate && !isFiltered) ? `(比較対象: ${prevDate})` : '';
+            }
             
             summaryContent.innerHTML = `
-                ${compareLabel}
                 <p>総評価額: <span class="numeric ${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalMarketValue, 0)}円</span>${momSuffixMV}</p>
                 <p>総損益: <span class="numeric ${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossClass}">${formatNumber(totalProfitLoss, 0)}円</span>${momSuffixPL}</p>
                 <p>総損益率: <span class="numeric ${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossRateClass}">${formatNumber(totalProfitLossRate, 2)}%</span></p>

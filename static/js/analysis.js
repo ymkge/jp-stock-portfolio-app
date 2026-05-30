@@ -436,18 +436,45 @@ document.addEventListener('DOMContentLoaded', () => {
         const metrics = ['per', 'pbr', 'roe', 'yield', 'consecutive_increase_years', 'momentum'];
         const weightedSums = { per: 0, pbr: 0, roe: 0, yield: 0, consecutive_increase_years: 0, momentum: 0 }, weightsTotal = { per: 0, pbr: 0, roe: 0, yield: 0, consecutive_increase_years: 0, momentum: 0 };
         const assetMarketValues = {};
+        const contributorData = { per: [], pbr: [], roe: [], yield: [], consecutive_increase_years: [], momentum: [] };
+
         holdings.forEach(item => {
             const mv = parseFloat(item.market_value) || 0; if (mv > 0 && item.code) assetMarketValues[item.code] = (assetMarketValues[item.code] || 0) + mv;
             metrics.forEach(m => {
                 let val = item[m]; if (m === 'momentum' && item.score_details) { const d = item.score_details; val = (d.trend_short || 0) + (d.trend_medium || 0) + (d.trend_long || 0) + (d.trend_signal || 0); }
                 if (typeof val === 'string') val = parseFloat(val.replace(/,/g, '').replace(/%|倍/g, '').trim());
-                if (typeof val === 'number' && !isNaN(val) && isFinite(val) && mv > 0) { weightedSums[m] += val * mv; weightsTotal[m] += mv; }
+                if (typeof val === 'number' && !isNaN(val) && isFinite(val) && mv > 0) { 
+                    weightedSums[m] += val * mv; 
+                    weightsTotal[m] += mv; 
+                    contributorData[m].push({ code: item.code, name: item.name, impact: val * mv, val: val });
+                }
             });
         });
+
+        // 寄与度トップ3の抽出
+        const contributors = {};
+        metrics.forEach(m => {
+            contributors[m] = contributorData[m]
+                .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
+                .slice(0, 3);
+        });
+
         let hhi = 0; Object.values(assetMarketValues).forEach(mv => { const pct = (mv / totalMarketValue) * 100; hhi += pct * pct; });
         const sorted = Object.values(assetMarketValues).sort((a, b) => b - a), top5 = (sorted.slice(0, 5).reduce((s, v) => s + v, 0) / totalMarketValue) * 100;
         const coverages = {}; metrics.forEach(m => coverages[m] = (weightsTotal[m] / totalMarketValue) * 100);
-        return { weighted_per: weightsTotal.per > 0 ? weightedSums.per / weightsTotal.per : null, weighted_pbr: weightsTotal.pbr > 0 ? weightedSums.pbr / weightsTotal.pbr : null, weighted_roe: weightsTotal.roe > 0 ? weightedSums.roe / weightsTotal.roe : null, weighted_yield: weightsTotal.yield > 0 ? weightedSums.yield / weightsTotal.yield : null, weighted_years: weightsTotal.consecutive_increase_years > 0 ? weightedSums.consecutive_increase_years / weightsTotal.consecutive_increase_years : null, weighted_momentum: weightsTotal.momentum > 0 ? weightedSums.momentum / weightsTotal.momentum : null, coverages, hhi, top5_ratio: top5, style_breakdown: calculateStyleBreakdown(holdings, totalMarketValue) };
+        return { 
+            weighted_per: weightsTotal.per > 0 ? weightedSums.per / weightsTotal.per : null, 
+            weighted_pbr: weightsTotal.pbr > 0 ? weightedSums.pbr / weightsTotal.pbr : null, 
+            weighted_roe: weightsTotal.roe > 0 ? weightedSums.roe / weightsTotal.roe : null, 
+            weighted_yield: weightsTotal.yield > 0 ? weightedSums.yield / weightsTotal.yield : null, 
+            weighted_years: weightsTotal.consecutive_increase_years > 0 ? weightedSums.consecutive_increase_years / weightsTotal.consecutive_increase_years : null, 
+            weighted_momentum: weightsTotal.momentum > 0 ? weightedSums.momentum / weightsTotal.momentum : null, 
+            contributors,
+            coverages, 
+            hhi, 
+            top5_ratio: top5, 
+            style_breakdown: calculateStyleBreakdown(holdings, totalMarketValue) 
+        };
     }
 
     function calculateStyleBreakdown(holdings, totalMv) {
@@ -473,12 +500,64 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderDNAAndRisk(stats) {
         const dna = document.getElementById('dna-content'), risk = document.getElementById('risk-content'), personality = document.getElementById('personality-content');
         if (!stats) { [dna, risk, personality].forEach(el => { if (el) el.innerHTML = '<p>データなし</p>'; }); return; }
+        
         const thresholds = highlightRules.radar_chart ? highlightRules.radar_chart.benchmarks : {};
+        const dnaConfig = highlightRules.portfolio_dna || {};
+        const dnaStandards = dnaConfig.standards || {};
+
         if (dna) {
             if (allHoldingsData.length === 0 && !loadingIndicator.classList.contains('hidden')) return;
+            
             const getColor = (v, t, type) => v === null ? '' : (type === 'lower' ? (v <= t ? 'profit' : (v <= t * 1.5 ? 'warning' : 'loss')) : (v >= t ? 'profit' : (v >= t * 0.7 ? 'warning' : 'loss')));
             const lowCov = Object.entries(stats.coverages || {}).filter(([k, v]) => v < 70 && ['per', 'pbr', 'roe', 'yield'].includes(k)).map(([k, v]) => `${k.toUpperCase()}(${Math.round(v)}%)`).join(', ');
-            dna.innerHTML = `<div class="dna-metrics"><p title="平均PER">割安さ(利益): <span class="numeric ${getColor(stats.weighted_per, thresholds.valuation_per || 15, 'lower')}">${formatNumber(stats.weighted_per, 2)}倍</span></p><p title="平均PBR">割安さ(資産): <span class="numeric ${getColor(stats.weighted_pbr, thresholds.valuation_pbr || 1.2, 'lower')}">${formatNumber(stats.weighted_pbr, 2)}倍</span></p><p title="平均ROE">稼ぐ力(収益性): <span class="numeric ${getColor(stats.weighted_roe, thresholds.profitability_roe || 9, 'higher')}">${formatNumber(stats.weighted_roe, 2)}%</span></p><p title="平均利回り">配当利回り: <span class="numeric ${getColor(stats.weighted_yield, thresholds.income_yield || 2.5, 'higher')}">${formatNumber(stats.weighted_yield, 2)}%</span></p></div>${lowCov ? `<div class="coverage-warning">⚠️ 参考値: ${lowCov}</div>` : ''}`;
+
+            const renderMetric = (label, fullLabel, key, val, suffix, type) => {
+                const std = dnaStandards[key] || {};
+                const stdVal = std.value;
+                const stdLabel = std.label || '基準';
+                const cls = getColor(val, stdVal || (type === 'lower' ? 15 : 8), type);
+                const contributors = (stats.contributors[key] || []).map(c => `・${c.name}: ${formatNumber(c.val, key === 'per' || key === 'pbr' ? 2 : 1)}${suffix}`).join('\n');
+                const title = `【${fullLabel}の主要因】\n${contributors}\n\n※保有額による加重平均への寄与度が高い順`;
+                const diffIcon = val !== null && stdVal ? ( (type === 'lower' ? val <= stdVal : val >= stdVal) ? '<span class="profit">✔</span>' : '<span class="loss">▲</span>' ) : '';
+
+                return `
+                    <div class="dna-metric-item">
+                        <div class="dna-metric-header">
+                            <span class="dna-metric-label">${label}</span>
+                            <span class="dna-info-icon" title="${title}">ⓘ</span>
+                        </div>
+                        <div class="dna-metric-value">
+                            <span class="numeric ${cls}">${formatNumber(val, 2)}${suffix}</span>
+                            ${diffIcon}
+                        </div>
+                        <div class="dna-metric-standard">目標: ${stdVal}${suffix} (${stdLabel})</div>
+                    </div>
+                `;
+            };
+
+            const perHtml = renderMetric('割安さ(利益)', '平均PER', 'per', stats.weighted_per, '倍', 'lower');
+            const pbrHtml = renderMetric('割安さ(資産)', '平均PBR', 'pbr', stats.weighted_pbr, '倍', 'lower');
+            const roeHtml = renderMetric('稼ぐ力', '平均ROE', 'roe', stats.weighted_roe, '%', 'higher');
+            const yieldHtml = renderMetric('配当利回り', '平均利回り', 'yield', stats.weighted_yield, '%', 'higher');
+
+            // 診断メッセージの決定
+            const b = stats.style_breakdown;
+            let diagnosisMsg = "";
+            if (lowCov) {
+                diagnosisMsg = dnaConfig.diagnosis?.low_coverage || "⚠️ データ不足のため、診断結果は参考値です。";
+            } else if (b) {
+                if (b.style.growth > 60) diagnosisMsg = dnaConfig.diagnosis?.growth || "将来の成長を期待した、勢いのある攻めの構成です。";
+                else if (b.style.value > 60) diagnosisMsg = dnaConfig.diagnosis?.value || "実力に対して割安な銘柄が中心の、どっしりした構成です。";
+                else diagnosisMsg = dnaConfig.diagnosis?.balanced || "バランスの取れた標準的な構成です。";
+            }
+
+            dna.innerHTML = `
+                <div class="dna-metrics-grid">
+                    ${perHtml} ${pbrHtml} ${roeHtml} ${yieldHtml}
+                </div>
+                ${diagnosisMsg ? `<div class="dna-diagnosis-box">${diagnosisMsg}</div>` : ''}
+                ${lowCov ? `<div class="coverage-warning" style="margin-top:10px;">※カバー率不足: ${lowCov}</div>` : ''}
+            `;
         }
         if (risk) {
             if (allHoldingsData.length === 0 && !loadingIndicator.classList.contains('hidden')) return;

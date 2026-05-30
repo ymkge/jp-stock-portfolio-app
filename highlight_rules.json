@@ -152,6 +152,20 @@
       "安全性": "業種（ディフェンシブ性）、時価総額（大型株）、低PBR、赤字の有無などを総合判定。不況や暴落に対する「耐性」の強さを示します。"
     }
   },
+  "portfolio_dna": {
+    "standards": {
+      "per": {"value": 15.0, "type": "lower_is_better", "label": "割安圏"},
+      "pbr": {"value": 1.2, "type": "lower_is_better", "label": "資産妥当"},
+      "roe": {"value": 8.0, "type": "higher_is_better", "label": "効率的"},
+      "yield": {"value": 3.0, "type": "higher_is_better", "label": "高配当"}
+    },
+    "diagnosis": {
+      "growth": "将来の成長を期待した、勢いのある攻めの構成です。",
+      "value": "実力に対して割安な銘柄が中心の、どっしりとした構成です。",
+      "balanced": "割安さと成長性のバランスが取れた、標準的な構成です。",
+      "low_coverage": "⚠️ データ不足のため、診断結果は参考値としてご確認ください。"
+    }
+  },
   "market_indices": [
     {"code": "998407.O", "name": "日経平均"},
     {"code": "998405.T", "name": "TOPIX"},

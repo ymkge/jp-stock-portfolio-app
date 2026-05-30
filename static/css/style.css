@@ -1234,6 +1234,82 @@ button {
     margin-bottom: 4px;
 }
 
+/* Portfolio DNA Enhancement */
+.dna-metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.dna-metric-item {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    padding: 10px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.dna-metric-item:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+}
+
+.dna-metric-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 5px;
+}
+
+.dna-info-icon {
+    cursor: help;
+    background: #e9ecef;
+    color: #6c757d;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-style: normal;
+}
+
+.dna-metric-value {
+    font-size: 1.25rem;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dna-metric-standard {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.dna-diagnosis-box {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 0.9rem;
+    border-left: 4px solid var(--primary-color);
+    line-height: 1.5;
+}
+
+/* Dark Mode support for DNA boxes */
+[data-theme="dark"] .dna-diagnosis-box {
+    background: rgba(255,255,255,0.05);
+    color: var(--text-color);
+}
+[data-theme="dark"] .dna-info-icon {
+    background: #444;
+    color: #bbb;
+}
+
 /* --- Portfolio Radar Chart --- */
 .portfolio-radar .chart-container {
     display: flex;

@@ -435,11 +435,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (totalMarketValue === 0) return null;
         const metrics = ['per', 'pbr', 'roe', 'yield', 'consecutive_increase_years', 'momentum'];
         const weightedSums = { per: 0, pbr: 0, roe: 0, yield: 0, consecutive_increase_years: 0, momentum: 0 }, weightsTotal = { per: 0, pbr: 0, roe: 0, yield: 0, consecutive_increase_years: 0, momentum: 0 };
-        const assetMarketValues = {};
+        const assetInfo = {}; // code -> { name, mv }
         const contributorData = { per: [], pbr: [], roe: [], yield: [], consecutive_increase_years: [], momentum: [] };
 
         holdings.forEach(item => {
-            const mv = parseFloat(item.market_value) || 0; if (mv > 0 && item.code) assetMarketValues[item.code] = (assetMarketValues[item.code] || 0) + mv;
+            const mv = parseFloat(item.market_value) || 0;
+            if (mv > 0 && item.code) {
+                if (!assetInfo[item.code]) assetInfo[item.code] = { name: item.name, mv: 0 };
+                assetInfo[item.code].mv += mv;
+            }
             metrics.forEach(m => {
                 let val = item[m]; if (m === 'momentum' && item.score_details) { const d = item.score_details; val = (d.trend_short || 0) + (d.trend_medium || 0) + (d.trend_long || 0) + (d.trend_signal || 0); }
                 if (typeof val === 'string') val = parseFloat(val.replace(/,/g, '').replace(/%|倍/g, '').trim());
@@ -459,8 +463,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 .slice(0, 3);
         });
 
-        let hhi = 0; Object.values(assetMarketValues).forEach(mv => { const pct = (mv / totalMarketValue) * 100; hhi += pct * pct; });
-        const sorted = Object.values(assetMarketValues).sort((a, b) => b - a), top5 = (sorted.slice(0, 5).reduce((s, v) => s + v, 0) / totalMarketValue) * 100;
+        const sortedAssets = Object.values(assetInfo).sort((a, b) => b.mv - a.mv);
+        let hhi = 0; sortedAssets.forEach(a => { const pct = (a.mv / totalMarketValue) * 100; hhi += pct * pct; });
+        const top5 = (sortedAssets.slice(0, 5).reduce((s, v) => s + v.mv, 0) / totalMarketValue) * 100;
+        const top_assets = sortedAssets.slice(0, 5).map(a => ({ name: a.name, ratio: (a.mv / totalMarketValue) * 100 }));
+
         const coverages = {}; metrics.forEach(m => coverages[m] = (weightsTotal[m] / totalMarketValue) * 100);
         return { 
             weighted_per: weightsTotal.per > 0 ? weightedSums.per / weightsTotal.per : null, 
@@ -472,7 +479,8 @@ document.addEventListener('DOMContentLoaded', () => {
             contributors,
             coverages, 
             hhi, 
-            top5_ratio: top5, 
+            top5_ratio: top5,
+            top_assets,
             style_breakdown: calculateStyleBreakdown(holdings, totalMarketValue) 
         };
     }
@@ -561,8 +569,53 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (risk) {
             if (allHoldingsData.length === 0 && !loadingIndicator.classList.contains('hidden')) return;
-            const hhiT = thresholds.diversification_hhi || 1500, hhiL = stats.hhi >= 2500 ? ['リスクあり', 'loss'] : (stats.hhi >= hhiT ? ['やや集中', 'warning'] : ['分散良好', 'profit']);
-            risk.innerHTML = `<div class="risk-metrics"><p title="上位5選占有率">銘柄の集中度: <span class="numeric ${stats.top5_ratio > (thresholds.diversification_top5 || 40) ? 'warning' : 'profit'}">${formatNumber(stats.top5_ratio, 1)}%</span></p><p title="HHI指数">カゴの分け具合: <span class="numeric ${hhiL[1]}">${hhiL[0]} (${formatNumber(stats.hhi, 0)})</span></p></div>`;
+            
+            const riskConfig = highlightRules.concentration_risk || {};
+            const riskStandards = riskConfig.standards || {};
+            const riskDescriptions = riskConfig.descriptions || {};
+
+            const renderRiskMetric = (label, fullLabel, key, val, suffix, threshold) => {
+                const std = riskStandards[key] || {};
+                const stdVal = std.value || threshold;
+                const stdLabel = std.label || '目標';
+                const desc = riskDescriptions[key] || "";
+                
+                // Color logic: lower is better for risk metrics
+                // HHI special handling for consistency with existing logic
+                let cls = '';
+                if (key === 'hhi') {
+                    cls = val >= 2500 ? 'loss' : (val >= stdVal ? 'warning' : 'profit');
+                } else {
+                    cls = val <= stdVal ? 'profit' : (val <= stdVal * 1.5 ? 'warning' : 'loss');
+                }
+                
+                const topContributors = (stats.top_assets || []).map(a => `・${a.name}: ${formatNumber(a.ratio, 1)}%`).join('\n');
+                const title = `【${fullLabel}】\n${desc}\n\n【主要な保有銘柄】\n${topContributors}`;
+                const diffIcon = val !== null && stdVal ? ( (val <= stdVal) ? '<span class="profit">✔</span>' : '<span class="loss">▲</span>' ) : '';
+
+                return `
+                    <div class="dna-metric-item">
+                        <div class="dna-metric-header">
+                            <span class="dna-metric-label">${label}</span>
+                            <span class="dna-info-icon" title="${title}">ⓘ</span>
+                        </div>
+                        <div class="dna-metric-value">
+                            <span class="numeric ${cls}">${formatNumber(val, key === 'hhi' ? 0 : 1)}${suffix}</span>
+                            ${diffIcon}
+                        </div>
+                        <div class="dna-metric-standard">目標: ${stdVal}${suffix} (${stdLabel})</div>
+                    </div>
+                `;
+            };
+
+            const top5Html = renderRiskMetric('銘柄集中度', '上位5銘柄占有率', 'top5', stats.top5_ratio, '%', 40);
+            const hhiHtml = renderRiskMetric('分散の質(HHI)', 'HHI指数', 'hhi', stats.hhi, '', 1500);
+
+            risk.innerHTML = `
+                <div class="dna-metrics-grid">
+                    ${top5Html} ${hhiHtml}
+                </div>
+            `;
         }
         if (personality) {
             if (allHoldingsData.length === 0 && !loadingIndicator.classList.contains('hidden')) return;

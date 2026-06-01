@@ -225,6 +225,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const changePercent = idx.change_percent || '--';
             const wow = idx.wow_percent || '--';
             const mom = idx.mom_percent || '--';
+            const wowDate = idx.wow_date || '';
+            const momDate = idx.mom_date || '';
 
             const getChangeClass = (val) => {
                 if (typeof val === 'string') {
@@ -269,13 +271,16 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <span class="${changeClass} numeric">${change} (${formatPercent(changePercent)})</span>
                             </div>
                             <div class="market-index-row">
-                                <span class="change-label">前週比:</span>
-                                <span class="${wowClass} numeric">${formatPercent(wow)}</span>
+                                <div class="market-index-item">
+                                    <span class="change-label">前週比:</span>
+                                    <span class="${wowClass} numeric" title="${wowDate ? '比較対象: ' + wowDate : ''}">${formatPercent(wow)}</span>
+                                </div>
+                                <div class="market-index-item">
+                                    <span class="change-label">前月比:</span>
+                                    <span class="${momClass} numeric" title="${momDate ? '比較対象: ' + momDate : ''}">${formatPercent(mom)}</span>
+                                </div>
                             </div>
-                            <div class="market-index-row">
-                                <span class="change-label">前月比:</span>
-                                <span class="${momClass} numeric">${formatPercent(mom)}</span>
-                            </div>
+
                         </div>
                     </div>
                 </a>

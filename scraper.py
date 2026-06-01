@@ -149,43 +149,38 @@ class BaseScraper(ABC):
         histories = []
         norm_text = json_text.replace('\\"', '"')
         
+        # 1. 通常の株価構造 ({"date":"2024/01/01", "values": [...]})
         records = re.findall(r'\{"date":"(\d{4}[-/]\d{1,2}[-/]\d{1,2})",\s*"values":\s*\[(.*?\}\s*\])', norm_text, re.S)
         
         for dt_str, val_block in records:
             vals = re.findall(r'"value":"([\d\.\-\,]*)"', val_block)
-            
-            # 日本株の履歴行は通常7要素。
-            # 最近の仕様では空の要素が含まれることがあり、実質的な値が6〜8要素程度。
-            # 4要素以下は確実に配当・分割等の特殊行。
             if len(vals) < 6: continue
-                
             try:
                 cl_p_raw = vals[3].replace(',', '')
                 vol_raw  = vals[4].replace(',', '')
-                
                 cl_p = float(cl_p_raw)
-                
-                # 出来高が小数（19.08など）の場合は株価行ではないため除外
-                if '.' in vol_raw and not vol_raw.endswith('.0'):
-                    continue
-                
+                if '.' in vol_raw and not vol_raw.endswith('.0'): continue
                 vol = float(vol_raw)
-                
-                # --- 厳格な動的バリデーション ---
                 if cl_p <= 0: continue
-                
-                # 現在値がわかっている場合、それと比較して異常な値(出来高混入など)を排除
                 if current_price and current_price > 0:
-                    # 乖離率が50%を超える場合は異常値とみなす
-                    if abs(cl_p - current_price) / current_price > 0.5:
-                        continue
-                
-                histories.append({
-                    "baseDatetime": dt_str, 
-                    "closePrice": str(cl_p),
-                    "volume": str(int(vol))
-                })
+                    if abs(cl_p - current_price) / current_price > 0.5: continue
+                histories.append({"baseDatetime": dt_str, "closePrice": str(cl_p), "volume": str(int(vol))})
             except (ValueError, IndexError): continue
+
+        # 2. 市場指標等の別構造 ({"date":"2024年1月1日","closePrice":"..."}) への対応
+        if not histories:
+            # 「2024年1月1日」という形式をパース
+            index_records = re.findall(r'\{"date":"(\d{4})年(\d{1,2})月(\d{1,2})日".*?"closePrice":"([\d\.,\-]+)"\}', norm_text)
+            for y, m, d, cp in index_records:
+                try:
+                    cl_p = float(cp.replace(',', ''))
+                    if cl_p <= 0: continue
+                    histories.append({
+                        "baseDatetime": f"{y}/{m}/{d}",
+                        "closePrice": str(cl_p),
+                        "volume": "0"
+                    })
+                except ValueError: continue
 
         unique_histories = {}
         for h in histories:

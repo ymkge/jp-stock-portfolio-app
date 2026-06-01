@@ -1052,23 +1052,39 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
 
             current_price = safe_float(idx_result.get("price"))
             
-            # WoW
+            # WoW (前週比)
             date_wow = (now_jst - timedelta(days=7)).strftime("%Y-%m-%d")
             hist_wow = history_manager.get_historical_data_before(code, date_wow)
             wow_percent = "N/A"
+            wow_date = None
             if hist_wow and current_price > 0:
                 old_price = safe_float(hist_wow.get("price"))
+                wow_date = hist_wow.get("_db_date")
                 if old_price > 0:
                     wow_percent = round((current_price - old_price) / old_price * 100, 2)
                 
-            # MoM
+            # MoM (前月比)
             date_mom = (now_jst - timedelta(days=30)).strftime("%Y-%m-%d")
             hist_mom = history_manager.get_historical_data_before(code, date_mom)
             mom_percent = "N/A"
+            mom_date = None
             if hist_mom and current_price > 0:
                 old_price = safe_float(hist_mom.get("price"))
-                if old_price > 0:
-                    mom_percent = round((current_price - old_price) / old_price * 100, 2)
+                mom_date = hist_mom.get("_db_date")
+                
+                # 重複検知: WoWと同じレコードを参照している場合はMoMを無効化
+                if mom_date == wow_date:
+                    mom_percent = "N/A"
+                elif old_price > 0:
+                    # 期間の妥当性チェック (例: 60日以上前のデータならMoMとして不適切)
+                    try:
+                        mom_dt = datetime.strptime(mom_date, "%Y-%m-%d").replace(tzinfo=history_manager.JST)
+                        if (now_jst - mom_dt).days > 60:
+                            mom_percent = "N/A"
+                        else:
+                            mom_percent = round((current_price - old_price) / old_price * 100, 2)
+                    except:
+                        mom_percent = round((current_price - old_price) / old_price * 100, 2)
 
             market_indices_results.append({
                 "name": idx_result.get("name", market_indices_config[i]["name"]),
@@ -1077,7 +1093,9 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
                 "change": idx_result.get("change"),
                 "change_percent": idx_result.get("change_percent"),
                 "wow_percent": wow_percent,
-                "mom_percent": mom_percent
+                "wow_date": wow_date,
+                "mom_percent": mom_percent,
+                "mom_date": mom_date
             })
 
     success_count = sum(1 for r in scraped_results if r and "error" not in r)

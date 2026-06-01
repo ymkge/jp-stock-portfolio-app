@@ -183,12 +183,14 @@ class HistorySyncTool:
         today_jst = datetime.now(JST).strftime("%Y-%m-%d")
         
         all_histories_to_save = []
-        base_url = f"https://finance.yahoo.co.jp/quote/{code}.T/history"
+        # URL正規化: すでに .T や .O があればそのまま、なければ .T を付与
+        full_code = code if (code.endswith('.T') or code.endswith('.O')) else f"{code}.T"
+        base_url = f"https://finance.yahoo.co.jp/quote/{full_code}/history"
         
         # まず現在値を把握 (銘柄名の取得のみに使用)
         stock_name = name
         try:
-            main_url = f"https://finance.yahoo.co.jp/quote/{code}.T"
+            main_url = f"https://finance.yahoo.co.jp/quote/{full_code}"
             res_m = self.scraper._make_request(main_url)
             if res_m:
                 json_m = self.scraper._extract_next_data(res_m.text)
@@ -299,6 +301,23 @@ class HistorySyncTool:
         portfolio = load_portfolio()
         jp_stocks = [s for s in portfolio if s.get('asset_type') == 'jp_stock']
         
+        # 市場指標のロードと追加
+        try:
+            with open("highlight_rules.json", "r", encoding="utf-8") as f:
+                rules = json.load(f)
+                market_indices = rules.get("market_indices", [])
+                for idx in market_indices:
+                    # 重複を避ける（ポートフォリオに指標コードを直接入れている場合を考慮）
+                    if not any(s['code'] == idx['code'] for s in jp_stocks):
+                        jp_stocks.append({
+                            'code': idx['code'], 
+                            'name': idx['name'],
+                            'asset_type': 'market_index'
+                        })
+                logger.info(f"Loaded {len(market_indices)} market indices for sync.")
+        except Exception as e:
+            logger.error(f"Failed to load market indices from rules: {e}")
+
         # force_resyncが指定されている場合は、その銘柄のみを対象にする
         if force_resync_code:
             target_stocks = [s for s in jp_stocks if s['code'] == force_resync_code]

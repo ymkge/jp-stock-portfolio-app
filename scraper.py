@@ -107,11 +107,13 @@ class BaseScraper(ABC):
         idx_p_match = re.search(r'\"?(indexPrices|futurePrices|mainDomesticIndexPriceBoard)\"?:\{[^{}]*?\"?price\"?:\s*\"?([\d\.\,]+)\"?', json_text)
         if idx_p_match:
             data['price'] = idx_p_match.group(2).replace(',', '')
-            # 前日比
-            idx_c_match = re.search(r'\"?(indexPrices|futurePrices|mainDomesticIndexPriceBoard)\"?:\{[^{}]*?\"?priceChange\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
-            if idx_c_match: data['change'] = idx_c_match.group(2).replace(',', '')
-            idx_r_match = re.search(r'\"?(indexPrices|futurePrices|mainDomesticIndexPriceBoard)\"?:\{[^{}]*?\"?priceChangeRate\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
-            if idx_r_match: data['change_percent'] = idx_r_match.group(2)
+            # 前日比 (priceChange または changePrice)
+            idx_c_match = re.search(r'\"?(indexPrices|futurePrices|mainDomesticIndexPriceBoard)\"?:\{[^{}]*?\"?(priceChange|changePrice)\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
+            if idx_c_match: data['change'] = idx_c_match.group(3).replace(',', '')
+            
+            # 前日比率 (priceChangeRate または changePriceRate)
+            idx_r_match = re.search(r'\"?(indexPrices|futurePrices|mainDomesticIndexPriceBoard)\"?:\{[^{}]*?\"?(priceChangeRate|changePriceRate)\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
+            if idx_r_match: data['change_percent'] = idx_r_match.group(3)
         elif not it_p_match:
             # フォールバック: previousPrice (本来は現在値が取れない場合の最終手段)
             idx_p_match_fallback = re.search(r'\"?(indexPrices|futurePrices)\"?:\{[^{}]*?\"?previousPrice\"?:\s*\"?([\d\.\,]+)\"?', json_text)

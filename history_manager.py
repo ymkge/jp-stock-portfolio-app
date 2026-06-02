@@ -276,11 +276,13 @@ def get_daily_data(code: str, date_str: Optional[str] = None) -> Optional[Dict[s
 def get_historical_data_before(code: str, date_str: str) -> Optional[Dict[str, Any]]:
     """
     指定された日付（date_str）以前で、最も新しいキャッシュデータをDBから取得する。
+    daily_analysis にない場合は stock_price_history から補完する。
     """
     try:
         with sqlite3.connect(DB_FILE) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
+            # 1. まずは詳細データがある daily_analysis を探す
             cursor.execute("""
                 SELECT data_json, updated_at_jst, date FROM daily_analysis 
                 WHERE code = ? AND date <= ?
@@ -293,6 +295,23 @@ def get_historical_data_before(code: str, date_str: str) -> Optional[Dict[str, A
                 data["_db_updated_at_jst"] = row["updated_at_jst"]
                 data["_db_date"] = row["date"]
                 return data
+            
+            # 2. なければ価格履歴のみの stock_price_history を探す（市場指標の同期データ対策）
+            cursor.execute("""
+                SELECT close_price, updated_at_jst, date FROM stock_price_history
+                WHERE code = ? AND date <= ? AND close_price IS NOT NULL
+                ORDER BY date DESC
+                LIMIT 1
+            """, (code, date_str))
+            row = cursor.fetchone()
+            if row:
+                # app.pyの算出ロジックが文字列を想定している場合があるためキャスト
+                return {
+                    "price": str(row["close_price"]),
+                    "_db_updated_at_jst": row["updated_at_jst"],
+                    "_db_date": row["date"]
+                }
+                
     except (sqlite3.Error, json.JSONDecodeError) as e:
         logger.error(f"Failed to get historical data for {code} before {date_str}: {e}")
     return None

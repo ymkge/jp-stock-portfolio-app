@@ -296,7 +296,7 @@ class HistorySyncTool:
     def run(self, force_resync_code=None):
         """メイン実行ループ"""
         self.backup_db()
-        self.cleanup_invalid_data("2026-04-27") # 4/27の不正データを掃除
+        # self.cleanup_invalid_data("2026-04-27") # 以前の不正データ掃除用。現在は不要かつ有害なため無効化。
         
         portfolio = load_portfolio()
         jp_stocks = [s for s in portfolio if s.get('asset_type') == 'jp_stock']

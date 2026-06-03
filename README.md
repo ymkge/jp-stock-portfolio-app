@@ -1,8 +1,6 @@
 # 国内株式ポートフォリオ管理アプリ (jp-stock-portfolio-app)
-<img width="1910" height="960" alt="スクリーンショット 2026-02-06 20 08 09" src="https://github.com/user-attachments/assets/fcc497c9-7c71-44af-aadd-d8c3d27128ee" />
+<img width="1500" height="852" alt="スクリーンショット 2026-06-03 12 29 29" src="https://github.com/user-attachments/assets/ccb43e24-364c-46a7-9b96-19e0c13261a7" />
  
-
-
 ## 概要
 
 ユーザーが管理する国内株式、米国株式、投資信託のポートフォリオに基づき、株価や財務指標、配当履歴などをYahoo!ファイナンスから取得し、Webページに一覧表示するシングルページアプリケーション（SPA）です。

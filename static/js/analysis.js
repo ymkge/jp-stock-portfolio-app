@@ -439,11 +439,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateIndustryKpiSortHeaders() {
-        const headers = document.querySelectorAll('#industry-kpi-table th.sortable');
+        const headers = document.querySelectorAll('#industry-kpi-table .sortable');
         headers.forEach(th => {
-            th.classList.remove('asc', 'desc');
+            th.classList.remove('sort-active', 'sort-asc', 'sort-desc');
             if (th.dataset.key === industryKpiSort.key) {
-                th.classList.add(industryKpiSort.order);
+                th.classList.add('sort-active', `sort-${industryKpiSort.order}`);
             }
         });
     }

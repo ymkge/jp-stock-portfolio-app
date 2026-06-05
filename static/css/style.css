@@ -1399,12 +1399,13 @@ button {
     padding: 0; /* テーブルがカード幅いっぱいに広がるように */
 }
 
-#analysis-table {
+#analysis-table, #industry-kpi-table {
     width: 100%;
     border-collapse: collapse;
 }
 
-#analysis-table th, #analysis-table td {
+#analysis-table th, #analysis-table td,
+#industry-kpi-table th, #industry-kpi-table td {
     padding: 8px 12px;
     border-bottom: 1px solid var(--border-color);
     text-align: left;
@@ -1420,29 +1421,33 @@ button {
 
 /* テーブルの左右のセルにだけpaddingを追加 */
 #analysis-table th:first-child,
-#analysis-table td:first-child {
+#analysis-table td:first-child,
+#industry-kpi-table th:first-child,
+#industry-kpi-table td:first-child {
     padding-left: 1.5rem;
 }
 #analysis-table th:last-child,
-#analysis-table td:last-child {
+#analysis-table td:last-child,
+#industry-kpi-table th:last-child,
+#industry-kpi-table td:last-child {
     padding-right: 1.5rem;
 }
 
 
 /* テーブルヘッダーを固定 */
-#analysis-table thead {
+#analysis-table thead, #industry-kpi-table thead {
     position: sticky;
     top: 0;
     z-index: 1;
 }
 
-#analysis-table thead th {
+#analysis-table thead th, #industry-kpi-table thead th {
     /* theadに移動したため、個別のthからはsticky指定を削除 */
     background-color: var(--header-bg-color, #f1f3f5);
 }
 
 /* テーブル行のホーバー効果 */
-#analysis-table tbody tr:hover {
+#analysis-table tbody tr:hover, #industry-kpi-table tbody tr:hover {
     background-color: #f5f5f5;
 }
 

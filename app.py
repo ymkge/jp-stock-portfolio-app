@@ -1394,10 +1394,59 @@ async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_coo
     summary_stats = portfolio_manager.calculate_portfolio_stats(raw_holdings_list)
     # ---------------------------------------------------
 
+    # --- 業種別サマリー (industry_summary) の詳細集計 ---
+    industry_summary_map = {}
+    total_mv = sum(item.get("market_value") for item in raw_holdings_list if isinstance(item.get("market_value"), (int, float)))
+
+    for item in raw_holdings_list:
+        industry = item.get("industry", "その他")
+        mv = item.get("market_value") or 0
+        pl = item.get("profit_loss") or 0
+        div = item.get("estimated_annual_dividend_after_tax") or 0
+        code = item.get("code")
+
+        if industry not in industry_summary_map:
+            industry_summary_map[industry] = {
+                "name": industry,
+                "market_value": 0,
+                "profit_loss": 0,
+                "annual_dividend_after_tax": 0,
+                "codes": set(),
+                "investment_value": 0
+            }
+        
+        target = industry_summary_map[industry]
+        target["market_value"] += mv
+        target["profit_loss"] += pl
+        target["annual_dividend_after_tax"] += div
+        target["codes"].add(code)
+        # 損益率計算用の投資額 (評価額 - 損益)
+        target["investment_value"] += (mv - pl)
+
+    industry_summary = []
+    for ind, data in industry_summary_map.items():
+        mv = data["market_value"]
+        iv = data["investment_value"]
+        summary = {
+            "name": data["name"],
+            "market_value": mv,
+            "market_value_ratio": (mv / total_mv * 100) if total_mv > 0 else 0,
+            "profit_loss": data["profit_loss"],
+            "profit_loss_rate": (data["profit_loss"] / iv * 100) if iv > 0 else 0,
+            "annual_dividend_after_tax": data["annual_dividend_after_tax"],
+            "yield_after_tax": (data["annual_dividend_after_tax"] / mv * 100) if mv > 0 else 0,
+            "stock_count": len(data["codes"])
+        }
+        industry_summary.append(summary)
+
+    # 評価額順にソート
+    industry_summary = sorted(industry_summary, key=lambda x: x["market_value"], reverse=True)
+
     last_full_update_time = datetime.now()
     return {
         "holdings_list": holdings_list,
         "industry_breakdown": industry_breakdown,
+        "industry_summary": industry_summary, # 追加
         "account_type_breakdown": account_type_breakdown,
         "country_breakdown": country_breakdown,
         "total_annual_dividend": total_annual_dividend,

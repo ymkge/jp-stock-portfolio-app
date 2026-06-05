@@ -113,9 +113,12 @@
                 </div>
                 <div class="analysis-right-column">
                     <section class="portfolio-list card">
-                        <div class="card-header">
-                            <h3>保有銘柄一覧</h3>
-                            <div class="filter-controls" style="display: flex; align-items: center; gap: 15px; margin-left: 20px; flex-grow: 1;">
+                        <div class="card-header" style="flex-wrap: wrap; gap: 10px;">
+                            <div class="analysis-tabs">
+                                <button class="analysis-tab-btn active" data-tab="details">銘柄詳細</button>
+                                <button class="analysis-tab-btn" data-tab="industry-kpi">業種別KPI</button>
+                            </div>
+                            <div id="details-filter-controls" class="filter-controls" style="display: flex; align-items: center; gap: 15px; flex-grow: 1;">
                                 <input type="text" id="analysis-filter-input" placeholder="コード/銘柄名">
                                 <select id="industry-filter"><option value="">すべての業種</option></select>
                                 <select id="account-type-filter"><option value="">すべての口座種別</option></select>
@@ -129,7 +132,7 @@
                             </div>
                             <button id="download-analysis-csv-button">この一覧をCSVでダウンロード</button>
                         </div>
-                        <div class="table-container">
+                        <div class="table-container" id="details-tab-content">
                             <table id="analysis-table">
                                 <thead>
                                     <tr id="analysis-table-header-row">
@@ -149,6 +152,27 @@
                                         <th class="sortable" data-key="profit_loss">損益</th>
                                         <th class="sortable" data-key="profit_loss_rate">損益率(%)</th>
                                         <th class="sortable" data-key="memo">備考</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- JSによって動的に生成されます -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- 業種別KPIタブの内容 -->
+                        <div class="table-container hidden" id="industry-kpi-tab-content">
+                            <table id="industry-kpi-table">
+                                <thead>
+                                    <tr>
+                                        <th class="sortable" data-key="name">業種</th>
+                                        <th class="sortable" data-key="stock_count">銘柄数</th>
+                                        <th class="sortable" data-key="market_value">総評価額</th>
+                                        <th class="sortable" data-key="market_value_ratio">構成比 (%)</th>
+                                        <th class="sortable" data-key="profit_loss">総損益</th>
+                                        <th class="sortable" data-key="profit_loss_rate">総損益率 (%)</th>
+                                        <th class="sortable" data-key="annual_dividend_after_tax">年間配当 (税引後)</th>
+                                        <th class="sortable" data-key="yield_after_tax">配当利回り (%)</th>
                                     </tr>
                                 </thead>
                                 <tbody>

@@ -26,9 +26,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const updateReportContainer = document.getElementById('update-report-container');
     const darkModeToggle = document.getElementById('dark-mode-toggle');
 
+    // --- 新規DOM要素 ---
+    const industryKpiTableBody = document.querySelector('#industry-kpi-table tbody');
+    const analysisTabBtns = document.querySelectorAll('.analysis-tab-btn');
+    const detailsTabContent = document.getElementById('details-tab-content');
+    const industryKpiTabContent = document.getElementById('industry-kpi-tab-content');
+    const detailsFilterControls = document.getElementById('details-filter-controls');
+
     // --- Chart.jsインスタンス ---
     let industryChart, accountTypeChart, countryChart, securityCompanyChart, dividendIndustryChart;
     let assetHistoryChart, dividendHistoryChart, monthlyDividendChart, radarChart;
+
+    // --- 業種別KPIソート状態 ---
+    let industryKpiSort = { key: 'market_value', order: 'desc' };
 
     // --- テーマ管理 ---
     function initTheme() {
@@ -76,6 +86,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     initTheme();
 
+    // --- タブ切り替え制御 ---
+    if (analysisTabBtns) {
+        analysisTabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.dataset.tab;
+                analysisTabBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                if (tab === 'details') {
+                    if (detailsTabContent) detailsTabContent.classList.remove('hidden');
+                    if (industryKpiTabContent) industryKpiTabContent.classList.add('hidden');
+                    if (detailsFilterControls) detailsFilterControls.classList.remove('hidden');
+                } else {
+                    if (detailsTabContent) detailsTabContent.classList.add('hidden');
+                    if (industryKpiTabContent) industryKpiTabContent.classList.remove('hidden');
+                    if (detailsFilterControls) detailsFilterControls.classList.add('hidden');
+                    renderIndustryKpiTable(fullAnalysisData.industry_summary);
+                }
+            });
+        });
+    }
+
     // --- スケルトンUI表示 ---
     function showSkeletons() {
         // 1. 左カラムのカード群
@@ -121,6 +153,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${Array(16).fill(0).map(() => `<td><div class="skeleton skeleton-cell"></div></td>`).join('')}
             </tr>
         `).join('');
+
+        if (industryKpiTableBody) {
+            industryKpiTableBody.innerHTML = Array(5).fill(0).map(() => `
+                <tr class="skeleton-row">
+                    ${Array(8).fill(0).map(() => `<td><div class="skeleton skeleton-cell"></div></td>`).join('')}
+                </tr>
+            `).join('');
+        }
     }
 
     // --- データ取得とレンダリング ---
@@ -352,6 +392,75 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(item.memo || '-'); 
         });
     }
+
+    function renderIndustryKpiTable(summary) {
+        if (!summary || !industryKpiTableBody) return;
+        
+        // ソート適用
+        const sortedSummary = [...summary].sort((a, b) => {
+            let valA = a[industryKpiSort.key];
+            let valB = b[industryKpiSort.key];
+            
+            if (typeof valA === 'string') {
+                return industryKpiSort.order === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+            }
+            return industryKpiSort.order === 'asc' ? valA - valB : valB - valA;
+        });
+
+        industryKpiTableBody.innerHTML = '';
+        sortedSummary.forEach(item => {
+            const row = industryKpiTableBody.insertRow();
+            row.style.cursor = 'pointer';
+            row.title = `${item.name}の詳細を表示`;
+            row.addEventListener('click', () => {
+                const detailsTab = document.querySelector('.analysis-tab-btn[data-tab="details"]');
+                if (detailsTab) detailsTab.click();
+                if (industryFilterSelect) {
+                    industryFilterSelect.value = item.name;
+                    industryFilterSelect.dispatchEvent(new Event('change'));
+                }
+            });
+
+            const createCell = (html, className = '') => { const cell = row.insertCell(); cell.innerHTML = html; if (className) cell.className = className; return cell; };
+            const plClass = item.profit_loss >= 0 ? 'profit' : 'loss';
+            const plRateClass = item.profit_loss_rate >= 0 ? 'profit' : 'loss';
+
+            createCell(item.name, 'fw-bold');
+            createCell(item.stock_count, 'numeric');
+            createCell(formatNumber(item.market_value, 0), 'numeric ' + (!isAmountVisible ? 'masked-amount' : ''));
+            createCell(formatNumber(item.market_value_ratio, 2) + '%', 'numeric');
+            createCell(formatNumber(item.profit_loss, 0), 'numeric ' + (!isAmountVisible ? 'masked-amount' : '') + ' ' + plClass);
+            createCell(formatNumber(item.profit_loss_rate, 2) + '%', 'numeric ' + plRateClass);
+            createCell(formatNumber(item.annual_dividend_after_tax, 0), 'numeric ' + (!isAmountVisible ? 'masked-amount' : ''));
+            createCell(formatNumber(item.yield_after_tax, 2) + '%', 'numeric');
+        });
+        
+        updateIndustryKpiSortHeaders();
+    }
+
+    function updateIndustryKpiSortHeaders() {
+        const headers = document.querySelectorAll('#industry-kpi-table th.sortable');
+        headers.forEach(th => {
+            th.classList.remove('asc', 'desc');
+            if (th.dataset.key === industryKpiSort.key) {
+                th.classList.add(industryKpiSort.order);
+            }
+        });
+    }
+
+    // KPIテーブルのソートイベントリスナー
+    document.querySelectorAll('#industry-kpi-table th.sortable').forEach(th => {
+        th.addEventListener('click', () => {
+            const key = th.dataset.key;
+            if (industryKpiSort.key === key) {
+                industryKpiSort.order = industryKpiSort.order === 'asc' ? 'desc' : 'asc';
+            } else {
+                industryKpiSort.key = key;
+                industryKpiSort.order = 'desc';
+            }
+            renderIndustryKpiTable(fullAnalysisData.industry_summary);
+        });
+    });
 
     function renderSummary(holdings) {
         const totalMarketValue = holdings.reduce((sum, item) => sum + (parseFloat(item.market_value) || 0), 0);

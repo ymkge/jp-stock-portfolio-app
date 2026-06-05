@@ -257,7 +257,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const wowClass = getChangeClass(wow);
             const momClass = getChangeClass(mom);
 
-            const changesRowHtml = idx.is_future ? '' : `
+            const changesRowHtml = idx.is_future ? `
+                <div class="market-index-row" style="margin-top: 4px; border-top: 1px dashed var(--border-color); padding-top: 4px;">
+                    <div class="market-index-item" style="width: 100%; text-align: center;">
+                        <small style="color: var(--text-muted); font-style: italic; font-size: 0.75rem;">
+                            ※ 当日推移のみ表示（時系列比較対象外）
+                        </small>
+                    </div>
+                </div>
+            ` : `
                 <div class="market-index-row">
                     <div class="market-index-item">
                         <span class="change-label">前週比:</span>

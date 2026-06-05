@@ -1095,7 +1095,8 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
                 "wow_percent": wow_percent,
                 "wow_date": wow_date,
                 "mom_percent": mom_percent,
-                "mom_date": mom_date
+                "mom_date": mom_date,
+                "is_future": "先物" in idx_result.get("name", market_indices_config[i]["name"]) or "Future" in idx_result.get("name", market_indices_config[i]["name"])
             })
 
     success_count = sum(1 for r in scraped_results if r and "error" not in r)

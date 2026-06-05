@@ -257,6 +257,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const wowClass = getChangeClass(wow);
             const momClass = getChangeClass(mom);
 
+            const changesRowHtml = idx.is_future ? '' : `
+                <div class="market-index-row">
+                    <div class="market-index-item">
+                        <span class="change-label">前週比:</span>
+                        <span class="${wowClass} numeric" title="${wowDate ? '比較対象: ' + wowDate : ''}">${formatPercent(wow)}</span>
+                    </div>
+                    <div class="market-index-item">
+                        <span class="change-label">前月比:</span>
+                        <span class="${momClass} numeric" title="${momDate ? '比較対象: ' + momDate : ''}">${formatPercent(mom)}</span>
+                    </div>
+                </div>
+            `;
+
             html += `
                 <a href="https://finance.yahoo.co.jp/quote/${idx.code}" target="_blank" class="market-index-link">
                     <div class="market-index-card">
@@ -270,17 +283,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <span class="change-label">前日比:</span>
                                 <span class="${changeClass} numeric">${change} (${formatPercent(changePercent)})</span>
                             </div>
-                            <div class="market-index-row">
-                                <div class="market-index-item">
-                                    <span class="change-label">前週比:</span>
-                                    <span class="${wowClass} numeric" title="${wowDate ? '比較対象: ' + wowDate : ''}">${formatPercent(wow)}</span>
-                                </div>
-                                <div class="market-index-item">
-                                    <span class="change-label">前月比:</span>
-                                    <span class="${momClass} numeric" title="${momDate ? '比較対象: ' + momDate : ''}">${formatPercent(mom)}</span>
-                                </div>
-                            </div>
-
+                            ${changesRowHtml}
                         </div>
                     </div>
                 </a>

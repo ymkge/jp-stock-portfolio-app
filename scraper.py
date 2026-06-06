@@ -426,8 +426,9 @@ class JPStockScraper(BaseScraper):
         data['dividend_history'] = div_history
 
         # 1株配当のリカバリ
-        # デグレ防止: 取得失敗(N/A)時はリカバリを継続するが、
-        # メインページが数値でない記号（"---", "--" 等）の場合は明示的な未定とみなし、履歴からのリカバリを停止する
+        # 実用性重視のハイブリッド対応: 
+        # 1. 表示利回り(yield)はメインページが未定なら "---" 等を維持し、スコアへの誤加点を防ぐ。
+        # 2. 配当金額(annual_dividend)は、分析ページでのシミュレーション用に前期実績等からのリカバリを許可する。
         def is_numeric_value(s):
             try:
                 float(str(s).replace(',', ''))
@@ -437,21 +438,33 @@ class JPStockScraper(BaseScraper):
 
         is_explicitly_undefined = not is_numeric_value(dps_raw) and dps_raw not in [None, "N/A", ""]
         
-        if not is_explicitly_undefined and (dps_raw in ["N/A"] or data['annual_dividend'] == 0.0) and div_history:
+        # リカバリ実行判定 (取得失敗(N/A)時、または金額が0だが履歴がある場合)
+        # 昨年実績(current_year-1)も対象に含める
+        if (dps_raw in ["N/A"] or data['annual_dividend'] == 0.0 or is_explicitly_undefined) and div_history:
             current_year = datetime.now().year
-            # 当期(current) または 来期(current+1) のデータを対象とする (前期実績を今期予想として誤用するのを防止)
-            valid_years = [str(current_year), str(current_year + 1)]
+            # 当期(current) または 来期(current+1) または 前期(current-1) を対象とする
+            valid_years = [str(current_year - 1), str(current_year), str(current_year + 1)]
             recovery_candidates = {y: v for y, v in div_history.items() if y in valid_years}
+            
             if recovery_candidates:
-                # 未来の予想があればそれを優先、なければ最新
+                # 未来の予想があればそれを優先、なければ最新(実績含む)
                 best_year = max(recovery_candidates.keys())
                 data['annual_dividend'] = recovery_candidates[best_year]
-                logger.info(f"Recovered annual_dividend for {code} from dividend_history: {data['annual_dividend']} (Year: {best_year})")
+                
+                # 明示的に未定なのにリカバリした場合は「信頼性なし」フラグを立て、利回りは記号を維持する
+                if is_explicitly_undefined:
+                    data['yield'] = dps_raw # "---" などを維持
+                    data['is_reliable'] = False
+                    logger.info(f"Recovered annual_dividend for {code} as REFERENCE ONLY (Year: {best_year}) while yield remains '{dps_raw}'")
+                else:
+                    logger.info(f"Recovered annual_dividend for {code} from dividend_history: {data['annual_dividend']} (Year: {best_year})")
         elif is_explicitly_undefined:
-            logger.info(f"Annual dividend for {code} is explicitly undefined ({dps_raw}). Skipping recovery to avoid zombie data.")
+             data['yield'] = dps_raw
+             data['is_reliable'] = False
 
         # 利回りリカバリ
-        if (data.get('yield') == "N/A" or data.get('yield') == "---") and data['annual_dividend'] > 0:
+        # デグレ防止: 明示的な未定(---)の場合は、計算による数値上書きを行わない(表示は---のまま、金額のみリカバリ値を保持)
+        if not is_explicitly_undefined and (data.get('yield') == "N/A" or data.get('yield') == "---") and data['annual_dividend'] > 0:
             try:
                 p = float(data['price'])
                 if p > 0:

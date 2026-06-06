@@ -426,8 +426,16 @@ class JPStockScraper(BaseScraper):
         data['dividend_history'] = div_history
 
         # 1株配当のリカバリ
-        # デグレ防止: 取得失敗時はリカバリを継続するが、メインページが明示的に "--" または "---"（未定）の場合はリカバリを停止する
-        is_explicitly_undefined = (dps_raw in ["--", "---"])
+        # デグレ防止: 取得失敗(N/A)時はリカバリを継続するが、
+        # メインページが数値でない記号（"---", "--" 等）の場合は明示的な未定とみなし、履歴からのリカバリを停止する
+        def is_numeric_value(s):
+            try:
+                float(str(s).replace(',', ''))
+                return True
+            except (ValueError, TypeError):
+                return False
+
+        is_explicitly_undefined = not is_numeric_value(dps_raw) and dps_raw not in [None, "N/A", ""]
         
         if not is_explicitly_undefined and (dps_raw in ["N/A"] or data['annual_dividend'] == 0.0) and div_history:
             current_year = datetime.now().year
@@ -440,7 +448,7 @@ class JPStockScraper(BaseScraper):
                 data['annual_dividend'] = recovery_candidates[best_year]
                 logger.info(f"Recovered annual_dividend for {code} from dividend_history: {data['annual_dividend']} (Year: {best_year})")
         elif is_explicitly_undefined:
-            logger.info(f"Annual dividend for {code} is explicitly undefined (---). Skipping recovery to avoid zombie data.")
+            logger.info(f"Annual dividend for {code} is explicitly undefined ({dps_raw}). Skipping recovery to avoid zombie data.")
 
         # 利回りリカバリ
         if (data.get('yield') == "N/A" or data.get('yield') == "---") and data['annual_dividend'] > 0:

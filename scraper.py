@@ -393,12 +393,14 @@ class JPStockScraper(BaseScraper):
         if res_div:
             json_div = self._extract_next_data(res_div.text) or self._extract_legacy_data(res_div.text)
             if json_div:
-                # 基準日ごとの年間合計値
-                dps_matches_ext = re.findall(r'\"settlementDate\":\"(\d{4})\d{2}\"[^{}]*?\"(?:annualForecastValue|annualCorrectedActualValue|annualActualValue|annualActualDividend)\":\s*([\d\.]+)', json_div)
-                for year, val in dps_matches_ext:
+                # 基準日ごとの年間合計値 (予想・修正実績・実績の優先順位で抽出)
+                # 型: [{"settlementDate": "202409", "annualForecastValue": "20.0", ...}, ...]
+                dps_matches_ext = re.findall(r'\"settlementDate\":\"(\d{4})\d{2}\"[^{}]*?\"(annualForecastValue|annualCorrectedActualValue|annualActualValue|annualActualDividend)\":\s*([\d\.]+)', json_div)
+                for year, type_key, val in dps_matches_ext:
                     v = float(val)
                     if v < 100000:
-                        if year not in div_history or v > div_history[year]:
+                        # 予想(Forecast)を最優先、なければ既存を上書き
+                        if year not in div_history or type_key == "annualForecastValue":
                             div_history[year] = v
 
         # メインページのJSONデータからの配当補足 (1回目で取得済みの json_q を再利用)
@@ -423,17 +425,22 @@ class JPStockScraper(BaseScraper):
                         
         data['dividend_history'] = div_history
 
-        # 1株配当のリカバリ (メインページが未定 '---' や 'N/A'、または 0.0 の場合、詳細タブの履歴から値を拾う)
-        if (dps_raw in ["---", "N/A"] or data['annual_dividend'] == 0.0) and div_history:
+        # 1株配当のリカバリ
+        # デグレ防止: 取得失敗時はリカバリを継続するが、メインページが明示的に "--" または "---"（未定）の場合はリカバリを停止する
+        is_explicitly_undefined = (dps_raw in ["--", "---"])
+        
+        if not is_explicitly_undefined and (dps_raw in ["N/A"] or data['annual_dividend'] == 0.0) and div_history:
             current_year = datetime.now().year
-            # 当期(current) または 来期(current+1) または 前期(current-1, 9月決算等のため) のデータを対象とする
-            valid_years = [str(current_year - 1), str(current_year), str(current_year + 1)]
+            # 当期(current) または 来期(current+1) のデータを対象とする (前期実績を今期予想として誤用するのを防止)
+            valid_years = [str(current_year), str(current_year + 1)]
             recovery_candidates = {y: v for y, v in div_history.items() if y in valid_years}
             if recovery_candidates:
                 # 未来の予想があればそれを優先、なければ最新
                 best_year = max(recovery_candidates.keys())
                 data['annual_dividend'] = recovery_candidates[best_year]
                 logger.info(f"Recovered annual_dividend for {code} from dividend_history: {data['annual_dividend']} (Year: {best_year})")
+        elif is_explicitly_undefined:
+            logger.info(f"Annual dividend for {code} is explicitly undefined (---). Skipping recovery to avoid zombie data.")
 
         # 利回りリカバリ
         if (data.get('yield') == "N/A" or data.get('yield') == "---") and data['annual_dividend'] > 0:

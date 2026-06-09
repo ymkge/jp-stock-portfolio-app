@@ -3,9 +3,46 @@ import os
 import csv
 import io
 import uuid
+import threading
+import fcntl
+from contextlib import contextmanager
 from typing import List, Dict, Any, Optional
 
 PORTFOLIO_FILE = "portfolio.json"
+PORTFOLIO_LOCK_FILE = "portfolio.json.lock"
+
+# プロセス内・スレッド間での再入可能なロック管理用
+_global_portfolio_lock = threading.RLock()
+_lock_fd = None
+_lock_depth = 0
+
+@contextmanager
+def portfolio_lock():
+    """
+    portfolio.json に対する排他制御（プロセス間およびスレッド間）を行う。
+    再入可能（ネストした呼び出し）に対応。
+    """
+    global _lock_fd, _lock_depth
+    with _global_portfolio_lock:
+        success = False
+        try:
+            if _lock_depth == 0:
+                # ロックファイルを開く（存在しない場合は作成）
+                _lock_fd = os.open(PORTFOLIO_LOCK_FILE, os.O_RDWR | os.O_CREAT)
+                # 排他ロックを取得（他プロセスが持っている場合は待機）
+                fcntl.flock(_lock_fd, fcntl.LOCK_EX)
+            _lock_depth += 1
+            success = True
+            yield
+        finally:
+            if success:
+                _lock_depth -= 1
+                if _lock_depth == 0:
+                    if _lock_fd is not None:
+                        # 最後のロックが解放されたら flock を解除してファイルを閉じる
+                        fcntl.flock(_lock_fd, fcntl.LOCK_UN)
+                        os.close(_lock_fd)
+                        _lock_fd = None
 
 def _migrate_to_multi_account(portfolio: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
@@ -81,69 +118,73 @@ def load_portfolio() -> List[Dict[str, Any]]:
     portfolio.jsonからポートフォリオデータを読み込む。
     必要に応じて古いデータ形式からの移行処理を行う。
     """
-    if not os.path.exists(PORTFOLIO_FILE):
-        return []
-    try:
-        with open(PORTFOLIO_FILE, "r", encoding="utf-8") as f:
-            content = f.read()
-            if not content:
-                return []
-            data = json.loads(content)
-        
-        # オブジェクトのリストであることを期待
-        if isinstance(data, list):
-            migrated_data = _migrate_to_multi_account(data)
-            return _migrate_asset_properties(migrated_data)
-        # 初代の{"codes": []}形式からの移行
-        elif isinstance(data, dict) and "codes" in data:
-             print("Legacy format detected. Migrating...")
-             new_portfolio = [{"code": code, "asset_type": "jp_stock", "currency": "JPY", "holdings": []} for code in data["codes"]]
-             save_portfolio(new_portfolio)
-             return new_portfolio
+    with portfolio_lock():
+        if not os.path.exists(PORTFOLIO_FILE):
+            return []
+        try:
+            with open(PORTFOLIO_FILE, "r", encoding="utf-8") as f:
+                content = f.read()
+                if not content:
+                    return []
+                data = json.loads(content)
+            
+            # オブジェクトのリストであることを期待
+            if isinstance(data, list):
+                migrated_data = _migrate_to_multi_account(data)
+                return _migrate_asset_properties(migrated_data)
+            # 初代の{"codes": []}形式からの移行
+            elif isinstance(data, dict) and "codes" in data:
+                 print("Legacy format detected. Migrating...")
+                 new_portfolio = [{"code": code, "asset_type": "jp_stock", "currency": "JPY", "holdings": []} for code in data["codes"]]
+                 save_portfolio(new_portfolio)
+                 return new_portfolio
 
-    except FileNotFoundError:
-        return []
-    except json.JSONDecodeError as e:
-        print(f"Error decoding portfolio file: {e}")
-        raise e
-    except IOError as e:
-        print(f"Error loading portfolio file: {e}")
-        return []
+        except FileNotFoundError:
+            return []
+        except json.JSONDecodeError as e:
+            print(f"Error decoding portfolio file: {e}")
+            raise e
+        except IOError as e:
+            print(f"Error loading portfolio file: {e}")
+            return []
 
 def save_portfolio(portfolio: List[Dict[str, Any]]):
     """
     ポートフォリオデータをportfolio.jsonに保存する。
     """
-    sorted_portfolio = sorted(portfolio, key=lambda x: x.get("code", ""))
-    with open(PORTFOLIO_FILE, "w", encoding="utf-8") as f:
-        json.dump(sorted_portfolio, f, indent=4, ensure_ascii=False)
+    with portfolio_lock():
+        sorted_portfolio = sorted(portfolio, key=lambda x: x.get("code", ""))
+        with open(PORTFOLIO_FILE, "w", encoding="utf-8") as f:
+            json.dump(sorted_portfolio, f, indent=4, ensure_ascii=False)
 
 def add_asset(code: str, asset_type: str) -> bool:
     """
     新しい資産をポートフォリオに追加する。
     成功すればTrue、既に存在する場合はFalseを返す。
     """
-    portfolio = load_portfolio()
-    if any(asset['code'] == code for asset in portfolio):
-        return False
+    with portfolio_lock():
+        portfolio = load_portfolio()
+        if any(asset['code'] == code for asset in portfolio):
+            return False
 
-    # asset_type に応じて currency を決定
-    currency = "JPY"
-    if asset_type == "us_stock":
-        currency = "USD"
+        # asset_type に応じて currency を決定
+        currency = "JPY"
+        if asset_type == "us_stock":
+            currency = "USD"
 
-    new_asset = {"code": code, "asset_type": asset_type, "currency": currency, "holdings": []}
-    portfolio.append(new_asset)
-    save_portfolio(portfolio)
-    return True
+        new_asset = {"code": code, "asset_type": asset_type, "currency": currency, "holdings": []}
+        portfolio.append(new_asset)
+        save_portfolio(portfolio)
+        return True
 
 def delete_stocks(codes_to_delete: List[str]):
     """
     指定された複数の銘柄コードをポートフォリオから削除する。
     """
-    portfolio = load_portfolio()
-    updated_portfolio = [stock for stock in portfolio if stock.get("code") not in codes_to_delete]
-    save_portfolio(updated_portfolio)
+    with portfolio_lock():
+        portfolio = load_portfolio()
+        updated_portfolio = [stock for stock in portfolio if stock.get("code") not in codes_to_delete]
+        save_portfolio(updated_portfolio)
 
 def get_stock_info(code: str) -> Optional[Dict[str, Any]]:
     """
@@ -161,62 +202,65 @@ def add_holding(code: str, holding_data: Dict[str, Any]) -> str:
     特定の銘柄に新しい保有情報を追加する。
     新しい保有情報のIDを返す。
     """
-    portfolio = load_portfolio()
-    new_holding_id = str(uuid.uuid4())
-    holding_data['id'] = new_holding_id
-    
-    stock_found = False
-    for stock in portfolio:
-        if stock.get("code") == code:
-            stock.setdefault("holdings", []).append(holding_data)
-            stock_found = True
-            break
-    
-    if not stock_found:
-        # 銘柄自体が存在しない場合はエラー（通常は起こらないはず）
-        raise ValueError(f"Stock with code {code} not found in portfolio.")
+    with portfolio_lock():
+        portfolio = load_portfolio()
+        new_holding_id = str(uuid.uuid4())
+        holding_data['id'] = new_holding_id
+        
+        stock_found = False
+        for stock in portfolio:
+            if stock.get("code") == code:
+                stock.setdefault("holdings", []).append(holding_data)
+                stock_found = True
+                break
+        
+        if not stock_found:
+            # 銘柄自体が存在しない場合はエラー（通常は起こらないはず）
+            raise ValueError(f"Stock with code {code} not found in portfolio.")
 
-    save_portfolio(portfolio)
-    return new_holding_id
+        save_portfolio(portfolio)
+        return new_holding_id
 
 def update_holding(holding_id: str, update_data: Dict[str, Any]) -> bool:
     """
     指定されたIDの保有情報を更新する。
     """
-    portfolio = load_portfolio()
-    holding_found = False
-    for stock in portfolio:
-        for holding in stock.get("holdings", []):
-            if holding.get("id") == holding_id:
-                holding.update(update_data)
-                holding_found = True
+    with portfolio_lock():
+        portfolio = load_portfolio()
+        holding_found = False
+        for stock in portfolio:
+            for holding in stock.get("holdings", []):
+                if holding.get("id") == holding_id:
+                    holding.update(update_data)
+                    holding_found = True
+                    break
+            if holding_found:
                 break
+        
         if holding_found:
-            break
-    
-    if holding_found:
-        save_portfolio(portfolio)
-        return True
-    return False
+            save_portfolio(portfolio)
+            return True
+        return False
 
 def delete_holding(holding_id: str) -> bool:
     """
     指定されたIDの保有情報を削除する。
     """
-    portfolio = load_portfolio()
-    holding_found = False
-    for stock in portfolio:
-        original_holdings = stock.get("holdings", [])
-        updated_holdings = [h for h in original_holdings if h.get("id") != holding_id]
-        if len(original_holdings) != len(updated_holdings):
-            stock["holdings"] = updated_holdings
-            holding_found = True
-            break
-            
-    if holding_found:
-        save_portfolio(portfolio)
-        return True
-    return False
+    with portfolio_lock():
+        portfolio = load_portfolio()
+        holding_found = False
+        for stock in portfolio:
+            original_holdings = stock.get("holdings", [])
+            updated_holdings = [h for h in original_holdings if h.get("id") != holding_id]
+            if len(original_holdings) != len(updated_holdings):
+                stock["holdings"] = updated_holdings
+                holding_found = True
+                break
+                
+        if holding_found:
+            save_portfolio(portfolio)
+            return True
+        return False
 
 
 # --- CSV生成関数 (既存のものは維持しつつ、将来的に改修) ---

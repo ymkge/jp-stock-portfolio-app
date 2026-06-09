@@ -12,6 +12,7 @@ venv/
 # OS-specific
 .DS_Store
 portfolio.json
+portfolio.json.lock
 recent_stocks.json
 portfolio_history.db
 GEMINI.md

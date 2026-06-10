@@ -1000,6 +1000,10 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
             base_scraped = scraped_data or {"error": "データ取得失敗", "code": code}
             merged_data = {**asset_info, **base_scraped}
 
+            # エラーがある場合、詳細なメッセージを生成
+            if "error" in merged_data:
+                merged_data["error_message"] = generate_error_message(merged_data)
+
             # 分析情報の付与とDB更新（国内株のみ）
             # ここで例外が起きやすいのでガード
             try:
@@ -1007,12 +1011,14 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
             except Exception as e:
                 logger.error(f"Error in _enrich_stock_data for {code}: {e}", exc_info=True)
                 merged_data["error"] = f"分析計算エラー: {str(e)}"
+                merged_data["error_message"] = merged_data["error"]
 
             processed_data.append(merged_data)
         except Exception as e:
             logger.error(f"Critical error processing {code}: {e}", exc_info=True)
             # エラーが起きてもリストには追加して500エラーを回避
-            processed_data.append({**asset_info, "error": f"システムエラー: {str(e)}"})
+            err_msg = f"システムエラー: {str(e)}"
+            processed_data.append({**asset_info, "error": err_msg, "error_message": err_msg})
 
     end_time = time.perf_counter()
     duration = end_time - start_time
@@ -1102,6 +1108,12 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
     success_count = sum(1 for r in scraped_results if r and "error" not in r)
     fail_count = total_count - success_count
 
+    # サーキットブレーカーの状況を確認
+    is_throttled = any(
+        r.get("error_details", {}).get("status_code") == 403 
+        for r in scraped_results if r and "error" in r
+    )
+
     metadata = {
         "duration": round(duration, 2),
         "total_count": total_count,
@@ -1111,7 +1123,8 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
         "it_count": it_count,
         "us_count": us_count,
         "fetched_at": history_manager.get_now_jst().isoformat(),
-        "market_indices": market_indices_results # 指標データを追加
+        "market_indices": market_indices_results, # 指標データを追加
+        "circuit_breaker_triggered": is_throttled
     }
 
     logger.info(f"[Summary] 銘柄情報の一括取得完了 | 所要時間: {duration:.2f}秒 | 対象: {total_count}件 (成功: {success_count}, 失敗: {fail_count}) | 内訳: 国内株 {jp_count}, 投信 {it_count}, 米国株 {us_count}")

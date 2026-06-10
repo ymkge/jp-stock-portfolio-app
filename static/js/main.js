@@ -188,11 +188,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    let cooldownTimer = null;
+
     function renderUpdateReport(metadata) {
         if (!updateReportContainer || !metadata) return;
 
         const timeStr = new Date(metadata.fetched_at).toLocaleString();
         const successClass = metadata.fail_count > 0 ? 'loss' : 'profit';
+        
+        let throttlingHint = '';
+        if (metadata.circuit_breaker_triggered) {
+            throttlingHint = `
+                <div class="throttling-hint mt-2 p-2 border border-danger rounded bg-danger-subtle text-danger" style="font-size: 0.85rem;">
+                    <i class="fas fa-exclamation-triangle me-1"></i>
+                    <strong>アクセス制限(403)を検知しました。</strong><br>
+                    連続アクセスによるサーバー負荷を避けるため、更新を中断しました。15分ほど待機してから再度お試しください。
+                </div>
+            `;
+            startCooldown(15 * 60); // 15分
+        }
 
         updateReportContainer.innerHTML = `
             <div class="update-report">
@@ -205,6 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="update-report-time">
                     取得時間: ${metadata.duration}s | 更新時刻: ${timeStr}
                 </div>
+                ${throttlingHint}
             </div>
         `;
         updateReportContainer.classList.remove('hidden');
@@ -212,6 +227,33 @@ document.addEventListener('DOMContentLoaded', () => {
         if (metadata.market_indices) {
             renderMarketSummary(metadata.market_indices);
         }
+    }
+
+    function startCooldown(seconds) {
+        if (cooldownTimer) clearInterval(cooldownTimer);
+        
+        refreshAllButton.disabled = true;
+        let remaining = seconds;
+        
+        const updateBtnText = () => {
+            const mins = Math.floor(remaining / 60);
+            const secs = remaining % 60;
+            refreshAllButton.textContent = `待機中 (${mins}:${secs.toString().padStart(2, '0')})`;
+        };
+        
+        updateBtnText();
+        
+        cooldownTimer = setInterval(() => {
+            remaining--;
+            if (remaining <= 0) {
+                clearInterval(cooldownTimer);
+                cooldownTimer = null;
+                refreshAllButton.disabled = false;
+                refreshAllButton.textContent = '全件更新';
+            } else {
+                updateBtnText();
+            }
+        }, 1000);
     }
 
     function renderMarketSummary(indices) {
@@ -446,9 +488,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 return cell;
             };
             if (jpStock.error) {
-                row.className = 'error-row'; row.title = jpStock.error;
+                const displayError = jpStock.error_message || jpStock.error;
+                row.className = 'error-row'; 
+                // HTMLタグを除去したプレーンテキストをtitleに設定
+                row.title = displayError.replace(/<br>/g, '\n').replace(/<[^>]*>?/gm, '');
                 createCell(`<input type="checkbox" class="asset-checkbox" data-code="${jpStock.code}" disabled>`);
-                createCell(jpStock.code, 'numeric'); createCell(jpStock.error, 'error-message').colSpan = 14;
+                createCell(jpStock.code, 'numeric'); 
+                // セル内はHTMLを許可して詳細表示
+                createCell(displayError, 'error-message').colSpan = 14;
                 createCell(`<button class="manage-btn" data-code="${jpStock.code}" disabled>管理</button>`);
                 return;
             }
@@ -518,9 +565,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 return cell;
             };
             if (fund.error) {
-                row.className = 'error-row'; row.title = fund.error;
+                const displayError = fund.error_message || fund.error;
+                row.className = 'error-row';
+                row.title = displayError.replace(/<br>/g, '\n').replace(/<[^>]*>?/gm, '');
                 createCell(`<input type="checkbox" class="asset-checkbox" data-code="${fund.code}" disabled>`);
-                createCell(fund.code, 'numeric'); createCell(fund.error, 'error-message').colSpan = 5;
+                createCell(fund.code, 'numeric');
+                createCell(displayError, 'error-message').colSpan = 5;
                 createCell(`<button class="manage-btn" data-code="${fund.code}" disabled>管理</button>`);
                 return;
             }
@@ -556,9 +606,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 return cell;
             };
             if (usStock.error) {
-                row.className = 'error-row'; row.title = usStock.error;
+                const displayError = usStock.error_message || usStock.error;
+                row.className = 'error-row';
+                row.title = displayError.replace(/<br>/g, '\n').replace(/<[^>]*>?/gm, '');
                 createCell(`<input type="checkbox" class="asset-checkbox" data-code="${usStock.code}" disabled>`);
-                createCell(usStock.code, 'numeric'); createCell(usStock.error, 'error-message').colSpan = 7;
+                createCell(usStock.code, 'numeric');
+                createCell(displayError, 'error-message').colSpan = 8;
                 createCell(`<button class="manage-btn" data-code="${usStock.code}" disabled>管理</button>`);
                 return;
             }

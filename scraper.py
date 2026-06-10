@@ -44,9 +44,26 @@ class BaseScraper(ABC):
                 response = self.session.get(url, headers=request_headers, timeout=10)
                 response.raise_for_status()
                 return response
-            except requests.exceptions.RequestException as e:
+            except requests.exceptions.HTTPError as e:
                 status_code = e.response.status_code if e.response is not None else "N/A"
-                self.last_error = {"status_code": status_code, "url": url, "type": type(e).__name__}
+                self.last_error = {
+                    "status_code": status_code, 
+                    "url": url, 
+                    "type": "HTTPError",
+                    "message": str(e)
+                }
+                # 403, 404などはリトライしても無駄なことが多いので即座にエラーとする
+                if status_code in [403, 404]:
+                    break
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(RETRY_DELAY)
+            except requests.exceptions.RequestException as e:
+                self.last_error = {
+                    "status_code": "N/A", 
+                    "url": url, 
+                    "type": type(e).__name__,
+                    "message": str(e)
+                }
                 if attempt < MAX_RETRIES - 1:
                     time.sleep(RETRY_DELAY)
         return None
@@ -259,7 +276,12 @@ class JPStockScraper(BaseScraper):
         # 1. メインページから基本情報、現在値、財務指標を一括取得する
         url_q = f"https://finance.yahoo.co.jp/quote/{code}.T"
         res_q = self._make_request(url_q)
-        if not res_q: return {"code": code, "error": "メインページの取得に失敗しました"}
+        if not res_q:
+            return {
+                "code": code, 
+                "error": "メインページの取得に失敗しました",
+                "error_details": self.last_error
+            }
         json_q = self._extract_next_data(res_q.text)
         
         # 基本データの抽出 (名称、現在値、出来高、騰落)
@@ -345,7 +367,12 @@ class JPStockScraper(BaseScraper):
         time.sleep(1.2)
         url_h = f"https://finance.yahoo.co.jp/quote/{code}.T/history"
         res_h = self._make_request(url_h)
-        if not res_h: return {"code": code, "error": "履歴の取得に失敗しました"}
+        if not res_h:
+            return {
+                "code": code, 
+                "error": "履歴の取得に失敗しました",
+                "error_details": self.last_error
+            }
         
         json_h = self._extract_next_data(res_h.text)
         scraped_histories = self._parse_histories(json_h if json_h else res_h.text, current_price=cur_p)
@@ -402,6 +429,9 @@ class JPStockScraper(BaseScraper):
                         # 予想(Forecast)を最優先、なければ既存を上書き
                         if year not in div_history or type_key == "annualForecastValue":
                             div_history[year] = v
+        else:
+            # 配当詳細の取得失敗は致命的ではないが、一応ログ
+            logger.warning(f"Failed to fetch dividend detail for {code}: {self.last_error}")
 
         # メインページのJSONデータからの配当補足 (1回目で取得済みの json_q を再利用)
         dps_area = re.search(r'\"dps\":\{.*?\}', json_q)
@@ -489,7 +519,12 @@ class InvestTrustScraper(BaseScraper):
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
         logger.info(f"Fetching Invest Trust: {code}")
         res = self._make_request(f"https://finance.yahoo.co.jp/quote/{code}")
-        if not res: return {"code": code, "error": "通信エラー"}
+        if not res:
+            return {
+                "code": code, 
+                "error": "通信エラー",
+                "error_details": self.last_error
+            }
         
         json_text = self._extract_next_data(res.text)
         if not json_text:
@@ -539,7 +574,12 @@ class USStockScraper(BaseScraper):
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
         logger.info(f"Fetching US Stock: {code}")
         res = self._make_request(f"https://finance.yahoo.co.jp/quote/{code}")
-        if not res: return {"code": code, "error": "通信エラー"}
+        if not res:
+            return {
+                "code": code, 
+                "error": "通信エラー",
+                "error_details": self.last_error
+            }
         
         json_text = self._extract_next_data(res.text)
         if not json_text:
@@ -614,7 +654,12 @@ class IndexScraper(BaseScraper):
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
         logger.info(f"Fetching Market Index: {code}")
         res = self._make_request(f"https://finance.yahoo.co.jp/quote/{code}")
-        if not res: return {"code": code, "error": "通信エラー"}
+        if not res:
+            return {
+                "code": code, 
+                "error": "通信エラー",
+                "error_details": self.last_error
+            }
         
         json_text = self._extract_next_data(res.text)
         if not json_text:

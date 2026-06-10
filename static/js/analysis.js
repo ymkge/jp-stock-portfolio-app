@@ -241,6 +241,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!updateReportContainer || !metadata) return;
         const timeStr = new Date(metadata.fetched_at).toLocaleString();
         const successClass = metadata.fail_count > 0 ? 'loss' : 'profit';
+        
+        let throttlingHint = '';
+        if (metadata.circuit_breaker_triggered) {
+            throttlingHint = `
+                <div class="throttling-hint mt-2 p-2 border border-danger rounded bg-danger-subtle text-danger" style="font-size: 0.85rem;">
+                    <i class="fas fa-exclamation-triangle me-1"></i>
+                    <strong>アクセス制限(403)を検知しました。</strong><br>
+                    連続アクセスによるサーバー負荷を避けるため、更新を中断しました。15分ほど待機してから再度お試しください。
+                </div>
+            `;
+        }
+
         updateReportContainer.innerHTML = `
             <div class="update-report">
                 <div class="update-report-stats">
@@ -252,6 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="update-report-time">
                     取得時間: ${metadata.duration}s | 更新時刻: ${timeStr}
                 </div>
+                ${throttlingHint}
             </div>
         `;
         updateReportContainer.classList.remove('hidden');
@@ -366,6 +379,16 @@ document.addEventListener('DOMContentLoaded', () => {
         holdings.forEach(item => {
             const row = analysisTableBody.insertRow();
             const createCell = (html, className = '') => { const cell = row.insertCell(); cell.innerHTML = html; if (className) cell.className = className; return cell; };
+
+            if (item.error) {
+                const displayError = item.error_message || item.error;
+                row.className = 'error-row';
+                row.title = displayError.replace(/<br>/g, '\n').replace(/<[^>]*>?/gm, '');
+                createCell(item.code, 'numeric');
+                createCell(displayError, 'error-message').colSpan = 15;
+                return;
+            }
+
             const profitLoss = parseFloat(item.profit_loss);
             const profitLossRate = parseFloat(item.profit_loss_rate);
             const profitLossClass = isNaN(profitLoss) ? '' : (profitLoss >= 0 ? 'profit' : 'loss');
@@ -378,7 +401,7 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(nameHtml);
             createCell(item.industry || 'N/A');
             createCell(item.asset_type === 'jp_stock' ? '国内株式' : (item.asset_type === 'investment_trust' ? '投資信託' : (item.asset_type === 'us_stock' ? '米国株式' : 'N/A')));
-            createCell(item.security_company || '-'); 
+            createCell(item.security_company || '-');
             createCell(item.account_type);
             createCell(formatNumber(item.quantity, item.asset_type === 'investment_trust' ? 6 : 0), 'numeric ' + (!isAmountVisible ? 'masked-amount' : ''));
             createCell(formatNumber(item.purchase_price, 2), 'numeric ' + (!isAmountVisible ? 'masked-amount' : ''));
@@ -389,7 +412,7 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(formatNumber(item.market_value, 0), 'numeric ' + (!isAmountVisible ? 'masked-amount' : ''));
             createCell(formatNumber(item.profit_loss, 0), `numeric ${!isAmountVisible ? 'masked-amount' : ''} ${profitLossClass}`);
             createCell(formatNumber(item.profit_loss_rate, 2), `numeric ${!isAmountVisible ? 'masked-amount' : ''} ${profitLossRateClass}`);
-            createCell(item.memo || '-'); 
+            createCell(item.memo || '-');
         });
     }
 

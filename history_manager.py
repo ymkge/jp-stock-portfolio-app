@@ -2,7 +2,7 @@ import sqlite3
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 DB_FILE = "portfolio_history.db"
 logger = logging.getLogger(__name__)
@@ -62,9 +62,17 @@ def init_db():
                     close_price REAL,
                     volume REAL,
                     updated_at_jst TEXT,
+                    is_reliable INTEGER DEFAULT 1,
                     PRIMARY KEY (date, code)
                 )
             """)
+
+            # カラム追加の移行処理 (is_reliable)
+            cursor.execute("PRAGMA table_info(stock_price_history)")
+            columns = [col[1] for col in cursor.fetchall()]
+            if "is_reliable" not in columns:
+                logger.info("Adding is_reliable column to stock_price_history...")
+                cursor.execute("ALTER TABLE stock_price_history ADD COLUMN is_reliable INTEGER DEFAULT 1")
             
             # インデックス作成（検索高速化）
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_snapshot_month ON portfolio_history (snapshot_month)")
@@ -74,6 +82,7 @@ def init_db():
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_code_date ON daily_analysis (code, date)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_price_date ON stock_price_history (date)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_price_code_date ON stock_price_history (code, date)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_price_reliable ON stock_price_history (is_reliable)")
 
             # --- ポートフォリオサマリーテーブルの移行処理 (snapshot_month PK -> snapshot_date PK) ---
             cursor.execute("PRAGMA table_info(portfolio_summary_history)")
@@ -141,6 +150,30 @@ def init_db():
     except sqlite3.Error as e:
         logger.error(f"Database initialization failed: {e}")
 
+def validate_price_data(code: str, price: float, volume: Optional[float], current_price: Optional[float] = None) -> Tuple[bool, str]:
+    """
+    株価データの妥当性を検証する (Issue #4)
+    """
+    if price <= 0:
+        return False, "Price must be positive"
+    
+    # 乖離率チェック (前日比または現在値との比較)
+    if current_price and current_price > 0:
+        diff_ratio = abs(price - current_price) / current_price
+        # 50%以上の乖離は異常値（または未検知の分割）として警告
+        if diff_ratio > 0.5:
+            return False, f"Price deviation too high: {price} vs {current_price} ({diff_ratio*100:.1f}%)"
+            
+    # 出来高の整数性チェック (配当行等の混入検知)
+    if volume is not None:
+        if volume < 0:
+            return False, "Volume must be non-negative"
+        # Yahooの配当行などは volume の位置に 19.08 などの利回りが入ることがある
+        if isinstance(volume, float) and not volume.is_integer():
+             return False, f"Volume is not integer: {volume}"
+
+    return True, "Valid"
+
 def save_daily_data(code: str, asset_type: str, data: Dict[str, Any]) -> bool:
     """
     スクレイピング結果をDBに保存する（バリデーション付き）。
@@ -152,9 +185,9 @@ def save_daily_data(code: str, asset_type: str, data: Dict[str, Any]) -> bool:
         return False
     
     # 必須項目のチェック (現在値と名称が取得できていること)
-    price = data.get("price")
+    price_val = data.get("price")
     name = data.get("name")
-    if price in [None, "N/A", "--", ""] or name in [None, "N/A", "--", ""]:
+    if price_val in [None, "N/A", "--", ""] or name in [None, "N/A", "--", ""]:
         logger.warning(f"Validation failed for {code}: missing price or name. Data not persisted.")
         return False
 
@@ -166,19 +199,41 @@ def save_daily_data(code: str, asset_type: str, data: Dict[str, Any]) -> bool:
         data_json = json.dumps(data, ensure_ascii=False)
         
         # 数値変換
-        close_price = data.get("price")
-        if isinstance(close_price, str):
+        close_price = None
+        if isinstance(price_val, str):
             try:
-                close_price = float(close_price.replace(",", "")) if close_price not in ["N/A", "--", ""] else None
-            except ValueError:
-                close_price = None
+                close_price = float(price_val.replace(",", "")) if price_val not in ["N/A", "--", ""] else None
+            except ValueError: pass
+        elif isinstance(price_val, (int, float)):
+            close_price = float(price_val)
             
         volume = data.get("volume")
         if isinstance(volume, str):
             try:
-                volume = int(float(volume.replace(",", ""))) if volume not in ["N/A", "--", ""] else None
+                volume = float(volume.replace(",", "")) if volume not in ["N/A", "--", ""] else None
             except ValueError:
                 volume = None
+        elif isinstance(volume, (int, float)):
+            volume = float(volume)
+
+        # 詳細バリデーション (Issue #4)
+        is_reliable = 1
+        if close_price is not None:
+            # 取得済みのDB最新値（昨日分など）があれば比較対象にする
+            latest_db = get_historical_data_before(code, (now_jst - timedelta(days=1)).strftime("%Y-%m-%d"))
+            compare_price = None
+            if latest_db:
+                try:
+                    compare_price = float(str(latest_db.get("price")).replace(",", ""))
+                except: pass
+            
+            is_valid, reason = validate_price_data(code, close_price, volume, compare_price)
+            if not is_valid:
+                logger.warning(f"Data for {code} marked as unreliable: {reason}")
+                is_reliable = 0
+                # 極端な異常値（価格0や空データ）は保存を拒否
+                if "must be positive" in reason:
+                    return False
 
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
@@ -192,9 +247,9 @@ def save_daily_data(code: str, asset_type: str, data: Dict[str, Any]) -> bool:
             # 2. 株価履歴の保存
             cursor.execute("""
                 INSERT OR REPLACE INTO stock_price_history 
-                (date, code, close_price, volume, updated_at_jst)
-                VALUES (?, ?, ?, ?, ?)
-            """, (date_str, code, close_price, volume, updated_at_str))
+                (date, code, close_price, volume, updated_at_jst, is_reliable)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (date_str, code, close_price, volume, updated_at_str, is_reliable))
             
             conn.commit()
         return True

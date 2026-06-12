@@ -80,6 +80,115 @@ class HistorySyncTool:
         except Exception as e:
             logger.error(f"Failed to delete history for {code}: {e}")
 
+    def get_existing_dates(self, code):
+        """指定銘柄のDB内にある日付セットを取得する"""
+        try:
+            with sqlite3.connect(DB_FILE) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT date FROM stock_price_history WHERE code = ? AND close_price IS NOT NULL", 
+                    (code,)
+                )
+                return {row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            logger.error(f"Error checking DB for {code}: {e}")
+            return set()
+
+    def get_db_prices_for_dates(self, code, dates):
+        """指定された日付リストに対応するDB内の終値を取得する"""
+        if not dates: return {}
+        try:
+            placeholders = ','.join(['?'] * len(dates))
+            with sqlite3.connect(DB_FILE) as conn:
+                cursor = conn.cursor()
+                query = f"SELECT date, close_price FROM stock_price_history WHERE code = ? AND date IN ({placeholders})"
+                cursor.execute(query, [code] + list(dates))
+                return {row[0]: row[1] for row in cursor.fetchall() if row[1] is not None}
+        except Exception as e:
+            logger.error(f"Error fetching DB prices for {code}: {e}")
+            return {}
+
+    def apply_split_adjustment(self, code, ratio):
+        """DB内の価格と出来高を一括補正する"""
+        try:
+            with sqlite3.connect(DB_FILE) as conn:
+                cursor = conn.cursor()
+                # 価格を割り、出来高を掛ける (整数化)
+                cursor.execute("""
+                    UPDATE stock_price_history 
+                    SET close_price = close_price / ?, 
+                        volume = CAST(volume * ? AS INTEGER),
+                        updated_at_jst = ?
+                    WHERE code = ?
+                """, (ratio, ratio, datetime.now(JST).isoformat(), code))
+                
+                updated_rows = cursor.rowcount
+                conn.commit()
+                logger.info(f"Successfully applied split adjustment (Ratio: {ratio:.4f}) to {updated_rows} records for {code}")
+                return updated_rows
+        except Exception as e:
+            logger.error(f"Failed to apply split adjustment for {code}: {e}")
+            return 0
+
+    def save_histories(self, histories):
+        """取得した時系列データをDBに保存し、統計情報を返す"""
+        if not histories:
+            return None
+        
+        from history_manager import validate_price_data
+        
+        success_count = 0
+        valid_prices = []
+        valid_dates = []
+        
+        try:
+            with sqlite3.connect(DB_FILE) as conn:
+                cursor = conn.cursor()
+                updated_at_str = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
+                
+                for h in histories:
+                    code = h.get('code')
+                    date = h.get('date')
+                    price = float(h.get('closePrice', 0))
+                    volume = h.get('volume')
+                    if isinstance(volume, str):
+                        try: volume = float(volume.replace(',', ''))
+                        except: volume = None
+                    
+                    # バリデーション (Issue #4)
+                    is_valid, reason = validate_price_data(code, price, volume, current_price=None)
+                    is_reliable = 1
+                    if not is_valid:
+                        logger.warning(f"Row for {code} on {date} marked as unreliable: {reason}")
+                        is_reliable = 0
+                        # 致命的なエラーはスキップ
+                        if "must be positive" in reason: continue
+
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO stock_price_history 
+                        (date, code, close_price, volume, updated_at_jst, is_reliable)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (date, code, price, volume, updated_at_str, is_reliable))
+                    
+                    if is_reliable:
+                        success_count += 1
+                        valid_prices.append(price)
+                        valid_dates.append(date)
+                
+                conn.commit()
+                
+            if not valid_prices: return None
+            
+            return {
+                'count': success_count,
+                'start_date': min(valid_dates),
+                'end_date': max(valid_dates),
+                'avg_price': sum(valid_prices) / len(valid_prices)
+            }
+        except Exception as e:
+            logger.error(f"Failed to save histories: {e}")
+            return None
+
     def get_target_date(self):
         """JSTに基づき、あるべき最新の営業日（ターゲット日）を算出する"""
         now_jst = datetime.now(JST)

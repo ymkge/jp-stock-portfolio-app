@@ -276,6 +276,7 @@ def calculate_holding_values(
     データが取得できない場合はエラーを出さずに 'None' を返すように堅牢化。
     """
     market_value, profit_loss, profit_loss_rate, price_in_jpy = None, None, None, None
+    current_price_foreign = None
     total_annual_dividend = None
     total_annual_dividend_after_tax = None
     

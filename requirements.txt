@@ -6,3 +6,5 @@ cachetools==5.0.0
 jpholiday==1.0.3
 Jinja2==3.1.6
 pydantic==1.10.22
+pytest==8.2.2
+pytest-mock==3.14.0

@@ -243,10 +243,18 @@ def calculate_sell_signal(stock_data: dict) -> Optional[dict]:
 
     # --- Level 2: ピークアウト (過熱からの反転) ---
     if is_level1:
-        # 5日線を価格が下回る
-        if price > 0 and ma_5 and price < ma_5:
+        # 25日線を価格が下回る (5日線から格上げ)
+        if price > 0 and ma_25 and price < ma_25:
             is_level2 = True
-            reasons.append("5日線割れ")
+            reasons.append("25日線割れ")
+
+        # 中期DC (25日 / 75日)
+        ma_25_prev = stock_data.get("moving_average_25_prev")
+        ma_75_prev = stock_data.get("moving_average_75_prev")
+        if ma_25 and ma_75 and ma_25_prev and ma_75_prev:
+            if ma_25_prev >= ma_75_prev and ma_25 < ma_75:
+                is_level2 = True
+                reasons.append("⚔️中期DC(25/75)")
 
         # RSIが前日比で低下
         if rsi_14 is not None and rsi_14_prev is not None and rsi_14 < rsi_14_prev:
@@ -393,16 +401,28 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
         is_level2 = True
         level2_reasons.append("Wフィボ(短期&長期一致)")
 
-    # 5日線突破
+    # 中期GC (25日 / 75日)
+    ma_25 = stock_data.get("moving_average_25")
+    ma_75 = stock_data.get("moving_average_75")
+    ma_25_prev = stock_data.get("moving_average_25_prev")
+    ma_75_prev = stock_data.get("moving_average_75_prev")
+    if ma_25 and ma_75 and ma_25_prev and ma_75_prev:
+        if ma_25_prev <= ma_75_prev and ma_25 > ma_75:
+            is_level2 = True
+            level2_reasons.append("🔱中期GC(25/75)")
+
+    # 25日線突破 (5日線から格上げ)
     price = 0.0
     try:
         price_val = stock_data.get("price")
         if isinstance(price_val, str): price_val = price_val.replace(',', '')
         price = float(price_val or 0)
-        ma_5 = stock_data.get("moving_average_5")
-        if price > 0 and ma_5 and price > ma_5:
-            is_level2 = True
-            level2_reasons.append("5日線突破")
+        if price > 0 and ma_25 and price > ma_25:
+            # 前日は25日線以下だった場合のみ「突破」とする
+            price_prev_raw = stock_data.get("price_prev") # scraperにはまだないが将来用、現状は単なる上抜けでも可
+            if is_level1: # 売られすぎからの回復を条件にする
+                is_level2 = True
+                level2_reasons.append("25日線突破")
     except (ValueError, TypeError): pass
 
     # RSIのボトムアウト (当日 > 前日)
@@ -620,6 +640,7 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
     details = {
         "per": 0, "pbr": 0, "roe": 0, "yield": 0, "consecutive_increase": 0,
         "trend_short": 0, "trend_medium": 0, "trend_long": 0, "trend_signal": 0,
+        "gc_25_75": 0, "gc_75_200": 0,
         "fibonacci": 0, "rci": 0, "range_yearly": 0,
         "is_fib_convergence": False
     }
@@ -697,7 +718,7 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
             price = float(price_val or 0)
             ma_25 = stock_data.get("ma25") or stock_data.get("moving_average_25")
             ma_75 = stock_data.get("ma75") or stock_data.get("moving_average_75")
-            ma_200 = stock_data.get("ma200")
+            ma_200 = stock_data.get("ma200") or stock_data.get("moving_average_200")
 
             if price > 0:
                 if ma_25 and price > ma_25:
@@ -712,6 +733,23 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
                 if ma_25 and ma_75 and ma_25 > ma_75:
                     is_calculable = True
                     details["trend_signal"] += 1
+
+                # --- ゴールデンクロス(GC)判定 ---
+                ma_25_prev = stock_data.get("moving_average_25_prev")
+                ma_75_prev = stock_data.get("moving_average_75_prev")
+                ma_200_prev = stock_data.get("moving_average_200_prev")
+
+                # 中期GC (25日 / 75日)
+                if ma_25 and ma_75 and ma_25_prev and ma_75_prev:
+                    if ma_25_prev <= ma_75_prev and ma_25 > ma_75:
+                        details["gc_25_75"] = 1
+                        is_calculable = True
+
+                # 長期GC (75日 / 200日)
+                if ma_75 and ma_200 and ma_75_prev and ma_200_prev:
+                    if ma_75_prev <= ma_200_prev and ma_75 > ma_200:
+                        details["gc_75_200"] = 1
+                        is_calculable = True
 
             # --- フィボナッチ判定 (短期・長期統合) ---
             fib_keys_short = ["fibonacci_3m", "fibonacci_6m"]

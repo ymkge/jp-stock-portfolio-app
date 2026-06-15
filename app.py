@@ -381,18 +381,6 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
 
     is_fib_convergence = fib_short_hit and fib_long_hit
 
-    if not is_level1:
-        # スコアは高いがテクニカル指標が取れないためにレベル1にならない場合も「判定不能」を検討
-        if not is_reliable:
-            return {
-                "level": 0, "is_diamond": is_diamond, "is_unreliable": True,
-                "icon": "🔘", "label": "判定不能",
-                "recommended_action": "テクニカル指標の一部が取得できませんでした。",
-                "current_status": f"ファンダメンタルズは良好ですが、以下の指標が欠損しています: {', '.join(missing_items)}",
-                "reasons": ["テクニカル欠損"]
-            }
-        return None
-
     # --- Level 2 判定条件 (反転確認) ---
     is_level2 = False
     level2_reasons = []
@@ -418,9 +406,8 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
         if isinstance(price_val, str): price_val = price_val.replace(',', '')
         price = float(price_val or 0)
         if price > 0 and ma_25 and price > ma_25:
-            # 前日は25日線以下だった場合のみ「突破」とする
-            price_prev_raw = stock_data.get("price_prev") # scraperにはまだないが将来用、現状は単なる上抜けでも可
-            if is_level1: # 売られすぎからの回復を条件にする
+            # 25日線を明確に上抜け、かつ「売られすぎ」からの回復であれば採用
+            if is_level1:
                 is_level2 = True
                 level2_reasons.append("25日線突破")
     except (ValueError, TypeError): pass
@@ -428,8 +415,23 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     # RSIのボトムアウト (当日 > 前日)
     rsi_14_prev = stock_data.get("rsi_14_prev")
     if rsi_14 is not None and rsi_14_prev is not None and rsi_14 > rsi_14_prev:
-        is_level2 = True
-        level2_reasons.append("RSI反転")
+        # RSI反転は「売られすぎ」の状態から発生した場合のみLv2とする
+        if is_level1:
+            is_level2 = True
+            level2_reasons.append("RSI反転")
+
+    # 最終判定：Lv1（売られすぎ）でも Lv2（反転イベント）でもない場合は非表示
+    if not is_level1 and not is_level2:
+        # スコアは高いがテクニカル指標が取れないためにレベル1にならない場合も「判定不能」を検討
+        if not is_reliable:
+            return {
+                "level": 0, "is_diamond": is_diamond, "is_unreliable": True,
+                "icon": "🔘", "label": "判定不能",
+                "recommended_action": "テクニカル指標の一部が取得できませんでした。",
+                "current_status": f"ファンダメンタルズは良好ですが、以下の指標が欠損しています: {', '.join(missing_items)}",
+                "reasons": ["テクニカル欠損"]
+            }
+        return None
 
     level = 2 if is_level2 else 1
     config = BUY_SIGNAL_DISPLAY[f"level_{level}"]
@@ -548,6 +550,35 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
 
     # 1. 分析の実行 (国内株式のみ)
     if asset_type == 'jp_stock':
+        # --- [自己修復ロジック] 不足している時系列データの補完 ---
+        # 以前に取得済みの古い形式のデータ（_prev項目がない）をDBの履歴から動的に補完する
+        if "moving_average_25_prev" not in merged_data:
+            try:
+                histories_db = history_manager.get_historical_data_for_analysis(code)
+                if histories_db:
+                    # scraper.pyのロジックと同期させるため、
+                    # DBから取得した最新の「日付」が merged_data の最新日と同じ場合は
+                    # それを当日として扱い、[1:] を前日分とする
+                    # ※history_managerから返されるリストは [当日, 1日前, 2日前, ...] の順
+                    
+                    # 共通のMA計算ヘルパー（scraper.pyのロジックの簡易再実装）
+                    def calc_ma(prices, days):
+                        if len(prices) < days: return None
+                        return sum(prices[:days]) / days
+
+                    # 価格リストの作成（closePriceはDB保存時に数値変換済み）
+                    all_prices = [h["closePrice"] for h in histories_db if h.get("closePrice") is not None]
+                    
+                    # 前日分のMAを算出
+                    # histories_db[0]が当日のデータとみなせる場合、[1:]が前日からの履歴
+                    if len(all_prices) > 1:
+                        merged_data["moving_average_25_prev"] = calc_ma(all_prices[1:], 25)
+                        merged_data["moving_average_75_prev"] = calc_ma(all_prices[1:], 75)
+                        merged_data["moving_average_200_prev"] = calc_ma(all_prices[1:], 200)
+                        logger.info(f"Self-healed MA_prev data for {code} from DB history")
+            except Exception as e:
+                logger.warning(f"Failed to self-heal MA_prev for {code}: {e}")
+
         merged_data["consecutive_increase_years"] = calculate_consecutive_dividend_increase(merged_data.get("dividend_history", {}))
         score, details = calculate_score(merged_data)
         merged_data["score"] = score
@@ -569,15 +600,17 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
         )
 
     # 2. スナップショットの保存 (DB更新) - 全アセットタイプ対象
-    if scraped_data and "error" not in scraped_data:
+    # キャッシュヒット時であっても、ロジック変更等で分析結果が変わった場合は保存する
+    save_target = scraped_data if scraped_data else merged_data
+    if save_target and "error" not in save_target:
         try:
             # 修正: history_manager.get_daily_data によって merged_data 側は補完されている可能性がある
-            # scraped_data (DBレコード実体) が不完全な場合、補完済みの merged_data から属性を引き継いで
+            # save_target (DBレコード実体) が不完全な場合、補完済みの merged_data から属性を引き継いで
             # DB側のレコードも「完全な状態」へ修復（上書き）させる
-            if not scraped_data.get("name") and merged_data.get("name"):
+            if not save_target.get("name") and merged_data.get("name"):
                 for key in ["name", "per", "pbr", "roe", "yield", "eps", "settlement_month", "industry", "asset_type", "market"]:
-                    if key in merged_data and key not in scraped_data:
-                        scraped_data[key] = merged_data[key]
+                    if key in merged_data and key not in save_target:
+                        save_target[key] = merged_data[key]
 
             # 変更検知用のフラグ
             is_changed = False
@@ -592,8 +625,8 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
                     "is_reliable": merged_data.get("score_details", {}).get("is_reliable", True)
                 }
                 # 既存データと比較 (なければ新規保存)
-                if scraped_data.get("analysis_snapshot") != new_analysis:
-                    scraped_data["analysis_snapshot"] = new_analysis
+                if save_target.get("analysis_snapshot") != new_analysis:
+                    save_target["analysis_snapshot"] = new_analysis
                     is_changed = True
 
             # B. 保有情報スナップショット (全アセット共通)
@@ -601,20 +634,22 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
             holdings = merged_data.get("holdings", [])
             if holdings:
                 # 既存データと比較
-                if scraped_data.get("holdings_snapshot") != holdings:
-                    scraped_data["holdings_snapshot"] = holdings
+                if save_target.get("holdings_snapshot") != holdings:
+                    save_target["holdings_snapshot"] = holdings
                     is_changed = True
             
             # DB保存実行 (新規取得時、または内容に変更があった場合のみ)
             # ※新しくスクレイピングされたデータには _db_updated_at_jst がまだない
-            is_newly_scraped = "_db_updated_at_jst" not in scraped_data
+            is_newly_scraped = "_db_updated_at_jst" not in save_target
             
             if is_newly_scraped or is_changed:
                 history_manager.save_daily_data(
                     code, 
                     asset_type, 
-                    scraped_data
+                    save_target
                 )
+                if is_changed and not is_newly_scraped:
+                    logger.info(f"Updated analysis snapshot for {code} in DB (logic/holding change)")
         except Exception as e:
             logger.error(f"Failed to save snapshot for {code}: {e}")
 

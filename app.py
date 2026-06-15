@@ -550,34 +550,49 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
 
     # 1. 分析の実行 (国内株式のみ)
     if asset_type == 'jp_stock':
-        # --- [自己修復ロジック] 不足している時系列データの補完 ---
-        # 以前に取得済みの古い形式のデータ（_prev項目がない）をDBの履歴から動的に補完する
-        if "moving_average_25_prev" not in merged_data:
-            try:
-                histories_db = history_manager.get_historical_data_for_analysis(code)
-                if histories_db:
-                    # scraper.pyのロジックと同期させるため、
-                    # DBから取得した最新の「日付」が merged_data の最新日と同じ場合は
-                    # それを当日として扱い、[1:] を前日分とする
-                    # ※history_managerから返されるリストは [当日, 1日前, 2日前, ...] の順
+        # --- [自己修復 & 仮想挿入ロジック] 時系列データの完全補完 ---
+        # 以前に取得済みのデータやキャッシュに対して、最新価格とDB履歴を組み合わせてMAを再計算する
+        # これにより、通信なしでGC/DCを正確に検知可能にする
+        try:
+            # 常に最新の履歴から再計算を試みる (ロジック変更に追従するため)
+            histories_db = history_manager.get_historical_data_for_analysis(code)
+            if histories_db:
+                price_val = merged_data.get("price")
+                if isinstance(price_val, str): price_val = price_val.replace(',', '')
+                current_price = float(price_val or 0)
+                
+                if current_price > 0:
+                    # DBの先頭が今日の日付なら、それを除いたものが「過去履歴」
+                    today_str = history_manager.get_now_jst().strftime("%Y-%m-%d")
+                    if histories_db[0]["date"] == today_str:
+                        history_prices = [h["closePrice"] for h in histories_db[1:] if h.get("closePrice") is not None]
+                    else:
+                        history_prices = [h["closePrice"] for h in histories_db if h.get("closePrice") is not None]
                     
-                    # 共通のMA計算ヘルパー（scraper.pyのロジックの簡易再実装）
+                    # 仮想挿入リスト: [当日, 前日, 前々日, ...]
+                    combined = [current_price] + history_prices
+                    
                     def calc_ma(prices, days):
                         if len(prices) < days: return None
                         return sum(prices[:days]) / days
-
-                    # 価格リストの作成（closePriceはDB保存時に数値変換済み）
-                    all_prices = [h["closePrice"] for h in histories_db if h.get("closePrice") is not None]
                     
-                    # 前日分のMAを算出
-                    # histories_db[0]が当日のデータとみなせる場合、[1:]が前日からの履歴
-                    if len(all_prices) > 1:
-                        merged_data["moving_average_25_prev"] = calc_ma(all_prices[1:], 25)
-                        merged_data["moving_average_75_prev"] = calc_ma(all_prices[1:], 75)
-                        merged_data["moving_average_200_prev"] = calc_ma(all_prices[1:], 200)
-                        logger.info(f"Self-healed MA_prev data for {code} from DB history")
-            except Exception as e:
-                logger.warning(f"Failed to self-heal MA_prev for {code}: {e}")
+                    # 当日および前日のMAを再計算して上書き
+                    merged_data["moving_average_25"] = calc_ma(combined, 25)
+                    merged_data["moving_average_75"] = calc_ma(combined, 75)
+                    merged_data["moving_average_200"] = calc_ma(combined, 200)
+                    
+                    merged_data["moving_average_25_prev"] = calc_ma(history_prices, 25)
+                    merged_data["moving_average_75_prev"] = calc_ma(history_prices, 75)
+                    merged_data["moving_average_200_prev"] = calc_ma(history_prices, 200)
+                    
+                    # 互換用キー
+                    merged_data["ma25"] = merged_data["moving_average_25"]
+                    merged_data["ma75"] = merged_data["moving_average_75"]
+                    merged_data["ma200"] = merged_data["moving_average_200"]
+                    
+                    # logger.debug(f"Computed virtual MAs for {code}: 25={merged_data['ma25']}, prev={merged_data['moving_average_25_prev']}")
+        except Exception as e:
+            logger.warning(f"Failed to virtual-calculate MAs for {code}: {e}")
 
         merged_data["consecutive_increase_years"] = calculate_consecutive_dividend_increase(merged_data.get("dividend_history", {}))
         score, details = calculate_score(merged_data)

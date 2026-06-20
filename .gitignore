@@ -15,7 +15,7 @@ portfolio.json
 portfolio.json.lock
 recent_stocks.json
 portfolio_history.db
-GEMINI.md
+.agents/
 
 notebooks/
 portfolio_history.db.bak*

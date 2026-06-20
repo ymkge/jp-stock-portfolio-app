@@ -552,7 +552,7 @@ button {
     position: relative;
     z-index: 1;
     overflow: hidden; /* 内部でアニメーションを完結させる (物理移動を表示するため必須) */
-    color: #1a1a1a; /* 基本は濃い黒文字（GEMINI.md準拠） */
+    color: #1a1a1a; /* 基本は濃い黒文字（.agents/AGENTS.md準拠） */
     text-shadow: none;
     border: none;
 }
@@ -704,7 +704,7 @@ button {
     animation: shimmer-effect 3.0s infinite linear;
 }
 
-/* 購入：判定不能 (🔘) - 落ち着いたグレー (GEMINI.md 2.22 & 2.25 準拠) */
+/* 購入：判定不能 (🔘) - 落ち着いたグレー (.agents/AGENTS.md 2.22 & 2.25 準拠) */
 .theme-unreliable {
     background-color: #d1d8e0 !important;
 }

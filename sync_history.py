@@ -325,6 +325,7 @@ class HistorySyncTool:
 
     def run(self, force_resync_code=None):
         """メイン実行ループ (スマートスキップ対応)"""
+        start_time = time.time()
         self.backup_db()
         
         portfolio = load_portfolio()
@@ -335,14 +336,20 @@ class HistorySyncTool:
             with open("highlight_rules.json", "r", encoding="utf-8") as f:
                 rules = json.load(f)
                 market_indices = rules.get("market_indices", [])
+                loaded_indices_count = 0
                 for idx in market_indices:
+                    # 日経平均先物 (5040469.O) は過去データがないため同期対象外とする
+                    if idx['code'] == '5040469.O':
+                        logger.info(f"Skipping market index {idx['name']} ({idx['code']}) from sync (no historical data on Yahoo Finance).")
+                        continue
                     if not any(s['code'] == idx['code'] for s in jp_stocks):
                         jp_stocks.append({
                             'code': idx['code'], 
                             'name': idx['name'],
                             'asset_type': 'market_index'
                         })
-                logger.info(f"Loaded {len(market_indices)} market indices for sync.")
+                    loaded_indices_count += 1
+                logger.info(f"Loaded {loaded_indices_count} market indices for sync.")
         except Exception as e:
             logger.error(f"Failed to load market indices: {e}")
 
@@ -399,8 +406,21 @@ class HistorySyncTool:
                 time.sleep(1.5 + random.uniform(0, 1.0))
         
         # 最終サマリーレポート
+        elapsed_time = time.time() - start_time
+        elapsed_hours = int(elapsed_time // 3600)
+        elapsed_minutes = int((elapsed_time % 3600) // 60)
+        elapsed_seconds = int(elapsed_time % 60)
+        
+        if elapsed_hours > 0:
+            time_str = f"{elapsed_hours}h {elapsed_minutes}m {elapsed_seconds}s"
+        elif elapsed_minutes > 0:
+            time_str = f"{elapsed_minutes}m {elapsed_seconds}s"
+        else:
+            time_str = f"{elapsed_time:.2f}s"
+
         logger.info("-" * 60)
         logger.info(f"Sync Process Completed at {datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"Total Time Elapsed   : {time_str}")
         logger.info(f"Total Portfolio Items: {total}")
         logger.info(f"Successfully Synced  : {self.success_count}")
         logger.info(f"Skipped (Up-to-date) : {skip_count}")

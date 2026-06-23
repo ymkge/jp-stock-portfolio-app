@@ -367,6 +367,7 @@ class HistorySyncTool:
         
         request_count = 0
         skip_count = 0
+        no_gaps_count = 0
         
         for i, stock in enumerate(jp_stocks, 1):
             code = stock['code']
@@ -391,6 +392,7 @@ class HistorySyncTool:
                     logger.info(msg)
                 else:
                     logger.info(f"[{i}/{total}] OK: {code} ({real_name}) | No gaps found.")
+                    no_gaps_count += 1
                 
             except Exception as e:
                 self.error_list.append((code, name, str(e)))
@@ -423,6 +425,7 @@ class HistorySyncTool:
         logger.info(f"Total Time Elapsed   : {time_str}")
         logger.info(f"Total Portfolio Items: {total}")
         logger.info(f"Successfully Synced  : {self.success_count}")
+        logger.info(f"No Gaps Found (OK)   : {no_gaps_count}")
         logger.info(f"Skipped (Up-to-date) : {skip_count}")
         logger.info(f"Failed/Errors        : {len(self.error_list)}")
         

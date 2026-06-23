@@ -208,19 +208,19 @@ class HistorySyncTool:
         return target_dt.strftime("%Y-%m-%d")
 
     def get_db_health(self, code):
-        """指定銘柄のDB内最新日と有効レコード数を取得する"""
+        """指定銘柄のDB内最新日、最古日、有効レコード数を取得する"""
         try:
             with sqlite3.connect(DB_FILE) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "SELECT MAX(date), COUNT(*) FROM stock_price_history WHERE code = ? AND close_price IS NOT NULL", 
+                    "SELECT MAX(date), MIN(date), COUNT(*) FROM stock_price_history WHERE code = ? AND close_price IS NOT NULL", 
                     (code,)
                 )
                 row = cursor.fetchone()
-                return row[0] if row else None, row[1] if row else 0
+                return row[0] if row else None, row[1] if row else None, row[2] if row else 0
         except Exception as e:
             logger.error(f"Error checking health for {code}: {e}")
-            return None, 0
+            return None, None, 0
 
     def sync_stock(self, code, name="Unknown"):
         """1銘柄の履歴を同期する"""
@@ -314,7 +314,14 @@ class HistorySyncTool:
                 logger.info(f"Splits adjusted and Page 1 records prepared. Stopping early for {code}.")
                 break
 
-            if not new_data_found_on_page and len(existing_dates) >= 250:
+            one_year_ago = (datetime.now(JST) - timedelta(days=365)).strftime("%Y-%m-%d")
+            min_db_date = min(existing_dates) if existing_dates else None
+            has_sufficient_history = (
+                len(existing_dates) >= 250 or
+                (len(existing_dates) >= 240 and min_db_date and min_db_date <= one_year_ago)
+            )
+
+            if not new_data_found_on_page and has_sufficient_history:
                 logger.info(f"No new data on page {page} and DB has sufficient records. Stopping early.")
                 break
                 
@@ -375,8 +382,13 @@ class HistorySyncTool:
             
             # 事前診断 (スマートスキップ)
             if not force_resync_code:
-                latest_date, record_count = self.get_db_health(code)
-                if latest_date and latest_date >= target_date and record_count >= 250:
+                latest_date, min_date, record_count = self.get_db_health(code)
+                one_year_ago = (datetime.now(JST) - timedelta(days=365)).strftime("%Y-%m-%d")
+                
+                is_sufficient_by_count = (record_count >= 250)
+                is_sufficient_by_period = (record_count >= 240 and min_date and min_date <= one_year_ago)
+                
+                if latest_date and latest_date >= target_date and (is_sufficient_by_count or is_sufficient_by_period):
                     logger.info(f"[{i}/{total}] SKIP: {code} ({name}) | Already up-to-date (Latest: {latest_date}, Records: {record_count})")
                     skip_count += 1
                     continue

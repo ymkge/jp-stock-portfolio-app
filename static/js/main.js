@@ -134,6 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (!force && !window.appState.canFetch()) {
+            await checkAndShowSplitAlerts(); // 早期リターン時もアラート情報は最新を取得する (新規)
             return;
         }
 
@@ -502,10 +503,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             createCell(`<input type="checkbox" class="asset-checkbox" data-code="${jpStock.code}">`);
             
-            // 株式分割バッジの付与 (新規)
+            // 株式分割バッジの付与 (新規 - onclickによる確実な呼び出し)
             let codeHtml = jpStock.code;
             if (jpStock.split_alert) {
-                codeHtml += ` <span class="split-badge confirmed" data-code="${jpStock.code}" title="株式分割が検知されました。クリックして保有情報を調整します。">✂️</span>`;
+                codeHtml += ` <span class="split-badge confirmed" style="cursor:pointer;" onclick="window.showSplitModal('${jpStock.code}')" title="株式分割が検知されました。クリックして保有情報を調整します。">✂️</span>`;
             } else if (jpStock.potential_split) {
                 codeHtml += ` <span class="split-badge potential" title="最新価格が直近終値と大きく乖離しています（比率: ${jpStock.potential_split_ratio}）。株式分割が発生した可能性があります。手動で履歴同期を実行してください。">⚠️</span>`;
             }
@@ -934,6 +935,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // プレビューモーダルのレンダリング
     function renderSplitAlertModal() {
+        if (!splitAlertDetailsContainer) return;
         if (pendingSplitAlerts.length === 0) {
             splitAlertDetailsContainer.innerHTML = '<p>現在保留中の株式分割アラートはありません。</p>';
             return;
@@ -980,17 +982,25 @@ document.addEventListener('DOMContentLoaded', () => {
         splitAlertDetailsContainer.innerHTML = html;
     }
 
-    // モーダルを開く
+    // グローバルに関数を公開（インライン onclick から確実に呼び出せるようにする）
+    window.showSplitModal = function(code) {
+        renderSplitAlertModal();
+        if (splitAlertModal) {
+            splitAlertModal.classList.remove('hidden');
+        }
+    };
+
+    // モーダルを開く (バナー上のボタン)
     if (btnShowSplitModal) {
         btnShowSplitModal.addEventListener('click', () => {
             renderSplitAlertModal();
-            splitAlertModal.classList.remove('hidden');
+            if (splitAlertModal) splitAlertModal.classList.remove('hidden');
         });
     }
 
     // モーダルを閉じる
     const closeSplitModal = () => {
-        splitAlertModal.classList.add('hidden');
+        if (splitAlertModal) splitAlertModal.classList.add('hidden');
     };
     if (btnCloseSplitModal) btnCloseSplitModal.addEventListener('click', closeSplitModal);
     if (btnCloseSplitModalFooter) btnCloseSplitModalFooter.addEventListener('click', closeSplitModal);
@@ -1061,18 +1071,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // テーブル内の ✂️ マーククリック時の動作
-    document.querySelectorAll('.portfolio-table tbody').forEach(tbody => {
-        tbody.addEventListener('click', (e) => {
-            const badge = e.target.closest('.split-badge.confirmed');
-            if (badge) {
-                e.stopPropagation();
-                renderSplitAlertModal();
-                splitAlertModal.classList.remove('hidden');
-            }
-        });
-    });
-
     // --- 初期実行 ---
     const initialCachedState = window.appState.getState('portfolio');
     if (initialCachedState) {
@@ -1082,4 +1080,5 @@ document.addEventListener('DOMContentLoaded', () => {
         filterAndRender();
     } else { loadAssetsFromStorage(); }
     fetchAndRenderAllData(false);
+    checkAndShowSplitAlerts(); // 初期表示時に確実にアラートをフェッチする (新規)
 });

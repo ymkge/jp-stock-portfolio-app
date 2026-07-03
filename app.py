@@ -16,6 +16,7 @@ import recent_stocks_manager
 import history_manager
 import json
 import logging
+import sqlite3
 try:
     import jpholiday
 except ImportError:

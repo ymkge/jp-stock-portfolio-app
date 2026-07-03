@@ -44,6 +44,13 @@
                 </div>
             </header>
 
+            <!-- 株式分割アラートバナー (新規) -->
+            <div id="split-alert-banner" class="split-alert-banner hidden">
+                <span class="alert-icon">✂️</span>
+                <span class="alert-text">株式分割（または併合）が検知された保有銘柄があります。取得単価と数量を調整しますか？</span>
+                <button id="btn-show-split-modal" class="btn-sm btn-primary">詳細を確認</button>
+            </div>
+
             <div id="update-report-container" class="hidden"></div>
             <div id="market-summary-container" class="market-summary-container"></div>
 
@@ -206,6 +213,25 @@
             
             <div class="modal-footer">
                 <button type="button" id="modal-close-btn">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 株式分割プレビューモーダル (新規) -->
+    <div id="split-alert-modal" class="modal-overlay hidden">
+        <div class="modal-content large-modal" style="max-width: 650px;">
+            <div class="modal-header">
+                <h2>✂️ 株式分割の適用確認</h2>
+                <button type="button" id="btn-close-split-modal" class="modal-close" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 20px 0;">
+                <p style="margin-bottom: 15px; font-size: 0.95rem;">以下の保有銘柄で株式分割（または併合）が検知されました。<br>現在の保有情報（取得単価および数量）を分割比率に応じて自動修正しますか？</p>
+                <div id="split-alert-details-container">
+                    <!-- JSで動的に追加される -->
+                </div>
+            </div>
+            <div class="modal-footer" style="padding-top: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" id="btn-close-split-modal-footer" class="btn-outline">閉じる</button>
             </div>
         </div>
     </div>

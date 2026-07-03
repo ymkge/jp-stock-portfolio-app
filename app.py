@@ -614,6 +614,25 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
             merged_data.get("buy_signal"), merged_data.get("sell_signal")
         )
 
+        # 簡易的な価格乖離検知 (株式分割の疑い)
+        price_val = merged_data.get("price")
+        if isinstance(price_val, str): price_val = price_val.replace(',', '')
+        try:
+            current_price = float(price_val or 0)
+            if current_price > 0:
+                last_db_price = history_manager.get_latest_price_from_db(code)
+                if last_db_price and last_db_price > 0:
+                    ratio = last_db_price / current_price
+                    # 30%以上の乖離（1:1.45以上の分割、または逆の併合）を検知
+                    if ratio >= 1.45 or ratio <= 0.7:
+                        # すでに確定アラートがない場合のみ、簡易警告フラグを設定
+                        if not history_manager.has_pending_split_alert(code):
+                            merged_data["potential_split"] = True
+                            merged_data["potential_split_ratio"] = round(ratio, 2)
+        except Exception as e:
+            logger.warning(f"Error checking potential split for {code}: {e}")
+
+
     # 2. スナップショットの保存 (DB更新) - 全アセットタイプ対象
     # キャッシュヒット時であっても、ロジック変更等で分析結果が変わった場合は保存する
     save_target = scraped_data if scraped_data else merged_data
@@ -977,6 +996,13 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
     # 全銘柄の最新DBキャッシュを一括取得 (日付不問)
     db_cache_map = history_manager.get_latest_daily_data_all()
 
+    # 保留中の株式分割アラートを一括取得してマップ化 (新規)
+    try:
+        split_alerts_map = {alert["code"]: alert for alert in history_manager.get_pending_split_alerts()}
+    except Exception as e:
+        logger.error(f"Failed to load pending split alerts: {e}")
+        split_alerts_map = {}
+
     # スクレイピング設定の取得
     concurrency_limit = get_config("system.scraping.concurrency_limit", 1)
     delay_min = get_config("system.scraping.delay_min", 1.5)
@@ -1100,6 +1126,12 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
                 logger.error(f"Error in _enrich_stock_data for {code}: {e}", exc_info=True)
                 merged_data["error"] = f"分析計算エラー: {str(e)}"
                 merged_data["error_message"] = merged_data["error"]
+
+            # 株式分割アラートのマージ (新規)
+            if code in split_alerts_map:
+                merged_data["split_alert"] = split_alerts_map[code]
+                merged_data.pop("potential_split", None)
+                merged_data.pop("potential_split_ratio", None)
 
             processed_data.append(merged_data)
         except Exception as e:
@@ -1573,3 +1605,129 @@ async def download_analysis_csv():
 async def get_history_summary():
     """月次履歴のサマリーを取得する"""
     return history_manager.get_monthly_summary()
+
+# --- 株式分割関連モデル & API (Issue #216) ---
+
+class ApplySplitRequest(BaseModel):
+    code: str
+    ratio: float
+
+class DismissSplitRequest(BaseModel):
+    code: str
+
+def get_stock_name_from_db(code: str) -> Optional[str]:
+    """DBの履歴から銘柄名を取得する"""
+    try:
+        with sqlite3.connect(history_manager.DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM portfolio_history WHERE code = ? ORDER BY id DESC LIMIT 1", (code,))
+            row = cursor.fetchone()
+            if row: return row[0]
+            cursor.execute("SELECT data_json FROM daily_analysis WHERE code = ? ORDER BY date DESC LIMIT 1", (code,))
+            row = cursor.fetchone()
+            if row:
+                data = json.loads(row[0])
+                if "name" in data: return data["name"]
+        return None
+    except:
+        return None
+
+@app.get("/api/split-alerts")
+async def get_split_alerts():
+    """保留中の株式分割アラート一覧を取得し、適用プレビューを生成する"""
+    try:
+        alerts = history_manager.get_pending_split_alerts()
+        portfolio_data = portfolio_manager.load_portfolio()
+        portfolio_dict = {item["code"]: item for item in portfolio_data}
+        
+        results = []
+        for alert in alerts:
+            code = alert["code"]
+            ratio = alert["ratio"]
+            if code in portfolio_dict:
+                stock = portfolio_dict[code]
+                name = get_stock_name_from_db(code) or code
+                
+                holdings = stock.get("holdings", [])
+                preview_holdings = []
+                for h in holdings:
+                    purchase_price = h.get("purchase_price", 0)
+                    quantity = h.get("quantity", 0)
+                    
+                    # プレビュー計算
+                    new_price = round(purchase_price / ratio, 2)
+                    new_qty = round(quantity * ratio, 6)
+                    
+                    preview_holdings.append({
+                        "id": h.get("id"),
+                        "account_type": h.get("account_type"),
+                        "security_company": h.get("security_company"),
+                        "purchase_price": purchase_price,
+                        "quantity": quantity,
+                        "new_purchase_price": new_price,
+                        "new_quantity": new_qty
+                    })
+                
+                results.append({
+                    "code": code,
+                    "name": name,
+                    "ratio": ratio,
+                    "detected_date": alert["detected_date"],
+                    "holdings": preview_holdings
+                })
+        return results
+    except Exception as e:
+        logger.error(f"Error fetching split alerts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/split-alerts/apply")
+async def apply_split_alert(req: ApplySplitRequest):
+    """株式分割を portfolio.json に適用し、アラートを解消する"""
+    code = req.code
+    ratio = req.ratio
+    
+    if ratio <= 0:
+        raise HTTPException(status_code=400, detail="Invalid split ratio")
+        
+    try:
+        with portfolio_manager.portfolio_lock():
+            portfolio_data = portfolio_manager.load_portfolio()
+            target_stock = None
+            for stock in portfolio_data:
+                if stock["code"] == code:
+                    target_stock = stock
+                    break
+            
+            if not target_stock:
+                raise HTTPException(status_code=404, detail="Stock not found in portfolio")
+                
+            # 保有情報の補正
+            for h in target_stock.get("holdings", []):
+                h["purchase_price"] = round(h["purchase_price"] / ratio, 2)
+                h["quantity"] = round(h["quantity"] * ratio, 6)
+                
+            # 保存
+            portfolio_manager.save_portfolio(portfolio_data)
+            
+        # アラートのステータス更新
+        history_manager.update_split_alert_status(code, 'applied')
+        return {"status": "success", "message": f"Successfully applied split for {code}"}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error applying split alert: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/split-alerts/dismiss")
+async def dismiss_split_alert(req: DismissSplitRequest):
+    """株式分割アラートを無視（非表示）にする"""
+    code = req.code
+    try:
+        success = history_manager.update_split_alert_status(code, 'dismissed')
+        if success:
+            return {"status": "success", "message": f"Dismissed split alert for {code}"}
+        else:
+            raise HTTPException(status_code=404, detail="Alert not found")
+    except Exception as e:
+        logger.error(f"Error dismissing split alert: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

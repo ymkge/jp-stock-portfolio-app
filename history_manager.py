@@ -67,6 +67,17 @@ def init_db():
                 )
             """)
 
+            # --- 新規テーブル：株式分割アラート ---
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS split_alerts (
+                    code TEXT PRIMARY KEY,
+                    ratio REAL NOT NULL,
+                    detected_date TEXT NOT NULL,
+                    status TEXT DEFAULT 'pending',
+                    updated_at_jst TEXT NOT NULL
+                )
+            """)
+
             # カラム追加の移行処理 (is_reliable)
             cursor.execute("PRAGMA table_info(stock_price_history)")
             columns = [col[1] for col in cursor.fetchall()]
@@ -577,6 +588,87 @@ def _to_float(value):
         return float(value)
     except (ValueError, TypeError):
         return 0.0
+
+def add_split_alert(code: str, ratio: float) -> bool:
+    """株式分割アラートを追加・更新する"""
+    try:
+        now_str = get_now_jst().isoformat()
+        today_str = get_now_jst().strftime("%Y-%m-%d")
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO split_alerts (code, ratio, detected_date, status, updated_at_jst)
+                VALUES (?, ?, ?, 'pending', ?)
+            """, (code, ratio, today_str, now_str))
+            conn.commit()
+            logger.info(f"Added/Updated split alert for {code} with ratio {ratio}")
+            return True
+    except Exception as e:
+        logger.error(f"Error adding split alert for {code}: {e}")
+        return False
+
+def get_pending_split_alerts() -> List[Dict[str, Any]]:
+    """保留中の株式分割アラート一覧を取得する"""
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT code, ratio, detected_date, status, updated_at_jst 
+                FROM split_alerts 
+                WHERE status = 'pending'
+            """)
+            return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Error fetching pending split alerts: {e}")
+        return []
+
+def has_pending_split_alert(code: str) -> bool:
+    """指定銘柄に保留中の分割アラートがあるか確認する"""
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM split_alerts WHERE code = ? AND status = 'pending'", (code,))
+            return cursor.fetchone() is not None
+    except Exception as e:
+        logger.error(f"Error checking pending split alert for {code}: {e}")
+        return False
+
+def update_split_alert_status(code: str, status: str) -> bool:
+    """分割アラートのステータスを更新する"""
+    if status not in ('pending', 'applied', 'dismissed'):
+        return False
+    try:
+        now_str = get_now_jst().isoformat()
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE split_alerts 
+                SET status = ?, updated_at_jst = ? 
+                WHERE code = ?
+            """, (status, now_str, code))
+            conn.commit()
+            return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error updating split alert status for {code}: {e}")
+        return False
+
+def get_latest_price_from_db(code: str) -> Optional[float]:
+    """DBの時系列データから最新の終値（当日を除く直近）を取得する"""
+    try:
+        today_str = get_now_jst().strftime("%Y-%m-%d")
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT close_price FROM stock_price_history 
+                WHERE code = ? AND date < ? AND close_price IS NOT NULL 
+                ORDER BY date DESC LIMIT 1
+            """, (code, today_str))
+            row = cursor.fetchone()
+            return row[0] if row else None
+    except Exception as e:
+        logger.error(f"Error fetching latest price from DB for {code}: {e}")
+        return None
 
 # モジュール読み込み時にDB初期化を実行
 init_db()

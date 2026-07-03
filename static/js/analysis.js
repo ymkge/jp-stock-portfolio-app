@@ -393,7 +393,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const profitLossRate = parseFloat(item.profit_loss_rate);
             const profitLossClass = isNaN(profitLoss) ? '' : (profitLoss >= 0 ? 'profit' : 'loss');
             const profitLossRateClass = isNaN(profitLossRate) ? '' : (profitLossRate >= 0 ? 'profit' : 'loss');
-            createCell(item.code, 'numeric');
+            let codeHtml = item.code;
+            if (item.split_alert) {
+                codeHtml += ` <span class="split-badge confirmed" data-code="${item.code}" title="株式分割が検知されました。調整が必要です（メインページで適用してください）。">✂️</span>`;
+            } else if (item.potential_split) {
+                codeHtml += ` <span class="split-badge potential" title="最新価格が直近終値と大きく乖離しています（比率: ${item.potential_split_ratio}）。株式分割が発生した可能性があります。手動で履歴同期を実行してください。">⚠️</span>`;
+            }
+            createCell(codeHtml, 'numeric');
             let nameHtml = `<span class="fw-bold me-1">${item.name}</span>`;
             const isDiamond = item.is_diamond || (item.buy_signal && item.buy_signal.is_diamond);
             if (item.buy_signal) nameHtml += renderBuySignalBadge(item.buy_signal, isDiamond);

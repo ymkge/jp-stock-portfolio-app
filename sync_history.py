@@ -35,6 +35,20 @@ logger = logging.getLogger(__name__)
 
 DB_FILE = "portfolio_history.db"
 
+def round_split_ratio(ratio: float) -> float:
+    """検知された分割比率を、代表的な株式分割・併合比率に丸める"""
+    # 代表的な比率のリスト（逆数も考慮）
+    common_ratios = [
+        0.1, 0.2, 0.5,                   # 併合 10:1, 5:1, 2:1
+        1.1, 1.15, 1.2, 1.25, 1.3, 1.5,  # 特殊な分割
+        2.0, 2.5, 3.0, 4.0, 5.0, 10.0    # 一般的な分割
+    ]
+    for r in common_ratios:
+        if abs(ratio - r) < 0.05:
+            return r
+    return round(ratio, 4)
+
+
 class HistorySyncTool:
     def __init__(self):
         self.scraper = JPStockScraper()
@@ -283,8 +297,17 @@ class HistorySyncTool:
                     if ratios:
                         median_ratio = statistics.median(ratios)
                         if abs(median_ratio - 1.0) > 0.15:
-                            logger.warning(f"!!! SPLIT DETECTED for {code} !!! Estimated Ratio: {median_ratio:.4f}")
-                            self.apply_split_adjustment(code, median_ratio)
+                            rounded_ratio = round_split_ratio(median_ratio)
+                            logger.warning(f"!!! SPLIT DETECTED for {code} !!! Estimated Ratio: {median_ratio:.4f} -> Rounded: {rounded_ratio:.4f}")
+                            self.apply_split_adjustment(code, rounded_ratio)
+                            
+                            # 株式分割アラートを登録 (新規)
+                            try:
+                                from history_manager import add_split_alert
+                                add_split_alert(code, rounded_ratio)
+                            except Exception as e:
+                                logger.error(f"Failed to record split alert for {code}: {e}")
+                                
                             split_adjusted = True
             
             new_data_found_on_page = False

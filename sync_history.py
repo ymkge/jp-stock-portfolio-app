@@ -83,14 +83,20 @@ class HistorySyncTool:
         except Exception as e:
             logger.error(f"Failed to cleanup data: {e}")
 
-    def delete_stock_history(self, code):
-        """指定銘柄の履歴データをDBから完全に削除する"""
+    def delete_stock_history(self, code, all_history=False):
+        """指定銘柄の履歴データをDBから削除する。all_historyがFalseの場合は直近1年分のみ削除する。"""
         try:
             with sqlite3.connect(DB_FILE) as conn:
                 cursor = conn.cursor()
-                cursor.execute("DELETE FROM daily_analysis WHERE code = ?", (code,))
-                cursor.execute("DELETE FROM stock_price_history WHERE code = ?", (code,))
-                logger.info(f"Deleted existing history for {code} from DB.")
+                if all_history:
+                    cursor.execute("DELETE FROM daily_analysis WHERE code = ?", (code,))
+                    cursor.execute("DELETE FROM stock_price_history WHERE code = ?", (code,))
+                    logger.info(f"Deleted entire existing history for {code} from DB.")
+                else:
+                    one_year_ago = (datetime.now(JST) - timedelta(days=365)).strftime("%Y-%m-%d")
+                    cursor.execute("DELETE FROM daily_analysis WHERE code = ? AND date >= ?", (code, one_year_ago))
+                    cursor.execute("DELETE FROM stock_price_history WHERE code = ? AND date >= ?", (code, one_year_ago))
+                    logger.info(f"Deleted past 1 year of existing history for {code} (since {one_year_ago}) from DB.")
         except Exception as e:
             logger.error(f"Failed to delete history for {code}: {e}")
 
@@ -353,7 +359,7 @@ class HistorySyncTool:
         stats = self.save_histories(all_histories_to_save)
         return stats, stock_name
 
-    def run(self, force_resync_code=None):
+    def run(self, force_resync_code=None, all_history=False):
         """メイン実行ループ (スマートスキップ対応)"""
         start_time = time.time()
         self.backup_db()
@@ -387,8 +393,8 @@ class HistorySyncTool:
             target_stocks = [s for s in jp_stocks if s['code'] == force_resync_code]
             if not target_stocks:
                 target_stocks = [{'code': force_resync_code, 'name': 'Target Stock'}]
-            logger.info(f"FORCE RESYNC mode for {force_resync_code}")
-            self.delete_stock_history(force_resync_code)
+            logger.info(f"FORCE RESYNC mode for {force_resync_code} (All History: {all_history})")
+            self.delete_stock_history(force_resync_code, all_history=all_history)
             jp_stocks = target_stocks
 
         target_date = self.get_target_date()
@@ -472,8 +478,9 @@ class HistorySyncTool:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Yahoo Finance JP Stock History Sync Tool')
-    parser.add_argument('--force-resync', type=str, help='銘柄コードを指定して、DB内の履歴を削除し1年分を再同期する')
+    parser.add_argument('--force-resync', type=str, help='銘柄コードを指定して、DB内の履歴を削除し再同期する')
+    parser.add_argument('--all', action='store_true', help='--force-resync 指定時に全期間の履歴を削除する（未指定時は直近1年分のみ削除）')
     args = parser.parse_args()
 
     tool = HistorySyncTool()
-    tool.run(force_resync_code=args.force_resync)
+    tool.run(force_resync_code=args.force_resync, all_history=args.all)

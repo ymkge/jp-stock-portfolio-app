@@ -571,23 +571,29 @@ document.addEventListener('DOMContentLoaded', () => {
     function calculateWeightedStats(holdings) {
         const totalMarketValue = holdings.reduce((sum, item) => sum + (parseFloat(item.market_value) || 0), 0);
         if (totalMarketValue === 0) return null;
+
+        // 国内株式のみを抽出
+        const jpHoldings = holdings.filter(item => item.asset_type === 'jp_stock');
+        const totalJpMarketValue = jpHoldings.reduce((sum, item) => sum + (parseFloat(item.market_value) || 0), 0);
+
         const metrics = ['per', 'pbr', 'roe', 'yield', 'consecutive_increase_years', 'momentum'];
-        const weightedSums = { per: 0, pbr: 0, roe: 0, yield: 0, consecutive_increase_years: 0, momentum: 0 }, weightsTotal = { per: 0, pbr: 0, roe: 0, yield: 0, consecutive_increase_years: 0, momentum: 0 };
-        const assetInfo = {}; // code -> { name, mv }
+        const weightedSums = { per: 0, pbr: 0, roe: 0, yield: 0, consecutive_increase_years: 0, momentum: 0 };
+        const weightsTotal = { per: 0, pbr: 0, roe: 0, yield: 0, consecutive_increase_years: 0, momentum: 0 };
         const contributorData = { per: [], pbr: [], roe: [], yield: [], consecutive_increase_years: [], momentum: [] };
 
-        holdings.forEach(item => {
+        // DNA指標の計算は国内株式のみを対象とする
+        jpHoldings.forEach(item => {
             const mv = parseFloat(item.market_value) || 0;
-            if (mv > 0 && item.code) {
-                if (!assetInfo[item.code]) assetInfo[item.code] = { name: item.name, mv: 0 };
-                assetInfo[item.code].mv += mv;
-            }
             metrics.forEach(m => {
-                let val = item[m]; if (m === 'momentum' && item.score_details) { const d = item.score_details; val = (d.trend_short || 0) + (d.trend_medium || 0) + (d.trend_long || 0) + (d.trend_signal || 0); }
+                let val = item[m];
+                if (m === 'momentum' && item.score_details) {
+                    const d = item.score_details;
+                    val = (d.trend_short || 0) + (d.trend_medium || 0) + (d.trend_long || 0) + (d.trend_signal || 0);
+                }
                 if (typeof val === 'string') val = parseFloat(val.replace(/,/g, '').replace(/%|倍/g, '').trim());
-                if (typeof val === 'number' && !isNaN(val) && isFinite(val) && mv > 0) { 
-                    weightedSums[m] += val * mv; 
-                    weightsTotal[m] += mv; 
+                if (typeof val === 'number' && !isNaN(val) && isFinite(val) && mv > 0) {
+                    weightedSums[m] += val * mv;
+                    weightsTotal[m] += mv;
                     contributorData[m].push({ code: item.code, name: item.name, impact: val * mv, val: val });
                 }
             });
@@ -601,25 +607,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 .slice(0, 3);
         });
 
+        // 分散度（HHI, Top5）の計算はポートフォリオ全体（全holdings）を対象とする
+        const assetInfo = {};
+        holdings.forEach(item => {
+            const mv = parseFloat(item.market_value) || 0;
+            if (mv > 0 && item.code) {
+                if (!assetInfo[item.code]) assetInfo[item.code] = { name: item.name, mv: 0 };
+                assetInfo[item.code].mv += mv;
+            }
+        });
         const sortedAssets = Object.values(assetInfo).sort((a, b) => b.mv - a.mv);
         let hhi = 0; sortedAssets.forEach(a => { const pct = (a.mv / totalMarketValue) * 100; hhi += pct * pct; });
         const top5 = (sortedAssets.slice(0, 5).reduce((s, v) => s + v.mv, 0) / totalMarketValue) * 100;
         const top_assets = sortedAssets.slice(0, 5).map(a => ({ name: a.name, ratio: (a.mv / totalMarketValue) * 100 }));
 
-        const coverages = {}; metrics.forEach(m => coverages[m] = (weightsTotal[m] / totalMarketValue) * 100);
-        return { 
-            weighted_per: weightsTotal.per > 0 ? weightedSums.per / weightsTotal.per : null, 
-            weighted_pbr: weightsTotal.pbr > 0 ? weightedSums.pbr / weightsTotal.pbr : null, 
-            weighted_roe: weightsTotal.roe > 0 ? weightedSums.roe / weightsTotal.roe : null, 
-            weighted_yield: weightsTotal.yield > 0 ? weightedSums.yield / weightsTotal.yield : null, 
-            weighted_years: weightsTotal.consecutive_increase_years > 0 ? weightedSums.consecutive_increase_years / weightsTotal.consecutive_increase_years : null, 
-            weighted_momentum: weightsTotal.momentum > 0 ? weightedSums.momentum / weightsTotal.momentum : null, 
+        // カバー率は「国内株式の中でのカバー率」とする
+        const coverages = {};
+        metrics.forEach(m => {
+            coverages[m] = totalJpMarketValue > 0 ? (weightsTotal[m] / totalJpMarketValue) * 100 : 0;
+        });
+
+        return {
+            weighted_per: weightsTotal.per > 0 ? weightedSums.per / weightsTotal.per : null,
+            weighted_pbr: weightsTotal.pbr > 0 ? weightedSums.pbr / weightsTotal.pbr : null,
+            weighted_roe: weightsTotal.roe > 0 ? weightedSums.roe / weightsTotal.roe : null,
+            weighted_yield: weightsTotal.yield > 0 ? weightedSums.yield / weightsTotal.yield : null,
+            weighted_years: weightsTotal.consecutive_increase_years > 0 ? weightedSums.consecutive_increase_years / weightsTotal.consecutive_increase_years : null,
+            weighted_momentum: weightsTotal.momentum > 0 ? weightedSums.momentum / weightsTotal.momentum : null,
             contributors,
-            coverages, 
-            hhi, 
+            coverages,
+            hhi,
             top5_ratio: top5,
             top_assets,
-            style_breakdown: calculateStyleBreakdown(holdings, totalMarketValue) 
+            total_jp_market_value: totalJpMarketValue, // 国内株の合計評価額を返却
+            // スタイル診断も国内株式のみを対象とする
+            style_breakdown: calculateStyleBreakdown(jpHoldings, totalJpMarketValue)
         };
     }
 
@@ -654,56 +676,66 @@ document.addEventListener('DOMContentLoaded', () => {
         if (dna) {
             if (allHoldingsData.length === 0 && !loadingIndicator.classList.contains('hidden')) return;
             
-            const getColor = (v, t, type) => v === null ? '' : (type === 'lower' ? (v <= t ? 'profit' : (v <= t * 1.5 ? 'warning' : 'loss')) : (v >= t ? 'profit' : (v >= t * 0.7 ? 'warning' : 'loss')));
-            const lowCov = Object.entries(stats.coverages || {}).filter(([k, v]) => v < 70 && ['per', 'pbr', 'roe', 'yield'].includes(k)).map(([k, v]) => `${k.toUpperCase()}(${Math.round(v)}%)`).join(', ');
-
-            const renderMetric = (label, fullLabel, key, val, suffix, type) => {
-                const std = dnaStandards[key] || {};
-                const stdVal = std.value;
-                const stdLabel = std.label || '基準';
-                const cls = getColor(val, stdVal || (type === 'lower' ? 15 : 8), type);
-                const contributors = (stats.contributors[key] || []).map(c => `・${c.name}: ${formatNumber(c.val, key === 'per' || key === 'pbr' ? 2 : 1)}${suffix}`).join('\n');
-                const title = `【${fullLabel}の主要因】\n${contributors}\n\n※保有額による加重平均への寄与度が高い順`;
-                const diffIcon = val !== null && stdVal ? ( (type === 'lower' ? val <= stdVal : val >= stdVal) ? '<span class="profit">✔</span>' : '<span class="loss">▲</span>' ) : '';
-
-                return `
-                    <div class="dna-metric-item">
-                        <div class="dna-metric-header">
-                            <span class="dna-metric-label">${label}</span>
-                            <span class="dna-info-icon" title="${title}">ⓘ</span>
-                        </div>
-                        <div class="dna-metric-value">
-                            <span class="numeric ${cls}">${formatNumber(val, 2)}${suffix}</span>
-                            ${diffIcon}
-                        </div>
-                        <div class="dna-metric-standard">目標: ${stdVal}${suffix} (${stdLabel})</div>
+            // 国内株式未保有時のガード処理
+            if (!stats.total_jp_market_value || stats.total_jp_market_value === 0) {
+                dna.innerHTML = `
+                    <div class="empty-state" style="text-align: center; padding: 20px; color: var(--text-muted);">
+                        <p>国内株式の保有データがないため、体質診断は行えません。</p>
+                        <small>※本診断は国内株式のみを対象としています。</small>
                     </div>
                 `;
-            };
+            } else {
+                const getColor = (v, t, type) => v === null ? '' : (type === 'lower' ? (v <= t ? 'profit' : (v <= t * 1.5 ? 'warning' : 'loss')) : (v >= t ? 'profit' : (v >= t * 0.7 ? 'warning' : 'loss')));
+                const lowCov = Object.entries(stats.coverages || {}).filter(([k, v]) => v < 70 && ['per', 'pbr', 'roe', 'yield'].includes(k)).map(([k, v]) => `${k.toUpperCase()}(${Math.round(v)}%)`).join(', ');
 
-            const perHtml = renderMetric('割安さ(利益)', '平均PER', 'per', stats.weighted_per, '倍', 'lower');
-            const pbrHtml = renderMetric('割安さ(資産)', '平均PBR', 'pbr', stats.weighted_pbr, '倍', 'lower');
-            const roeHtml = renderMetric('稼ぐ力', '平均ROE', 'roe', stats.weighted_roe, '%', 'higher');
-            const yieldHtml = renderMetric('配当利回り', '平均利回り', 'yield', stats.weighted_yield, '%', 'higher');
+                const renderMetric = (label, fullLabel, key, val, suffix, type) => {
+                    const std = dnaStandards[key] || {};
+                    const stdVal = std.value;
+                    const stdLabel = std.label || '基準';
+                    const cls = getColor(val, stdVal || (type === 'lower' ? 15 : 8), type);
+                    const contributors = (stats.contributors[key] || []).map(c => `・${c.name}: ${formatNumber(c.val, key === 'per' || key === 'pbr' ? 2 : 1)}${suffix}`).join('\n');
+                    const title = `【${fullLabel}の主要因】\n${contributors}\n\n※保有額による加重平均への寄与度が高い順`;
+                    const diffIcon = val !== null && stdVal ? ( (type === 'lower' ? val <= stdVal : val >= stdVal) ? '<span class="profit">✔</span>' : '<span class="loss">▲</span>' ) : '';
 
-            // 診断メッセージの決定
-            const b = stats.style_breakdown;
-            let diagnosisMsg = "";
-            if (lowCov) {
-                diagnosisMsg = dnaConfig.diagnosis?.low_coverage || "⚠️ データ不足のため、診断結果は参考値です。";
-            } else if (b) {
-                if (b.style.growth > 60) diagnosisMsg = dnaConfig.diagnosis?.growth || "将来の成長を期待した、勢いのある攻めの構成です。";
-                else if (b.style.value > 60) diagnosisMsg = dnaConfig.diagnosis?.value || "実力に対して割安な銘柄が中心の、どっしりした構成です。";
-                else diagnosisMsg = dnaConfig.diagnosis?.balanced || "バランスの取れた標準的な構成です。";
+                    return `
+                        <div class="dna-metric-item">
+                            <div class="dna-metric-header">
+                                <span class="dna-metric-label">${label}</span>
+                                <span class="dna-info-icon" title="${title}">ⓘ</span>
+                            </div>
+                            <div class="dna-metric-value">
+                                <span class="numeric ${cls}">${formatNumber(val, 2)}${suffix}</span>
+                                ${diffIcon}
+                            </div>
+                            <div class="dna-metric-standard">目標: ${stdVal}${suffix} (${stdLabel})</div>
+                        </div>
+                    `;
+                };
+
+                const perHtml = renderMetric('割安さ(利益)', '平均PER', 'per', stats.weighted_per, '倍', 'lower');
+                const pbrHtml = renderMetric('割安さ(資産)', '平均PBR', 'pbr', stats.weighted_pbr, '倍', 'lower');
+                const roeHtml = renderMetric('稼ぐ力', '平均ROE', 'roe', stats.weighted_roe, '%', 'higher');
+                const yieldHtml = renderMetric('配当利回り', '平均利回り', 'yield', stats.weighted_yield, '%', 'higher');
+
+                // 診断メッセージの決定
+                const b = stats.style_breakdown;
+                let diagnosisMsg = "";
+                if (lowCov) {
+                    diagnosisMsg = dnaConfig.diagnosis?.low_coverage || "⚠️ データ不足のため、診断結果は参考値です。";
+                } else if (b) {
+                    if (b.style.growth > 60) diagnosisMsg = dnaConfig.diagnosis?.growth || "将来の成長を期待した、勢いのある攻めの構成です。";
+                    else if (b.style.value > 60) diagnosisMsg = dnaConfig.diagnosis?.value || "実力に対して割安な銘柄が中心の、どっしりした構成です。";
+                    else diagnosisMsg = dnaConfig.diagnosis?.balanced || "バランスの取れた標準的な構成です。";
+                }
+
+                dna.innerHTML = `
+                    <div class="dna-metrics-grid">
+                        ${perHtml} ${pbrHtml} ${roeHtml} ${yieldHtml}
+                    </div>
+                    ${diagnosisMsg ? `<div class="dna-diagnosis-box">${diagnosisMsg}</div>` : ''}
+                    ${lowCov ? `<div class="coverage-warning" style="margin-top:10px;">※カバー率不足: ${lowCov}</div>` : ''}
+                `;
             }
-
-            dna.innerHTML = `
-                <div class="dna-metrics-grid">
-                    ${perHtml} ${pbrHtml} ${roeHtml} ${yieldHtml}
-                </div>
-                ${diagnosisMsg ? `<div class="dna-diagnosis-box">${diagnosisMsg}</div>` : ''}
-                ${lowCov ? `<div class="coverage-warning" style="margin-top:10px;">※カバー率不足: ${lowCov}</div>` : ''}
-            `;
         }
         if (risk) {
             if (allHoldingsData.length === 0 && !loadingIndicator.classList.contains('hidden')) return;
@@ -757,9 +789,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (personality) {
             if (allHoldingsData.length === 0 && !loadingIndicator.classList.contains('hidden')) return;
-            const b = stats.style_breakdown, cL = b.cyclicality.defensive > b.cyclicality.cyclical ? '守りに強い' : '景気に敏感な', sL = b.style.value > b.style.growth ? '割安株中心' : '成長株中心', capL = b.marketCap.large > 50 ? '大型株' : '中小型株';
-            let adv = b.cyclicality.defensive > 60 && b.style.value > 50 ? "不況に強い構成です。" : (b.style.growth > 50 && b.marketCap.midSmall > 50 ? "攻めの構成です。" : (stats.hhi < 1000 ? "高度に分散されています。" : (stats.top5_ratio > 50 ? "集中投資に注意。" : "バランス良好です。")));
-            personality.innerHTML = `<div class="personality-summary"><strong>診断: ${capL}の${cL}${sL}</strong><div class="advice-box">${adv}</div></div><div class="personality-bars"><div class="style-bar-group"><div class="style-bar-label"><span>敏感 ${formatNumber(b.cyclicality.cyclical, 0)}%</span><span>守り ${formatNumber(b.cyclicality.defensive, 0)}%</span></div><div class="progress-stacked"><div class="progress-bar cyclical" style="width: ${b.cyclicality.cyclical}%"></div><div class="progress-bar other" style="width: ${b.cyclicality.other}%"></div><div class="progress-bar defensive" style="width: ${b.cyclicality.defensive}%"></div></div></div><div class="style-bar-group"><div class="style-bar-label"><span>割安 ${formatNumber(b.style.value, 0)}%</span><span>成長 ${formatNumber(b.style.growth, 0)}%</span></div><div class="progress-stacked"><div class="progress-bar value" style="width: ${b.style.value}%"></div><div class="progress-bar blend" style="width: ${b.style.blend}%"></div><div class="progress-bar growth" style="width: ${b.style.growth}%"></div></div></div><div class="style-bar-group"><div class="style-bar-label"><span>大型 ${formatNumber(b.marketCap.large, 0)}%</span><span>中小型 ${formatNumber(b.marketCap.midSmall, 0)}%</span></div><div class="progress-stacked"><div class="progress-bar large" style="width: ${b.marketCap.large}%"></div><div class="progress-bar midSmall" style="width: ${b.marketCap.midSmall}%"></div></div></div></div>`;
+            const b = stats.style_breakdown;
+            if (!b) {
+                personality.innerHTML = `
+                    <div class="empty-state" style="text-align: center; padding: 20px; color: var(--text-muted);">
+                        <p>国内株式の保有データがないため、性格診断は行えません。</p>
+                        <small>※本診断は国内株式のみを対象としています。</small>
+                    </div>
+                `;
+            } else {
+                const cL = b.cyclicality.defensive > b.cyclicality.cyclical ? '守りに強い' : '景気に敏感な';
+                const sL = b.style.value > b.style.growth ? '割安株中心' : '成長株中心';
+                const capL = b.marketCap.large > 50 ? '大型株' : '中小型株';
+                let adv = b.cyclicality.defensive > 60 && b.style.value > 50 ? "不況に強い構成です。" : (b.style.growth > 50 && b.marketCap.midSmall > 50 ? "攻めの構成です。" : (stats.hhi < 1000 ? "高度に分散されています。" : (stats.top5_ratio > 50 ? "集中投資に注意。" : "バランス良好です。")));
+                personality.innerHTML = `<div class="personality-summary"><strong>診断: ${capL}の${cL}${sL}</strong><div class="advice-box">${adv}</div></div><div class="personality-bars"><div class="style-bar-group"><div class="style-bar-label"><span>敏感 ${formatNumber(b.cyclicality.cyclical, 0)}%</span><span>守り ${formatNumber(b.cyclicality.defensive, 0)}%</span></div><div class="progress-stacked"><div class="progress-bar cyclical" style="width: ${b.cyclicality.cyclical}%"></div><div class="progress-bar other" style="width: ${b.cyclicality.other}%"></div><div class="progress-bar defensive" style="width: ${b.cyclicality.defensive}%"></div></div></div><div class="style-bar-group"><div class="style-bar-label"><span>割安 ${formatNumber(b.style.value, 0)}%</span><span>成長 ${formatNumber(b.style.growth, 0)}%</span></div><div class="progress-stacked"><div class="progress-bar value" style="width: ${b.style.value}%"></div><div class="progress-bar blend" style="width: ${b.style.blend}%"></div><div class="progress-bar growth" style="width: ${b.style.growth}%"></div></div></div><div class="style-bar-group"><div class="style-bar-label"><span>大型 ${formatNumber(b.marketCap.large, 0)}%</span><span>中小型 ${formatNumber(b.marketCap.midSmall, 0)}%</span></div><div class="progress-stacked"><div class="progress-bar large" style="width: ${b.marketCap.large}%"></div><div class="progress-bar midSmall" style="width: ${b.marketCap.midSmall}%"></div></div></div></div>`;
+            }
         }
     }
 

@@ -107,3 +107,77 @@ def test_reconcile_signals_priority():
     b_res, s_res = reconcile_signals(buy, sell)
     assert b_res["level"] == 1
     assert s_res is None
+
+def test_calculate_buy_signal_with_price_position_and_yield():
+    """価格位置（高安圏）と配当利回りの掛け合わせ判定テスト"""
+    # 共通のベースデータ（スコア十分な優良株、RSI売られすぎ等の購入要因あり）
+    base_data = {
+        "asset_type": "jp_stock",
+        "score_details": {
+            "per": 1, "pbr": 1, "roe": 1, "yield": 1, "consecutive_increase": 0,  # 合計4 (Diamond)
+            "is_reliable": True
+        },
+        "rsi_14": 25.0,  # Level 1の買い材料
+        "price": 1000
+    }
+
+    # 1. 高値圏（P >= 80%）かつ 高利回り（Y >= 3.5%）のケース
+    # P = 100 - retracement. retracement=15.0 -> P=85%
+    data_high_yield = {
+        **base_data,
+        "fibonacci_1y": {"retracement": 15.0},
+        "yield": "3.8%"
+    }
+    sig = calculate_buy_signal(data_high_yield)
+    assert sig is not None
+    assert "高値圏(高利回り)" in sig["label"]
+    assert "健全な上昇であり" in sig["recommended_action"]
+    assert "高値圏・高利回り" in "".join(sig["reasons"])
+
+    # 2. 高値圏（P >= 80%）かつ 低利回り（Y < 3.5%）のケース
+    # retracement=10.0 -> P=90%
+    data_high_low_yield = {
+        **base_data,
+        "fibonacci_1y": {"retracement": 10.0},
+        "yield": "2.5%"
+    }
+    sig = calculate_buy_signal(data_high_low_yield)
+    assert sig is not None
+    assert "高値警戒" in sig["label"]
+    assert "急な調整売りのリスクが高いため" in sig["recommended_action"]
+
+    # 3. 底値圏（P <= 20%）かつ 高利回り（Y >= 3.5%）のケース
+    # retracement=85.0 -> P=15%
+    data_low_yield = {
+        **base_data,
+        "fibonacci_1y": {"retracement": 85.0},
+        "yield": "4.2%"
+    }
+    sig = calculate_buy_signal(data_low_yield)
+    assert sig is not None
+    assert "底値圏(高利回り)" in sig["label"]
+    assert "絶好の長期仕込み場" in sig["recommended_action"]
+
+    # 4. 底値圏（P <= 20%）かつ 低利回り（Y < 3.5%）のケース
+    # retracement=90.0 -> P=10%
+    data_low_low_yield = {
+        **base_data,
+        "fibonacci_1y": {"retracement": 90.0},
+        "yield": "1.5%"
+    }
+    sig = calculate_buy_signal(data_low_low_yield)
+    assert sig is not None
+    assert "底値圏" in sig["label"]
+    assert "底値圏(高利回り)" not in sig["label"]
+    assert "下値リスクが限定的" in sig["recommended_action"]
+
+    # 5. データ欠損時の安全なフォールバック（retracementなし）
+    data_missing = {
+        **base_data,
+        "yield": "3.0%"
+        # fibonacci_1y なし
+    }
+    sig = calculate_buy_signal(data_missing)
+    assert sig is not None
+    assert sig["label"] == "📈 注目(順張り)"  # 従来通りのラベルにフォールバック
+

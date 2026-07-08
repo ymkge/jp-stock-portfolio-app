@@ -38,7 +38,10 @@
       "rci_bottom": -80.0,
       "fibonacci_min": 61.8,
       "fibonacci_max": 78.6,
-      "ma_75_diff_threshold": -10.0
+      "ma_75_diff_threshold": -10.0,
+      "price_position_high": 80.0,
+      "price_position_low": 20.0,
+      "yield_min_high_zone": 3.5
     },
     "display": {
       "level_1": {

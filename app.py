@@ -450,7 +450,61 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     current_status = config.get("current_status", "")
     if not is_reliable:
         current_status += f" 【注意】以下の項目が取得できていません: {', '.join(missing_items)}"
-    
+
+    # 配当利回りの安全なパース
+    yield_val = 0.0
+    yield_raw = stock_data.get("yield")
+    if yield_raw not in [None, "N/A", "--", ""]:
+        try:
+            yield_val = float(str(yield_raw).replace('%', '').replace(',', ''))
+        except (ValueError, TypeError):
+            pass
+
+    # 過去1年高低レンジにおける現在位置（Price Position）の算出
+    price_position = None
+    fib_1y = stock_data.get("fibonacci_1y")
+    if fib_1y and isinstance(fib_1y, dict):
+        ret = fib_1y.get("retracement")
+        if ret is not None:
+            price_position = 100.0 - ret  # 0% (最安値) 〜 100% (最高値)
+
+    # 閾値を設定から取得
+    pos_high_threshold = get_config("buy_signal.thresholds.price_position_high", 80.0)
+    pos_low_threshold = get_config("buy_signal.thresholds.price_position_low", 20.0)
+    yield_min_high = get_config("buy_signal.thresholds.yield_min_high_zone", 3.5)
+
+    position_label = ""
+    action_append = ""
+    status_append = ""
+
+    if price_position is not None:
+        if price_position >= pos_high_threshold:
+            if yield_val >= yield_min_high:
+                position_label = "・高値圏(高利回り)"
+                action_append = f"株価は過去1年の高値圏（現在位置: {price_position:.1f}%）ですが、業績拡大や増配に伴う健全な上昇であり、配当利回り（{yield_val:.2f}%）も魅力的な水準を維持しています。長期投資目的であれば打診買いを検討可能です。"
+                status_append = f" 【高値圏・高利回り】株価は過去1年の高値圏にありますが、配当利回りは {yield_val:.2f}% と十分に高い水準をキープしています。"
+                reasons.append(f"高値圏・高利回り({price_position:.1f}%, {yield_val:.2f}%)")
+            else:
+                position_label = "・高値警戒"
+                action_append = f"株価は過去1年の高値圏（現在位置: {price_position:.1f}%）にあり、配当利回り（{yield_val:.2f}%）も低下しています。急な調整売りのリスクが高いため、押し目を待つか、慎重なエントリーを推奨します。"
+                status_append = f" 【高値警戒】株価は過去1年の高値圏にあり、配当利回りは {yield_val:.2f}% と低めです。"
+                reasons.append(f"過去1年高値警戒({price_position:.1f}%)")
+        elif price_position <= pos_low_threshold:
+            if yield_val >= yield_min_high:
+                position_label = "・底値圏(高利回り)"
+                action_append = f"株価は過去1年の安値圏（現在位置: {price_position:.1f}%）にあり、かつ配当利回り（{yield_val:.2f}%）が非常に魅力的な水準に達しています。底打ちからの上昇トレンド転換初動を示しており、絶好の長期仕込み場となる可能性があります。"
+                status_append = f" 【底値圏・高利回り】株価は過去1年の安値圏にあり、配当利回りは {yield_val:.2f}% と極めて魅力的な水準にあります。"
+                reasons.append(f"底値圏・高利回り({price_position:.1f}%, {yield_val:.2f}%)")
+            else:
+                position_label = "・底値圏"
+                action_append = f"株価は過去1年の安値圏（現在位置: {price_position:.1f}%）にあります。75日線の上で推移し反転の兆しを見せており、下値リスクが限定的な長期的な仕込み時となる可能性があります。"
+                status_append = f" 【底値圏】株価は過去1年の安値圏（最安値から {price_position:.1f}% の位置）にあり、底打ちからの上昇トレンド転換初動を示しています。"
+                reasons.append(f"過去1年底値圏({price_position:.1f}%)")
+        else:
+            action_append = "上昇トレンドに沿った順張りの買い場。"
+            status_append = f" 株価は過去1年のレンジの中位（現在位置: {price_position:.1f}%）で上昇トレンドを形成しています。"
+            reasons.append(f"過去1年中値圏({price_position:.1f}%)")
+
     # 長期調整判定 (75日線 または 200日線)
     is_long_adjustment = False
     max_deviation = 0.0
@@ -479,10 +533,14 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
         label = f"⚡ 逆張り{label}"
         recommended_action = "短期リバウンド狙い。トレンドは下向きのため、深追いは厳禁です。"
         current_status = f"【逆張り】{current_status} ただし、中長期トレンド（75日線）の下にあるため、リスクは高めです。"
+        if price_position is not None:
+            current_status += f" 過去1年レンジでの現在位置: {price_position:.1f}%。"
+            reasons.append(f"現在位置({price_position:.1f}%)")
     else:
         # 順張り（上昇トレンド中）のラベル修正
-        label = f"📈 {label}(順張り)"
-        recommended_action = f"トレンド追随。{recommended_action}"
+        label = f"📈 {label}(順張り{position_label})"
+        recommended_action = f"トレンド追随。{action_append}"
+        current_status = f"{current_status}{status_append}"
 
     # ロジック統合: 優良株の長期調整はチャンス（Level 4 以外の緩やかな調整を拾う）
     if is_long_adjustment:

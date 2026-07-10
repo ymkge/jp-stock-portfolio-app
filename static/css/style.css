@@ -192,7 +192,7 @@ button {
     transition: all 0.2s ease;
 }
 
-.btn-outline:hover {
+.btn-outline:hover, .btn-outline.active {
     background: var(--primary-color);
     color: white !important;
 }
@@ -202,7 +202,7 @@ button {
     color: #4da3ff;
 }
 
-.dark-mode .btn-outline:hover {
+.dark-mode .btn-outline:hover, .dark-mode .btn-outline.active {
     background: #4da3ff;
     color: white !important;
 }
@@ -222,6 +222,10 @@ button {
     box-shadow: var(--card-shadow);
 }
 
+.recent-stocks-dropdown .dropdown-content {
+    min-width: 240px; /* アクション追加に伴い幅を拡張 */
+}
+
 .recent-stock-item {
     padding: 8px 15px;
     cursor: pointer;
@@ -230,6 +234,55 @@ button {
 
 .recent-stock-item:hover {
     background: var(--button-hover-bg-color);
+}
+
+.stock-item-with-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.stock-code-label {
+    font-weight: 500;
+}
+
+.recent-stock-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.recent-stock-actions button {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    font-size: 0.85rem;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+    line-height: 1;
+}
+
+.recent-stock-actions button:hover {
+    background-color: var(--button-hover-bg-color);
+}
+
+.bulk-filter-item {
+    color: var(--primary-color);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 10px;
+    margin-bottom: 5px;
+    font-size: 0.95rem;
+}
+
+.bulk-filter-item:hover {
+    background: var(--button-hover-bg-color);
+}
+
+.dropdown-divider {
+    height: 1px;
+    margin: 4px 0;
+    overflow: hidden;
+    background-color: var(--border-color);
 }
 
 /* --- メインリストヘッダー (分析ページ風) --- */

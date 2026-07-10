@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentSort = { key: 'market_value', order: 'desc' };
     let isAmountVisible = true;
     let fetchController = null; // AbortControllerを保持
+    let recentCodes = [];
 
     // --- DOM要素の取得 ---
     const alertContainer = document.getElementById('alert-container');
@@ -25,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadingIndicator = document.getElementById('loading-indicator');
     const updateReportContainer = document.getElementById('update-report-container');
     const darkModeToggle = document.getElementById('dark-mode-toggle');
+    const btnRecentFilter = document.getElementById('btn-recent-filter');
 
     // --- 新規DOM要素 ---
     const industryKpiTableBody = document.querySelector('#industry-kpi-table tbody');
@@ -342,13 +344,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function filterAndRender() {
-        const filterText = analysisFilterInput.value.toLowerCase();
+        const filterText = analysisFilterInput.value.toLowerCase().trim();
         const selectedIndustry = industryFilterSelect.value;
         const selectedAccountType = accountTypeFilterSelect.value;
         const selectedSecurityCompany = securityCompanyFilterSelect.value;
         const selectedBuySignal = buySignalFilterSelect.value;
+
+        // 最近の銘柄ボタンのアクティブ状態の同期
+        if (btnRecentFilter) {
+            const queryText = analysisFilterInput.value.trim();
+            if (recentCodes.length > 0 && queryText === recentCodes.join(' ')) {
+                btnRecentFilter.classList.add('active');
+            } else {
+                btnRecentFilter.classList.remove('active');
+            }
+        }
+
         filteredHoldingsData = allHoldingsData.filter(item => {
-            const matchesText = String(item.code).toLowerCase().includes(filterText) || String(item.name || '').toLowerCase().includes(filterText);
+            let matchesText = true;
+            if (filterText) {
+                const keywords = filterText.split(/[\s,，]+/).filter(k => k !== "");
+                if (keywords.length > 0) {
+                    matchesText = keywords.some(keyword =>
+                        String(item.code).toLowerCase().includes(keyword) ||
+                        String(item.name || '').toLowerCase().includes(keyword)
+                    );
+                }
+            }
             const matchesIndustry = !selectedIndustry || item.industry === selectedIndustry || (selectedIndustry === 'N/A' && !item.industry);
             const matchesAccountType = !selectedAccountType || item.account_type === selectedAccountType;
             const matchesSecurityCompany = !selectedSecurityCompany || (item.security_company || '-') === selectedSecurityCompany;
@@ -360,7 +382,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     (item.sell_signal && (item.sell_signal.level === 1 || item.sell_signal.level === 2 || item.sell_signal.level === 4)) ||
                     (item.sell_signal && item.sell_signal.level === 3 && !isDiamond)
                 ))
-                );            return matchesText && matchesIndustry && matchesAccountType && matchesSecurityCompany && matchesBuySignal;
+            );
+            return matchesText && matchesIndustry && matchesAccountType && matchesSecurityCompany && matchesBuySignal;
         });
         sortHoldings(filteredHoldingsData);
         renderAnalysisTable(filteredHoldingsData);
@@ -886,6 +909,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function generateColors(num) { const base = ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b', '#858796', '#5a5c69', '#6f42c1', '#fd7e14']; return Array.from({length: num}, (_, i) => base[i % base.length]); }
 
+    async function fetchRecentStocks() {
+        try {
+            const response = await fetch('/api/recent-stocks');
+            if (response.ok) {
+                recentCodes = await response.json();
+                if (recentCodes && recentCodes.length > 0 && btnRecentFilter) {
+                    btnRecentFilter.style.display = 'inline-block';
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching recent stocks:', error);
+        }
+    }
+
+    if (btnRecentFilter) {
+        btnRecentFilter.addEventListener('click', () => {
+            const recentQuery = recentCodes.join(' ');
+            if (analysisFilterInput.value.trim() === recentQuery) {
+                analysisFilterInput.value = '';
+            } else {
+                analysisFilterInput.value = recentQuery;
+            }
+            filterAndRender();
+        });
+    }
+
     analysisFilterInput.addEventListener('input', filterAndRender);
     [industryFilterSelect, accountTypeFilterSelect, securityCompanyFilterSelect, buySignalFilterSelect].forEach(s => s.addEventListener('change', filterAndRender));
     document.querySelector('#analysis-table thead').addEventListener('click', (e) => { const h = e.target.closest('.sortable'); if (!h) return; const k = h.dataset.key; if (currentSort.key === k) currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc'; else { currentSort.key = k; currentSort.order = 'asc'; } filterAndRender(); });
@@ -945,4 +994,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     fetchHighlightRules();
     fetchAndRenderAnalysisData();
+    fetchRecentStocks();
 });

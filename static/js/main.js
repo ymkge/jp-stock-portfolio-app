@@ -450,10 +450,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (filterText) {
-            filteredAssets = filteredAssets.filter(asset =>
-                String(asset.code).toLowerCase().includes(filterText) ||
-                String(asset.name || '').toLowerCase().includes(filterText)
-            );
+            const keywords = filterText.split(/[\s,，]+/).filter(k => k !== "");
+            if (keywords.length > 0) {
+                filteredAssets = filteredAssets.filter(asset =>
+                    keywords.some(keyword =>
+                        String(asset.code).toLowerCase().includes(keyword) ||
+                        String(asset.name || '').toLowerCase().includes(keyword)
+                    )
+                );
+            }
         }
         sortAssets(filteredAssets);
         if (activeTab === 'jp_stock') renderStockTable(filteredAssets);
@@ -768,10 +773,83 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function renderRecentStocksList(codes) {
         if (!recentStocksList) return;
-        recentStocksList.innerHTML = codes.length ? '' : '<li>最近追加した資産はありません。</li>';
+        recentStocksList.innerHTML = '';
+        if (codes.length === 0) {
+            recentStocksList.innerHTML = '<li style="padding: 8px 15px; font-size: 0.9rem;">最近追加した資産はありません。</li>';
+            return;
+        }
+
+        // 1. 一括フィルタボタンを先頭に追加
+        const bulkFilterLi = document.createElement('li');
+        bulkFilterLi.className = 'recent-stock-item bulk-filter-item';
+        bulkFilterLi.innerHTML = '<strong>🔍 最近の銘柄を一括フィルタ</strong>';
+        bulkFilterLi.addEventListener('click', (e) => {
+            e.stopPropagation();
+            filterInput.value = codes.join(' ');
+            filterAndRender();
+            recentStocksList.classList.add('hidden');
+        });
+        recentStocksList.appendChild(bulkFilterLi);
+
+        // 2. 区切り線
+        const divider = document.createElement('li');
+        divider.className = 'dropdown-divider';
+        recentStocksList.appendChild(divider);
+
+        // 3. 各銘柄コードのレンダリング
         codes.forEach(code => {
-            const li = document.createElement('li'); li.className = 'recent-stock-item'; li.textContent = code;
-            li.addEventListener('click', () => { assetCodeInput.value = code; });
+            const li = document.createElement('li');
+            li.className = 'recent-stock-item stock-item-with-actions';
+            
+            const codeSpan = document.createElement('span');
+            codeSpan.textContent = code;
+            codeSpan.className = 'stock-code-label';
+            li.appendChild(codeSpan);
+
+            const actionsDiv = document.createElement('span');
+            actionsDiv.className = 'recent-stock-actions';
+
+            // フィルタ個別適用ボタン
+            const filterBtn = document.createElement('button');
+            filterBtn.className = 'btn-sm btn-icon';
+            filterBtn.title = '検索窓に適用';
+            filterBtn.innerHTML = '🔍';
+            filterBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const currentVal = filterInput.value.trim();
+                if (currentVal) {
+                    const currentCodes = currentVal.split(/[\s,，]+/);
+                    if (!currentCodes.includes(code)) {
+                        filterInput.value = currentVal + ' ' + code;
+                    }
+                } else {
+                    filterInput.value = code;
+                }
+                filterAndRender();
+                recentStocksList.classList.add('hidden');
+            });
+            actionsDiv.appendChild(filterBtn);
+
+            // 追加フォーム適用ボタン
+            const addFormBtn = document.createElement('button');
+            addFormBtn.className = 'btn-sm btn-icon';
+            addFormBtn.title = '追加フォームに入力';
+            addFormBtn.innerHTML = '➕';
+            addFormBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                assetCodeInput.value = code;
+                recentStocksList.classList.add('hidden');
+            });
+            actionsDiv.appendChild(addFormBtn);
+
+            li.appendChild(actionsDiv);
+
+            // 従来のクリック挙動（デグレ防止用: 項目自体をクリックした場合は従来通り追加フォームに入力）
+            li.addEventListener('click', () => {
+                assetCodeInput.value = code;
+                recentStocksList.classList.add('hidden');
+            });
+
             recentStocksList.appendChild(li);
         });
     }

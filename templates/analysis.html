@@ -120,7 +120,10 @@
                             </div>
                             <div id="details-filter-controls" class="filter-controls" style="display: flex; align-items: center; gap: 15px; flex-grow: 1;">
                                 <input type="text" id="analysis-filter-input" placeholder="コード/銘柄名">
-                                <select id="industry-filter"><option value="">すべての業種</option></select>
+                                <div class="searchable-select-wrapper">
+                                    <input type="text" id="analysis-industry-search" class="select-search-input" placeholder="業種検索...">
+                                    <select id="industry-filter"><option value="">すべての業種</option></select>
+                                </div>
                                 <select id="account-type-filter"><option value="">すべての口座種別</option></select>
                                 <select id="security-company-filter"><option value="">すべての証券会社</option></select>
                                 <select id="buy-signal-filter">

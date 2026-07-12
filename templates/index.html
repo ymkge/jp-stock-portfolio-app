@@ -65,9 +65,12 @@
                     <div class="filter-controls main-filters">
                         <input type="text" id="filter-input" placeholder="コード/名称検索">
                         
-                        <select id="industry-filter">
-                            <option value="">すべての業種</option>
-                        </select>
+                        <div class="searchable-select-wrapper">
+                            <input type="text" id="industry-search" class="select-search-input" placeholder="業種検索...">
+                            <select id="industry-filter">
+                                <option value="">すべての業種</option>
+                            </select>
+                        </div>
 
                         <select id="signal-filter">
                             <option value="">すべての状態</option>

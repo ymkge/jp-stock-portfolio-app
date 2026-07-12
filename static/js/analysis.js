@@ -468,6 +468,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const detailsTab = document.querySelector('.analysis-tab-btn[data-tab="details"]');
                 if (detailsTab) detailsTab.click();
                 if (industryFilterSelect) {
+                    const searchInput = document.getElementById('analysis-industry-search');
+                    if (searchInput) {
+                        searchInput.value = '';
+                    }
+                    populateIndustryFilter('');
                     industryFilterSelect.value = item.name;
                     industryFilterSelect.dispatchEvent(new Event('change'));
                 }
@@ -898,13 +903,41 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('#analysis-table .sortable').forEach(h => { h.classList.remove('sort-active', 'sort-asc', 'sort-desc'); if (h.dataset.key === currentSort.key) h.classList.add('sort-active', `sort-${currentSort.order}`); });
     }
 
+    let allIndustriesCache = [];
+
     function populateFilters() {
-        const industries = [...new Set(allHoldingsData.map(item => item.industry || 'N/A'))].sort();
-        industryFilterSelect.innerHTML = '<option value="">すべての業種</option>' + industries.map(ind => `<option value="${ind}">${ind}</option>`).join('');
+        allIndustriesCache = [...new Set(allHoldingsData.map(item => item.industry || 'N/A'))].sort();
+        populateIndustryFilter('');
         const accounts = [...new Set(allHoldingsData.map(item => item.account_type || 'N/A'))].sort();
         accountTypeFilterSelect.innerHTML = '<option value="">すべての口座種別</option>' + accounts.map(acc => `<option value="${acc}">${acc}</option>`).join('');
         const companies = [...new Set(allHoldingsData.map(item => item.security_company || '-'))].sort();
         securityCompanyFilterSelect.innerHTML = '<option value="">すべての証券会社</option>' + companies.map(sc => `<option value="${sc}">${sc}</option>`).join('');
+    }
+
+    function populateIndustryFilter(searchText = '') {
+        if (!industryFilterSelect) return;
+
+        const currentValue = industryFilterSelect.value;
+        const filteredIndustries = searchText
+            ? allIndustriesCache.filter(ind => ind.toLowerCase().includes(searchText.toLowerCase()))
+            : allIndustriesCache;
+
+        let optionsHtml = '<option value="">すべての業種</option>' + 
+            filteredIndustries.map(ind => `<option value="${ind}">${ind}</option>`).join('');
+
+        industryFilterSelect.innerHTML = optionsHtml;
+
+        // 【デグレ防止】選択状態の維持
+        const hasCurrentValue = [...industryFilterSelect.options].some(opt => opt.value === currentValue);
+        if (hasCurrentValue) {
+            industryFilterSelect.value = currentValue;
+        } else if (currentValue && currentValue !== "") {
+            optionsHtml = `<option value="${currentValue}">${currentValue} (選択中)</option>` + optionsHtml;
+            industryFilterSelect.innerHTML = optionsHtml;
+            industryFilterSelect.value = currentValue;
+        } else {
+            industryFilterSelect.value = "";
+        }
     }
 
     function generateColors(num) { const base = ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b', '#858796', '#5a5c69', '#6f42c1', '#fd7e14']; return Array.from({length: num}, (_, i) => base[i % base.length]); }
@@ -936,6 +969,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     analysisFilterInput.addEventListener('input', filterAndRender);
+    const analysisIndustrySearch = document.getElementById('analysis-industry-search');
+    if (analysisIndustrySearch) {
+        analysisIndustrySearch.addEventListener('input', function() {
+            populateIndustryFilter(this.value);
+        });
+    }
     [industryFilterSelect, accountTypeFilterSelect, securityCompanyFilterSelect, buySignalFilterSelect].forEach(s => s.addEventListener('change', filterAndRender));
     document.querySelector('#analysis-table thead').addEventListener('click', (e) => { const h = e.target.closest('.sortable'); if (!h) return; const k = h.dataset.key; if (currentSort.key === k) currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc'; else { currentSort.key = k; currentSort.order = 'asc'; } filterAndRender(); });
     toggleVisibilityCheckbox.addEventListener('change', (e) => { isAmountVisible = !e.target.checked; renderAnalysisTable(filteredHoldingsData); renderSummary(filteredHoldingsData); renderCharts(filteredHoldingsData); fetchAndRenderHistoryData(); });

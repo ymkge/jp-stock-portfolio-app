@@ -373,14 +373,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function updateIndustryFilterOptions() {
+    function updateIndustryFilterOptions(searchText = '') {
         if (!industryFilter) return;
         
         // 現在の選択値を保持
         const currentValue = industryFilter.value;
         
         // 国内株式から一意な業種リストを抽出（N/A等を除外）
-        const industries = [...new Set(allAssetsData
+        const allIndustries = [...new Set(allAssetsData
             .filter(a => a.asset_type === 'jp_stock' && a.industry)
             .map(a => {
                 const ind = a.industry;
@@ -390,18 +390,33 @@ document.addEventListener('DOMContentLoaded', () => {
             .filter(ind => ind !== null)
         )].sort();
 
+        // 検索テキストによる部分一致フィルタリング
+        const filteredIndustries = searchText 
+            ? allIndustries.filter(ind => ind.toLowerCase().includes(searchText.toLowerCase()))
+            : allIndustries;
+
         let options = '<option value="">すべての業種</option>';
-        industries.forEach(ind => {
+        filteredIndustries.forEach(ind => {
             options += `<option value="${ind}">${ind}</option>`;
         });
         
-        // 常に「その他」を選択肢の最後に追加（無効な業種名を持つ銘柄の受け皿）
-        options += '<option value="その他">その他（不明・N/A）</option>';
+        // 検索テキストがない、または「その他」に部分一致する場合は「その他」を選択肢の最後に追加
+        if (!searchText || 'その他'.includes(searchText) || '不明'.includes(searchText.toLowerCase()) || 'n/a'.includes(searchText.toLowerCase())) {
+            options += '<option value="その他">その他（不明・N/A）</option>';
+        }
         
         industryFilter.innerHTML = options;
         
-        // 以前の選択値が新しいリストにも存在すれば復元、そうでなければ「すべて」
-        if ([...industryFilter.options].some(opt => opt.value === currentValue)) {
+        // 【デグレ防止】以前の選択値が新しいリストにも存在すれば復元
+        const hasCurrentValue = [...industryFilter.options].some(opt => opt.value === currentValue);
+        if (hasCurrentValue) {
+            industryFilter.value = currentValue;
+        } else if (currentValue && currentValue !== "") {
+            // 現在選択されている値が検索フィルタで隠れても、選択状態が解除されないように一時的に残す
+            if (currentValue !== "その他") {
+                options = `<option value="${currentValue}">${currentValue} (選択中)</option>` + options;
+                industryFilter.innerHTML = options;
+            }
             industryFilter.value = currentValue;
         } else {
             industryFilter.value = "";
@@ -934,6 +949,12 @@ document.addEventListener('DOMContentLoaded', () => {
     downloadCsvButton.addEventListener('click', () => { window.location.href = '/api/stocks/csv'; });
     filterInput.addEventListener('input', filterAndRender);
     industryFilter.addEventListener('change', filterAndRender);
+    const industrySearch = document.getElementById('industry-search');
+    if (industrySearch) {
+        industrySearch.addEventListener('input', function() {
+            updateIndustryFilterOptions(this.value);
+        });
+    }
     signalFilter.addEventListener('change', filterAndRender);
     showOnlyManagedAssetsCheckbox.addEventListener('input', filterAndRender);
     

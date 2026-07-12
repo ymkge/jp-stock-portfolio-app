@@ -1928,3 +1928,42 @@ button {
     50% { transform: scale(1.1); }
     100% { transform: scale(1); }
 }
+
+/* ==========================================
+   Searchable Select (Issue #222)
+   ========================================== */
+.searchable-select-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--header-bg-color);
+    padding: 0 4px;
+}
+
+.searchable-select-wrapper .select-search-input {
+    border: none !important;
+    background: transparent !important;
+    padding: 7px 5px !important;
+    font-size: 0.8rem !important;
+    width: 70px !important;
+    outline: none !important;
+    color: var(--text-color);
+}
+
+.searchable-select-wrapper .select-search-input::placeholder {
+    color: var(--text-muted-color, #888);
+    opacity: 0.7;
+}
+
+.searchable-select-wrapper select {
+    border: none !important;
+    background: transparent !important;
+    padding: 7px 5px !important;
+    font-size: 0.85rem !important;
+    max-width: 120px !important;
+    outline: none !important;
+    cursor: pointer;
+    color: var(--text-color);
+}

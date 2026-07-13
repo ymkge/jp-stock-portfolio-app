@@ -1064,7 +1064,7 @@ async def _fetch_scraped_data_with_cache(code: str, asset_type: str, scraper_ins
 
     return result
 
-async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+async def _get_processed_asset_data(force: bool = False) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
     ポートフォリオ内の全資産のデータを並行して取得し、スコア計算などを行う。
     JST基準の市場確定時刻に基づき、DBキャッシュをインテリジェントに活用する。
@@ -1120,26 +1120,53 @@ async def _get_processed_asset_data() -> Tuple[List[Dict[str, Any]], Dict[str, A
         is_fresh = False
         source = None
 
-        # 1a. メモリキャッシュ確認
-        if scraper_instance.is_cached(code):
-            cached_data = await asyncio.to_thread(scraper_instance.fetch_data, code)
-            source = "Memory"
-            is_fresh = True # メモリにあるなら最新とみなす
+        if force:
+            # 強制更新時はメモリキャッシュを破棄
+            scraper_instance.cache.pop(code, None)
+        else:
+            # 1a. メモリキャッシュ確認
+            if scraper_instance.is_cached(code):
+                mem_data = await asyncio.to_thread(scraper_instance.fetch_data, code)
+                # 自己修復判定: メモリキャッシュに新しいキーが含まれているか確認
+                has_new_keys = True
+                if asset_type == 'jp_stock':
+                    if not mem_data or "bps" not in mem_data or "payout_ratio" not in mem_data:
+                        has_new_keys = False
+                elif asset_type == 'us_stock':
+                    if not mem_data or "payout_ratio" not in mem_data:
+                        has_new_keys = False
+                
+                if has_new_keys:
+                    cached_data = mem_data
+                    source = "Memory"
+                    is_fresh = True
+                else:
+                    scraper_instance.cache.pop(code, None)
 
-        # 1b. DBキャッシュ確認 (メモリにない場合)
-        if not cached_data:
-            db_data = db_cache_map.get(code)
-            if db_data:
-                threshold_time = get_cache_threshold_time(asset_type, now_jst, market_times)
-                updated_at_str = db_data.get("_db_updated_at_jst")
-                if updated_at_str:
-                    try:
-                        updated_at = datetime.fromisoformat(updated_at_str).replace(tzinfo=history_manager.JST)
-                        if updated_at >= threshold_time or (now_jst - updated_at).total_seconds() < 3600:
-                            is_fresh = True
-                            cached_data = db_data
-                            source = "DB"
-                    except ValueError: pass
+            # 1b. DBキャッシュ確認 (メモリにない場合)
+            if not cached_data:
+                db_data = db_cache_map.get(code)
+                if db_data:
+                    # 自己修復判定: DBキャッシュに新しいキーが含まれているか確認
+                    has_new_keys = True
+                    if asset_type == 'jp_stock':
+                        if "bps" not in db_data or "payout_ratio" not in db_data:
+                            has_new_keys = False
+                    elif asset_type == 'us_stock':
+                        if "payout_ratio" not in db_data:
+                            has_new_keys = False
+                    
+                    if has_new_keys:
+                        threshold_time = get_cache_threshold_time(asset_type, now_jst, market_times)
+                        updated_at_str = db_data.get("_db_updated_at_jst")
+                        if updated_at_str:
+                            try:
+                                updated_at = datetime.fromisoformat(updated_at_str).replace(tzinfo=history_manager.JST)
+                                if updated_at >= threshold_time or (now_jst - updated_at).total_seconds() < 3600:
+                                    is_fresh = True
+                                    cached_data = db_data
+                                    source = "DB"
+                            except ValueError: pass
 
         # 鮮度が高いキャッシュがあれば、セマフォを確保して即座に返す (待機なし)
         if is_fresh and cached_data:
@@ -1369,9 +1396,9 @@ async def get_recent_stocks():
     return recent_stocks_manager.load_recent_codes()
 
 @app.get("/api/stocks")
-async def get_stocks(cooldown_check: None = Depends(check_update_cooldown)):
+async def get_stocks(force: bool = False, cooldown_check: None = Depends(check_update_cooldown)):
     global last_full_update_time
-    processed_data, metadata = await _get_processed_asset_data()
+    processed_data, metadata = await _get_processed_asset_data(force=force)
     last_full_update_time = datetime.now()
     return {"data": processed_data, "metadata": metadata}
 
@@ -1514,10 +1541,10 @@ async def delete_holding_endpoint(holding_id: str):
     return {"status": "success"}
 
 @app.get("/api/portfolio/analysis")
-async def get_portfolio_analysis(cooldown_check: None = Depends(check_update_cooldown)):
+async def get_portfolio_analysis(force: bool = False, cooldown_check: None = Depends(check_update_cooldown)):
     """保有資産の分析データを返す"""
     global last_full_update_time
-    all_assets, metadata = await _get_processed_asset_data()
+    all_assets, metadata = await _get_processed_asset_data(force=force)
     
     # 為替レートを取得
     exchange_rates = {}

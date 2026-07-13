@@ -143,9 +143,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try {
             const apiFetch = (url) => fetch(url, { signal }).then(handleApiResponse);
+            const stocksUrl = force ? '/api/stocks?force=true' : '/api/stocks';
 
             const [assetsResponse, rules, recent, accTypes, secCompanies] = await Promise.all([
-                apiFetch('/api/stocks'),
+                apiFetch(stocksUrl),
                 apiFetch('/api/highlight-rules'),
                 apiFetch('/api/recent-stocks'),
                 apiFetch('/api/account-types'),

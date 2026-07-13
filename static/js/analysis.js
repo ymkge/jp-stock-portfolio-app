@@ -396,19 +396,29 @@ document.addEventListener('DOMContentLoaded', () => {
         if (holdings.length === 0 && !loadingIndicator.classList.contains('hidden')) { renderTableSkeletons(); return; }
         analysisTableBody.innerHTML = '';
         if (!holdings || holdings.length === 0) {
-            analysisTableBody.innerHTML = `<tr><td colspan="16" style="text-align:center;">該当する保有銘柄はありません。</td></tr>`;
+            analysisTableBody.innerHTML = `<tr><td colspan="18" style="text-align:center;">該当する保有銘柄はありません。</td></tr>`;
             return;
         }
         holdings.forEach(item => {
             const row = analysisTableBody.insertRow();
-            const createCell = (html, className = '') => { const cell = row.insertCell(); cell.innerHTML = html; if (className) cell.className = className; return cell; };
+            const createCell = (html, className = '') => { 
+                const cell = row.insertCell(); cell.innerHTML = html; 
+                if (html === 'N/A' || html === '--' || html === '-') cell.className = (className ? className + ' ' : '') + 'na-value';
+                else if (className) cell.className = className; 
+                return cell; 
+            };
+            const createCellWithTooltip = (html, className = '', tooltipText = '') => { 
+                const cell = createCell(html, className); 
+                if (tooltipText) cell.title = tooltipText; 
+                return cell; 
+            };
 
             if (item.error) {
                 const displayError = item.error_message || item.error;
                 row.className = 'error-row';
                 row.title = displayError.replace(/<br>/g, '\n').replace(/<[^>]*>?/gm, '');
                 createCell(item.code, 'numeric');
-                createCell(displayError, 'error-message').colSpan = 15;
+                createCell(displayError, 'error-message').colSpan = 17;
                 return;
             }
 
@@ -437,6 +447,31 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(formatNumber(item.price, 2), 'numeric');
             createCell(formatNumber(item.estimated_annual_dividend, 0), 'numeric ' + (!isAmountVisible ? 'masked-amount' : ''));
             createCell(formatNumber(item.estimated_annual_dividend_after_tax, 0), 'numeric ' + (!isAmountVisible ? 'masked-amount' : ''));
+            
+            // 配当性向のセル描画 (ツールチップで過去の履歴を表示)
+            if (item.payout_ratio !== undefined && item.payout_ratio !== null && item.payout_ratio !== 'N/A') {
+                const payoutVal = `${parseFloat(item.payout_ratio).toFixed(1)}%`;
+                const payoutClass = 'numeric ' + getHighlightClass('payout_ratio', item.payout_ratio, item.asset_type);
+                const payoutHistoryTooltip = formatPayoutRatioHistory(item.payout_ratio_history);
+                if (payoutHistoryTooltip) {
+                    createCellWithTooltip(payoutVal, payoutClass, payoutHistoryTooltip);
+                } else {
+                    createCell(payoutVal, payoutClass);
+                }
+            } else {
+                createCell('-', 'numeric na-value');
+            }
+
+            // DOEのセル描画 (日本株のみ)
+            if (item.asset_type === 'jp_stock' && item.doe !== undefined && item.doe !== null && item.doe !== 'N/A') {
+                const doeVal = `${parseFloat(item.doe).toFixed(2)}%`;
+                const doeClass = 'numeric ' + getHighlightClass('doe', item.doe, item.asset_type);
+                const bpsVal = item.bps && item.bps !== 'N/A' ? parseFloat(item.bps).toLocaleString() : 'N/A';
+                createCellWithTooltip(doeVal, doeClass, `BPS（実績）: ${bpsVal}円\n算出式: 予想配当金 / BPS`);
+            } else {
+                createCell('-', 'numeric na-value');
+            }
+            
             createCell(formatNumber(item.dividend_contribution, 2), 'numeric ' + (!isAmountVisible ? 'masked-amount' : ''));
             createCell(formatNumber(item.market_value, 0), 'numeric ' + (!isAmountVisible ? 'masked-amount' : ''));
             createCell(formatNumber(item.profit_loss, 0), `numeric ${!isAmountVisible ? 'masked-amount' : ''} ${profitLossClass}`);
@@ -1029,6 +1064,34 @@ document.addEventListener('DOMContentLoaded', () => {
         const title = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${signal.reasons.join('\n')}`;
         const label = (isDiamond ? '💎 ' : '') + signal.label;
         return `<span class="signal-badge-base ${themeClass}" title="${title}"><span class="signal-badge-text"><span class="buy-signal-icon-inner">${signal.icon}</span>${label}</span></span>`;
+    }
+
+    function getHighlightClass(key, value, assetType) {
+        if (assetType !== 'jp_stock' && assetType !== 'us_stock') return '';
+        if (!highlightRules) return '';
+        const rules = highlightRules[key]; if (!rules || !value || value === 'N/A') return '';
+        const num = parseFloat(String(value).replace(/[^0-9.-]/g, '')); if (isNaN(num)) return '';
+        if (key === 'payout_ratio') {
+            if (num > 0 && num <= rules.safe_max) return 'undervalued';
+            if (num > rules.safe_max) return 'overvalued';
+        } else if (key === 'doe') {
+            if (assetType !== 'jp_stock') return '';
+            if (num >= rules.good_min) return 'undervalued';
+        } else {
+            if (assetType !== 'jp_stock') return '';
+            if (key === 'yield' || key === 'roe') { if (num >= rules.undervalued) return 'undervalued'; }
+            else { if (num <= rules.undervalued) return 'undervalued'; if (num >= rules.overvalued) return 'overvalued'; }
+        }
+        return '';
+    }
+
+    function formatPayoutRatioHistory(historyList) {
+        if (!historyList || historyList.length === 0) return '';
+        return '配当性向の推移:\n' + historyList.map(item => {
+            const date = item.settlementDateFormatted || item.settlementDate || '不明';
+            const ratio = item.payoutRatioFormattedWithUnit || (item.payoutRatioValue !== undefined ? item.payoutRatioValue + '%' : 'N/A');
+            return `・${date}: ${ratio}`;
+        }).join('\n');
     }
 
     fetchHighlightRules();

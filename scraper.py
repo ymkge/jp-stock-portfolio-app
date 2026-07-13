@@ -287,6 +287,11 @@ class JPStockScraper(BaseScraper):
         # 基本データの抽出 (名称、現在値、出来高、騰落)
         data = self._scavenge_common_data(res_q.text, json_q)
         
+        # デフォルト値の設定
+        data['bps'] = "N/A"
+        data['payout_ratio'] = "N/A"
+        data['payout_ratio_history'] = []
+
         # 財務指標の抽出 (境界制約 [^{}]*? を導入して他項目への飛び越しを防止)
         per_m = re.search(r'\"per\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
         data['per'] = per_m.group(1).replace(',', '') if per_m and per_m.group(1) != "---" else "N/A"
@@ -305,6 +310,10 @@ class JPStockScraper(BaseScraper):
         # EPSの抽出
         eps_m = re.search(r'\"eps\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
         data['eps'] = eps_m.group(1).replace(',', '') if eps_m and eps_m.group(1) != "---" else "N/A"
+
+        # BPSの抽出
+        bps_m = re.search(r'\"bps\":\{[^{}]*?\"value\":\"([\d\.\-\,]+)\"', json_q)
+        data['bps'] = bps_m.group(1).replace(',', '') if bps_m and bps_m.group(1) != "---" else "N/A"
 
         # PERのリカバリ (現在株価 / EPS)
         if (data.get('per') == "N/A" or data.get('per') == "---") and data.get('eps') not in ["N/A", "---"]:
@@ -420,6 +429,20 @@ class JPStockScraper(BaseScraper):
         if res_div:
             json_div = self._extract_next_data(res_div.text) or self._extract_legacy_data(res_div.text)
             if json_div:
+                # 配当性向の抽出 (payoutRatioAndEps)
+                payout_ratio_history = []
+                payout_ratio_m = re.search(r'\"payoutRatioAndEps\":(\[.*?\])', json_div)
+                if payout_ratio_m:
+                    try:
+                        payout_data = json.loads(payout_ratio_m.group(1))
+                        if payout_data and len(payout_data) > 0:
+                            val = payout_data[0].get('payoutRatioValue')
+                            if val is not None:
+                                data['payout_ratio'] = str(val)
+                        payout_ratio_history = payout_data
+                    except: pass
+                data['payout_ratio_history'] = payout_ratio_history
+
                 # 基準日ごとの年間合計値 (予想・修正実績・実績の優先順位で抽出)
                 # 型: [{"settlementDate": "202409", "annualForecastValue": "20.0", ...}, ...]
                 dps_matches_ext = re.findall(r'\"settlementDate\":\"(\d{4})\d{2}\"[^{}]*?\"(annualForecastValue|annualCorrectedActualValue|annualActualValue|annualActualDividend)\":\s*([\d\.]+)', json_div)
@@ -651,7 +674,13 @@ class USStockScraper(BaseScraper):
         else:
             data['settlement_month'] = f"{int(month_m.group(1))}月"
 
-        data.update({"code": code, "asset_type": "us_stock", "currency": "USD"})
+        data.update({
+            "code": code, 
+            "asset_type": "us_stock", 
+            "currency": "USD",
+            "payout_ratio": "N/A",
+            "payout_ratio_history": []
+        })
         return data
 
 class IndexScraper(BaseScraper):

@@ -664,6 +664,21 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
         f_diamond = get_config("buy_signal.thresholds.fundamental_diamond", 4)
         merged_data["is_diamond"] = f_score >= f_diamond
 
+        # DOEの算出 (予想DOE = 予想年間配当金 / BPS * 100)
+        try:
+            bps_raw = merged_data.get("bps", "N/A")
+            annual_div = float(merged_data.get("annual_dividend", 0))
+            if bps_raw not in [None, "N/A", "--", ""]:
+                bps_val = float(str(bps_raw).replace(',', ''))
+                if bps_val > 0 and annual_div >= 0:
+                    merged_data["doe"] = round((annual_div / bps_val) * 100, 2)
+                else:
+                    merged_data["doe"] = "N/A"
+            else:
+                merged_data["doe"] = "N/A"
+        except Exception as e:
+            merged_data["doe"] = "N/A"
+
         # シグナルの判定
         merged_data["buy_signal"] = calculate_buy_signal(merged_data)
         merged_data["sell_signal"] = calculate_sell_signal(merged_data)
@@ -691,6 +706,23 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
         except Exception as e:
             logger.warning(f"Error checking potential split for {code}: {e}")
 
+    elif asset_type == 'us_stock':
+        # 米国株の予想配当性向 = 予想配当利回り * 予想PER
+        try:
+            yield_raw = merged_data.get("yield", "N/A")
+            per_raw = merged_data.get("per", "N/A")
+            if yield_raw not in [None, "N/A", "--", ""] and per_raw not in [None, "N/A", "--", ""]:
+                y_val = float(str(yield_raw).replace('%', '').replace(',', ''))
+                p_val = float(str(per_raw).replace(',', ''))
+                if y_val >= 0 and p_val > 0:
+                    # 配当利回り * PER = 配当性向
+                    merged_data["payout_ratio"] = round(y_val * p_val, 2)
+                else:
+                    merged_data["payout_ratio"] = "N/A"
+            else:
+                merged_data["payout_ratio"] = "N/A"
+        except Exception as e:
+            merged_data["payout_ratio"] = "N/A"
 
     # 2. スナップショットの保存 (DB更新) - 全アセットタイプ対象
     # キャッシュヒット時であっても、ロジック変更等で分析結果が変わった場合は保存する
@@ -701,7 +733,7 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
             # save_target (DBレコード実体) が不完全な場合、補完済みの merged_data から属性を引き継いで
             # DB側のレコードも「完全な状態」へ修復（上書き）させる
             if not save_target.get("name") and merged_data.get("name"):
-                for key in ["name", "per", "pbr", "roe", "yield", "eps", "settlement_month", "industry", "asset_type", "market"]:
+                for key in ["name", "per", "pbr", "roe", "yield", "eps", "settlement_month", "industry", "asset_type", "market", "bps", "payout_ratio", "doe", "payout_ratio_history"]:
                     if key in merged_data and key not in save_target:
                         save_target[key] = merged_data[key]
 

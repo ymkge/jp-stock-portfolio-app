@@ -568,6 +568,31 @@ document.addEventListener('DOMContentLoaded', () => {
             
             createCell((jpStock.rci_26 !== undefined && jpStock.rci_26 !== null) ? `${jpStock.rci_26.toFixed(1)}%` : '-', 'numeric');
             createCellWithTooltip(jpStock.consecutive_increase_years > 0 ? `<span class="increase-badge">${jpStock.consecutive_increase_years}年連続</span>` : '-', 'badge-cell', formatDividendHistory(jpStock.dividend_history), `${baseUrl}/dividend`);
+            
+            // 配当性向のセル描画 (ツールチップで過去の履歴を表示)
+            if (jpStock.payout_ratio !== undefined && jpStock.payout_ratio !== null && jpStock.payout_ratio !== 'N/A') {
+                const payoutVal = `${parseFloat(jpStock.payout_ratio).toFixed(1)}%`;
+                const payoutClass = 'numeric ' + getHighlightClass('payout_ratio', jpStock.payout_ratio, jpStock.asset_type);
+                const payoutHistoryTooltip = formatPayoutRatioHistory(jpStock.payout_ratio_history);
+                if (payoutHistoryTooltip) {
+                    createCellWithTooltip(payoutVal, payoutClass, payoutHistoryTooltip, `${baseUrl}/dividend`);
+                } else {
+                    createCell(payoutVal, payoutClass);
+                }
+            } else {
+                createCell('-', 'numeric na-value');
+            }
+
+            // DOEのセル描画
+            if (jpStock.doe !== undefined && jpStock.doe !== null && jpStock.doe !== 'N/A') {
+                const doeVal = `${parseFloat(jpStock.doe).toFixed(2)}%`;
+                const doeClass = 'numeric ' + getHighlightClass('doe', jpStock.doe, jpStock.asset_type);
+                const bpsVal = jpStock.bps && jpStock.bps !== 'N/A' ? parseFloat(jpStock.bps).toLocaleString() : 'N/A';
+                createCellWithTooltip(doeVal, doeClass, `BPS（実績）: ${bpsVal}円\n算出式: 予想配当金 / BPS`);
+            } else {
+                createCell('-', 'numeric na-value');
+            }
+
             createCell(jpStock.settlement_month || 'N/A', 'numeric');
             const manageBtn = document.createElement('button'); manageBtn.textContent = '管理'; manageBtn.className = 'manage-btn'; manageBtn.dataset.code = jpStock.code;
             row.insertCell().appendChild(manageBtn);
@@ -624,7 +649,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         tableBody.innerHTML = '';
         if (!usStocks || usStocks.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;">登録されている米国株式はありません。</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="11" style="text-align:center;">登録されている米国株式はありません。</td></tr>`;
             return;
         }
         usStocks.forEach(usStock => {
@@ -642,7 +667,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 row.title = displayError.replace(/<br>/g, '\n').replace(/<[^>]*>?/gm, '');
                 createCell(`<input type="checkbox" class="asset-checkbox" data-code="${usStock.code}" disabled>`);
                 createCell(usStock.code, 'numeric');
-                createCell(displayError, 'error-message').colSpan = 8;
+                createCell(displayError, 'error-message').colSpan = 9;
                 createCell(`<button class="manage-btn" data-code="${usStock.code}" disabled>管理</button>`);
                 return;
             }
@@ -653,6 +678,16 @@ document.addEventListener('DOMContentLoaded', () => {
             createCell(formatMarketCap(usStock.market_cap), 'numeric');
             createCell(usStock.per, 'numeric ' + getHighlightClass('per', usStock.per, usStock.asset_type));
             createCell(usStock.yield, 'numeric ' + getHighlightClass('yield', usStock.yield, usStock.asset_type));
+            
+            // 配当性向のセル描画
+            if (usStock.payout_ratio !== undefined && usStock.payout_ratio !== null && usStock.payout_ratio !== 'N/A') {
+                const payoutVal = `${parseFloat(usStock.payout_ratio).toFixed(1)}%`;
+                const payoutClass = 'numeric ' + getHighlightClass('payout_ratio', usStock.payout_ratio, usStock.asset_type);
+                createCell(payoutVal, payoutClass);
+            } else {
+                createCell('-', 'numeric na-value');
+            }
+            
             createCell(usStock.settlement_month || 'N/A', 'numeric');
             const manageBtn = document.createElement('button'); manageBtn.textContent = '管理'; manageBtn.className = 'manage-btn'; manageBtn.dataset.code = usStock.code;
             row.insertCell().appendChild(manageBtn);
@@ -711,6 +746,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function formatDividendHistory(history) {
         if (!history || Object.keys(history).length === 0) return 'N/A';
         return Object.keys(history).sort((a, b) => b - a).map(year => `${year}年: ${history[year]}円`).join(' | ');
+    }
+    function formatPayoutRatioHistory(historyList) {
+        if (!historyList || historyList.length === 0) return '';
+        return '配当性向の推移:\n' + historyList.map(item => {
+            const date = item.settlementDateFormatted || item.settlementDate || '不明';
+            const ratio = item.payoutRatioFormattedWithUnit || (item.payoutRatioValue !== undefined ? item.payoutRatioValue + '%' : 'N/A');
+            return `・${date}: ${ratio}`;
+        }).join('\n');
     }
     function renderBuySignalBadge(signal, isDiamond = false) {
         if (!signal) return '';
@@ -779,11 +822,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return `<span class="score-container" title="${tooltip}">${html}</span>${warning}`;
     }
     function getHighlightClass(key, value, assetType) {
-        if (assetType !== 'jp_stock') return '';
+        if (assetType !== 'jp_stock' && assetType !== 'us_stock') return '';
         const rules = highlightRules[key]; if (!rules || !value || value === 'N/A') return '';
         const num = parseFloat(String(value).replace(/[^0-9.-]/g, '')); if (isNaN(num)) return '';
-        if (key === 'yield' || key === 'roe') { if (num >= rules.undervalued) return 'undervalued'; }
-        else { if (num <= rules.undervalued) return 'undervalued'; if (num >= rules.overvalued) return 'overvalued'; }
+        if (key === 'payout_ratio') {
+            if (num > 0 && num <= rules.safe_max) return 'undervalued';
+            if (num > rules.safe_max) return 'overvalued';
+        } else if (key === 'doe') {
+            if (assetType !== 'jp_stock') return '';
+            if (num >= rules.good_min) return 'undervalued';
+        } else {
+            if (assetType !== 'jp_stock') return '';
+            if (key === 'yield' || key === 'roe') { if (num >= rules.undervalued) return 'undervalued'; }
+            else { if (num <= rules.undervalued) return 'undervalued'; if (num >= rules.overvalued) return 'overvalued'; }
+        }
         return '';
     }
     function renderRecentStocksList(codes) {

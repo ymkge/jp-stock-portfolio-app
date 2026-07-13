@@ -13,6 +13,13 @@
   "roe": {
     "undervalued": 10.0
   },
+  "payout_ratio": {
+    "safe_max": 50.0,
+    "warning_max": 80.0
+  },
+  "doe": {
+    "good_min": 3.0
+  },
   "consecutive_increase": {
     "good": 3,
     "excellent": 7

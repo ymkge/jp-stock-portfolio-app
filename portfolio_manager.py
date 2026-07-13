@@ -511,12 +511,12 @@ def create_csv_data(data: list[dict]) -> str:
     # ヘッダー定義
     headers = [
         "code", "name", "asset_type", "market", "currency", "industry", "score", "price", "change", "change_percent",
-        "market_cap", "per", "pbr", "roe", "eps", "yield", "fibonacci", "rci_26", "annual_dividend", "consecutive_increase_years",
+        "market_cap", "per", "pbr", "roe", "eps", "yield", "payout_ratio", "doe", "fibonacci", "rci_26", "annual_dividend", "consecutive_increase_years",
         "settlement_month", "net_assets", "trust_fee"
     ]
     display_headers = [
         "コード", "名称", "資産タイプ", "市場", "通貨", "業種", "スコア", "現在値", "前日比", "前日比(%)",
-        "時価総額", "PER(倍)", "PBR(倍)", "ROE(%)", "EPS(円)", "配当利回り(%)", "フィボナッチ(%)", "RCI(26)", "年間配当(円)", "連続増配年数",
+        "時価総額", "PER(倍)", "PBR(倍)", "ROE(%)", "EPS(円)", "配当利回り(%)", "配当性向(%)", "DOE(%)", "フィボナッチ(%)", "RCI(26)", "年間配当(円)", "連続増配年数",
         "決算月", "純資産総額", "信託報酬"
     ]
     writer.writerow(display_headers)
@@ -557,6 +557,10 @@ def create_csv_data(data: list[dict]) -> str:
                 else:
                     value = "N/A"
             elif h == 'score' and item.get("asset_type") == "jp_stock":
+                value = item.get(h, "")
+            elif h == 'payout_ratio' and item.get("asset_type") in ["jp_stock", "us_stock"]:
+                value = item.get(h, "")
+            elif h == 'doe' and item.get("asset_type") == "jp_stock":
                 value = item.get(h, "")
             elif h == 'fibonacci' and item.get("asset_type") == "jp_stock":
                 fib = item.get("fibonacci")
@@ -604,11 +608,11 @@ def create_analysis_csv_data(data: list[dict]) -> str:
 
     headers = [
         "code", "name", "asset_type", "market", "currency", "security_company", "account_type", "industry", "quantity", "purchase_price", "price",
-        "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend", "estimated_annual_dividend_after_tax", "dividend_contribution", "memo"
+        "market_value", "profit_loss", "profit_loss_rate", "estimated_annual_dividend", "estimated_annual_dividend_after_tax", "payout_ratio", "doe", "dividend_contribution", "memo"
     ]
     display_headers = [
         "コード", "名称", "資産タイプ", "市場", "通貨", "証券会社", "口座種別", "業種", "数量", "取得単価", "現在値",
-        "評価額", "損益", "損益率(%)", "年間配当", "年間配当(税引後)", "配当構成比 (%)", "備考"
+        "評価額", "損益", "損益率(%)", "年間配当", "年間配当(税引後)", "配当性向(%)", "DOE(%)", "配当構成比 (%)", "備考"
     ]
     writer.writerow(display_headers)
 
@@ -634,6 +638,10 @@ def create_analysis_csv_data(data: list[dict]) -> str:
                 value = "投資信託" # 投資信託の業種は「投資信託」とする
             elif h in ["estimated_annual_dividend", "estimated_annual_dividend_after_tax"] and item.get("asset_type") == "investment_trust":
                 value = "" # 投資信託には年間配当は表示しない
+            elif h == "doe" and item.get("asset_type") != "jp_stock":
+                value = "" # 日本株以外はDOEは空
+            elif h == "payout_ratio" and item.get("asset_type") not in ["jp_stock", "us_stock"]:
+                value = "" # 米国株・日本株以外は配当性向は空
             else:
                 value = item.get(h, "")
             row.append(value)

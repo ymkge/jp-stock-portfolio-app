@@ -9,6 +9,8 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 from abc import ABC, abstractmethod
 from cachetools import cachedmethod, TTLCache, cached
+import yfinance as yf
+
 
 # ロガーの設定
 logger = logging.getLogger(__name__)
@@ -674,13 +676,39 @@ class USStockScraper(BaseScraper):
         else:
             data['settlement_month'] = f"{int(month_m.group(1))}月"
 
+        # 初期値設定
         data.update({
             "code": code, 
             "asset_type": "us_stock", 
             "currency": "USD",
             "payout_ratio": "N/A",
-            "payout_ratio_history": []
+            "payout_ratio_history": [],
+            "annual_dividend": 0.0
         })
+
+        # yfinance による配当情報等の補完
+        try:
+            ticker = yf.Ticker(code)
+            info = ticker.info
+            if info:
+                # 配当性向の補完
+                p_ratio = info.get("payoutRatio")
+                if p_ratio is not None:
+                    # yfinanceのpayoutRatioは小数（例: 0.6478）なので100倍して%にする
+                    data["payout_ratio"] = f"{float(p_ratio) * 100:.2f}"
+                
+                # 配当利回りの補完（すでに % 表記）
+                div_yield = info.get("dividendYield")
+                if div_yield is not None:
+                    data["yield"] = f"{float(div_yield):.2f}"
+                
+                # 年間配当金額の補完
+                div_rate = info.get("dividendRate") or info.get("trailingAnnualDividendRate")
+                if div_rate is not None:
+                    data["annual_dividend"] = float(div_rate)
+        except Exception as e:
+            logger.warning(f"Failed to fetch yfinance data for {code}: {e}")
+
         return data
 
 class IndexScraper(BaseScraper):

@@ -707,22 +707,24 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
             logger.warning(f"Error checking potential split for {code}: {e}")
 
     elif asset_type == 'us_stock':
-        # 米国株の予想配当性向 = 予想配当利回り * 予想PER
-        try:
-            yield_raw = merged_data.get("yield", "N/A")
-            per_raw = merged_data.get("per", "N/A")
-            if yield_raw not in [None, "N/A", "--", ""] and per_raw not in [None, "N/A", "--", ""]:
-                y_val = float(str(yield_raw).replace('%', '').replace(',', ''))
-                p_val = float(str(per_raw).replace(',', ''))
-                if y_val >= 0 and p_val > 0:
-                    # 配当利回り * PER = 配当性向
-                    merged_data["payout_ratio"] = round(y_val * p_val, 2)
+        # 米国株の配当性向：すでに取得済みの場合はそれを優先、なければ予想配当利回り * 予想PERで算出
+        payout_raw = merged_data.get("payout_ratio", "N/A")
+        if payout_raw in [None, "N/A", "--", ""]:
+            try:
+                yield_raw = merged_data.get("yield", "N/A")
+                per_raw = merged_data.get("per", "N/A")
+                if yield_raw not in [None, "N/A", "--", ""] and per_raw not in [None, "N/A", "--", ""]:
+                    y_val = float(str(yield_raw).replace('%', '').replace(',', ''))
+                    p_val = float(str(per_raw).replace(',', ''))
+                    if y_val >= 0 and p_val > 0:
+                        # 配当利回り * PER = 配当性向
+                        merged_data["payout_ratio"] = round(y_val * p_val, 2)
+                    else:
+                        merged_data["payout_ratio"] = "N/A"
                 else:
                     merged_data["payout_ratio"] = "N/A"
-            else:
+            except Exception as e:
                 merged_data["payout_ratio"] = "N/A"
-        except Exception as e:
-            merged_data["payout_ratio"] = "N/A"
 
     # 2. スナップショットの保存 (DB更新) - 全アセットタイプ対象
     # キャッシュヒット時であっても、ロジック変更等で分析結果が変わった場合は保存する

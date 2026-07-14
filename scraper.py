@@ -668,13 +668,24 @@ class USStockScraper(BaseScraper):
         else:
             data['market_cap'] = "N/A"
 
-        # 決算月 (推測)
-        month_m = re.search(r'\"?updateDate\"?:\s*\"?(\d{2})/', json_text)
-        if not month_m:
-            month_m = re.search(r'\"?date\"?:\s*\"?(\d{4})(\d{2})\"?', json_text)
-            data['settlement_month'] = f"{int(month_m.group(2))}月" if month_m else "N/A"
+        # 決算月 (パース精度の向上)
+        settlement_month = "N/A"
+        # 1. eps（一株利益）の更新日 (YYYY/MM) からの抽出を試みる
+        eps_update_m = re.search(r'\"?eps\"?:\{[^{}]*?\"?updateDate\"?:\s*\"?(\d{4})/(\d{2})\"?', json_text)
+        if eps_update_m:
+            settlement_month = f"{int(eps_update_m.group(2))}月"
         else:
-            data['settlement_month'] = f"{int(month_m.group(1))}月"
+            # 2. bps（一株純資産）の更新日からの抽出を試みる
+            bps_update_m = re.search(r'\"?bps\"?:\{[^{}]*?\"?updateDate\"?:\s*\"?(\d{4})/(\d{2})\"?', json_text)
+            if bps_update_m:
+                settlement_month = f"{int(bps_update_m.group(2))}月"
+            else:
+                # 3. 従来のフォールバック
+                date_m = re.search(r'\"?date\"?:\s*\"?(\d{4})(\d{2})\"?', json_text)
+                if date_m:
+                    settlement_month = f"{int(date_m.group(2))}月"
+        
+        data['settlement_month'] = settlement_month
 
         # 初期値設定
         data.update({
@@ -706,6 +717,16 @@ class USStockScraper(BaseScraper):
                 div_rate = info.get("dividendRate") or info.get("trailingAnnualDividendRate")
                 if div_rate is not None:
                     data["annual_dividend"] = float(div_rate)
+                
+                # 決算月のフォールバック補完 (yfinanceのlastFiscalYearEndを利用)
+                if data.get('settlement_month') == "N/A" or not data.get('settlement_month'):
+                    last_fye = info.get("lastFiscalYearEnd")
+                    if last_fye:
+                        try:
+                            # タイムスタンプから決算月を取得
+                            dt = datetime.fromtimestamp(last_fye)
+                            data['settlement_month'] = f"{dt.month}月"
+                        except: pass
         except Exception as e:
             logger.warning(f"Failed to fetch yfinance data for {code}: {e}")
 

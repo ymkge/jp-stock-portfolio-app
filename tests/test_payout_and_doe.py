@@ -67,3 +67,62 @@ def test_us_stock_payout_ratio_calculation_in_enrich():
     
     enriched = _enrich_stock_data(merged_data)
     assert enriched["payout_ratio"] == 30.0  # 1.2% * 25 = 30%
+
+def test_payout_ratio_scoring_in_calculate_score():
+    from app import calculate_score
+    
+    # 1. 適正レンジ (20.0% 〜 60.0%) の場合、+1 点が加算される
+    stock_in_range = {
+        "per": "15.0",
+        "pbr": "1.0",
+        "roe": "10.0",
+        "yield": "3.0",
+        "consecutive_increase_years": 0,
+        "payout_ratio": "35.0"  # 範囲内
+    }
+    score, details = calculate_score(stock_in_range)
+    # PER(1), PBR(1), ROE(1), 利回り(1), consecutive_increase(0) + payout_ratio(1) = 5
+    assert details["payout_ratio"] == 1
+    assert score == 5
+
+    # 2. 範囲外 (60.0% 超) の場合、加算されない (0点)
+    stock_over_range = {
+        "per": "15.0",
+        "pbr": "1.0",
+        "roe": "10.0",
+        "yield": "3.0",
+        "consecutive_increase_years": 0,
+        "payout_ratio": "65.0"  # 範囲外
+    }
+    score, details = calculate_score(stock_over_range)
+    assert details["payout_ratio"] == 0
+    assert score == 4
+
+    # 3. 範囲外 (20.0% 未満) の場合、加算されない (0点)
+    stock_under_range = {
+        "per": "15.0",
+        "pbr": "1.0",
+        "roe": "10.0",
+        "yield": "3.0",
+        "consecutive_increase_years": 0,
+        "payout_ratio": "15.0"  # 範囲外
+    }
+    score, details = calculate_score(stock_under_range)
+    assert details["payout_ratio"] == 0
+    assert score == 4
+
+    # 4. データ欠損 (N/A) の場合、加算されない (0点) が、is_reliable には影響しない
+    stock_na = {
+        "per": "15.0",
+        "pbr": "1.0",
+        "roe": "10.0",
+        "yield": "3.0",
+        "consecutive_increase_years": 0,
+        "payout_ratio": "N/A"
+    }
+    score, details = calculate_score(stock_na)
+    assert details["payout_ratio"] == 0
+    assert "配当性向" in details["missing_items"]
+    assert details["is_reliable"] == True  # 配当性向は is_reliable に影響しない
+    assert score == 4
+

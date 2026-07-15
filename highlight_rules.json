@@ -15,7 +15,9 @@
   },
   "payout_ratio": {
     "safe_max": 50.0,
-    "warning_max": 80.0
+    "warning_max": 80.0,
+    "score_min": 20.0,
+    "score_max": 60.0
   },
   "doe": {
     "good_min": 3.0

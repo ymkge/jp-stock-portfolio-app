@@ -309,9 +309,10 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     is_reliable = details.get("is_reliable", True)
     missing_items = details.get("missing_items", [])
 
-    # ファンダメンタルズスコアの合計（10点満点）
+    # ファンダメンタルズスコアの合計（11点満点）
     f_score = details.get("per", 0) + details.get("pbr", 0) + details.get("roe", 0) + \
-              details.get("yield", 0) + details.get("consecutive_increase", 0)
+              details.get("yield", 0) + details.get("consecutive_increase", 0) + \
+              details.get("payout_ratio", 0)
 
     # 閾値を設定から取得
     f_min = get_config("buy_signal.thresholds.fundamental_min", 3)
@@ -660,7 +661,8 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
 
         # ダイヤモンド（優良銘柄）判定を独立して保持
         f_score = details.get("per", 0) + details.get("pbr", 0) + details.get("roe", 0) + \
-                  details.get("yield", 0) + details.get("consecutive_increase", 0)
+                  details.get("yield", 0) + details.get("consecutive_increase", 0) + \
+                  details.get("payout_ratio", 0)
         f_diamond = get_config("buy_signal.thresholds.fundamental_diamond", 4)
         merged_data["is_diamond"] = f_score >= f_diamond
 
@@ -801,6 +803,7 @@ def calculate_consecutive_dividend_increase(dividend_history: dict) -> int:
 def calculate_score(stock_data: dict) -> tuple[int, dict]:
     details = {
         "per": 0, "pbr": 0, "roe": 0, "yield": 0, "consecutive_increase": 0,
+        "payout_ratio": 0,
         "trend_short": 0, "trend_medium": 0, "trend_long": 0, "trend_signal": 0,
         "gc_25_75": 0, "gc_75_200": 0,
         "fibonacci": 0, "rci": 0, "range_yearly": 0,
@@ -870,6 +873,20 @@ def calculate_score(stock_data: dict) -> tuple[int, dict]:
         if increase_years >= get_config("consecutive_increase.good", 3): details["consecutive_increase"] += 1
         if increase_years >= get_config("consecutive_increase.excellent", 7): details["consecutive_increase"] += 1
     except (ValueError, TypeError): pass
+
+    try:
+        payout_raw = stock_data.get("payout_ratio", "N/A")
+        if payout_raw in [None, "N/A", "--", ""]:
+            missing_items.append("配当性向")
+        else:
+            payout_val = float(str(payout_raw).replace('%', '').replace(',', ''))
+            is_calculable = True
+            payout_min = get_config("payout_ratio.score_min", 20.0)
+            payout_max = get_config("payout_ratio.score_max", 60.0)
+            if payout_min <= payout_val <= payout_max:
+                details["payout_ratio"] = 1
+    except (ValueError, TypeError):
+        missing_items.append("配当性向")
 
     # --- トレンド評価 ---
     if get_config("trend.enabled", False):

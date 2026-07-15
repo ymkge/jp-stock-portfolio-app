@@ -818,7 +818,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const cls = i < fundamentalScore ? 'score-fundamental' : (i < score ? 'score-trend' : 'score-empty');
             html += `<span class="${cls}">${i < score ? '★' : '☆'}</span>`;
         }
-        const tooltip = `合計: ${score}/15 (PER: ${details.per||0}, PBR: ${details.pbr||0}, ROE: ${details.roe||0}, 利回り: ${details.yield||0}, 増配: ${details.consecutive_increase||0}, 短中トレンド: ${(details.trend_short||0)+(details.trend_medium||0)+(details.trend_signal||0)}, 200日線: ${details.trend_long||0}, 年間位置: ${details.range_yearly||0})`;
+        const tooltip = `合計: ${score} (PER: ${details.per||0}, PBR: ${details.pbr||0}, ROE: ${details.roe||0}, 利回り: ${details.yield||0}, 増配: ${details.consecutive_increase||0}, 配当性向: ${details.payout_ratio||0}, 短中トレンド: ${(details.trend_short||0)+(details.trend_medium||0)+(details.trend_signal||0)}, 200日線: ${details.trend_long||0}, 年間位置: ${details.range_yearly||0})`;
         const warning = details.is_reliable === false ? `<span class="score-unreliable-icon" title="不完全: ${details.missing_items.join(', ')}">⚠️</span>` : '';
         return `<span class="score-container" title="${tooltip}">${html}</span>${warning}`;
     }
@@ -956,7 +956,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch(url, { method: holdingIdInput.value ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
             if (!res.ok) throw new Error('保存失敗');
-            showAlert('保有情報を保存しました。', 'success'); window.appState.clearState(); await fetchAndRenderAllData(true);
+            showAlert('保有情報を保存しました。', 'success'); window.appState.clearState(); await fetchAndRenderAllData(false);
             const asset = allAssetsData.find(a => a.code === currentManagingCode); if (asset) renderHoldingsList(asset.holdings, asset.asset_type);
             hideHoldingForm();
         } catch (err) { showAlert(err.message, 'danger'); }
@@ -965,7 +965,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!confirm('削除しますか？')) return;
         try {
             const res = await fetch(`/api/holdings/${id}`, { method: 'DELETE' }); if (!res.ok) throw new Error('削除失敗');
-            showAlert('削除しました。', 'success'); window.appState.clearState(); await fetchAndRenderAllData(true);
+            showAlert('削除しました。', 'success'); window.appState.clearState(); await fetchAndRenderAllData(false);
             const asset = allAssetsData.find(a => a.code === currentManagingCode); if (asset) renderHoldingsList(asset.holdings, asset.asset_type);
         } catch (err) { showAlert(err.message, 'danger'); }
     }
@@ -977,7 +977,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch('/api/stocks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) });
             const d = await res.json(); showAlert(d.message, d.status === 'success' ? 'success' : (d.status === 'exists' ? 'warning' : 'danger'));
-            if (d.status === 'success') { window.appState.clearState(); await fetchAndRenderAllData(true); }
+            if (d.status === 'success') { window.appState.clearState(); await fetchAndRenderAllData(false); }
             assetCodeInput.value = '';
         } catch (err) { showAlert('追加エラー', 'danger'); }
     });
@@ -1032,7 +1032,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch('/api/stocks/bulk-delete', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codes }) });
             if (!res.ok) throw new Error('削除失敗');
-            showAlert('削除しました', 'success'); window.appState.clearState(); await fetchAndRenderAllData(true);
+            showAlert('削除しました', 'success'); window.appState.clearState(); await fetchAndRenderAllData(false);
         } catch (err) { showAlert(err.message, 'danger'); }
     });
 
@@ -1190,7 +1190,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     // ポートフォリオデータの再読み込みと描画
                     window.appState.clearState();
-                    await fetchAndRenderAllData(true);
+                    await fetchAndRenderAllData(false);
                 } catch (err) {
                     showAlert(err.message, 'danger');
                 }
@@ -1215,7 +1215,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     // テーブル描画のバッジを消すために再描画
                     window.appState.clearState();
-                    await fetchAndRenderAllData(true);
+                    await fetchAndRenderAllData(false);
                 } catch (err) {
                     showAlert(err.message, 'danger');
                 }

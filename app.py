@@ -1146,46 +1146,53 @@ async def _get_processed_asset_data(force: bool = False) -> Tuple[List[Dict[str,
             # 1a. メモリキャッシュ確認
             if scraper_instance.is_cached(code):
                 mem_data = await asyncio.to_thread(scraper_instance.fetch_data, code)
-                # 自己修復判定: メモリキャッシュに新しいキーが含まれているか確認
-                has_new_keys = True
-                if asset_type == 'jp_stock':
-                    if not mem_data or "bps" not in mem_data or "payout_ratio" not in mem_data:
-                        has_new_keys = False
-                elif asset_type == 'us_stock':
-                    if not mem_data or "payout_ratio" not in mem_data:
-                        has_new_keys = False
-                
-                if has_new_keys:
+                if mem_data:
+                    mem_data = mem_data.copy()
+                    # キーが欠損している場合はデフォルト値で自己修復(補完)し、キャッシュを有効とする
+                    if asset_type == 'jp_stock':
+                        if "bps" not in mem_data:
+                            mem_data["bps"] = "N/A"
+                        if "payout_ratio" not in mem_data:
+                            mem_data["payout_ratio"] = "N/A"
+                            mem_data["payout_ratio_history"] = []
+                    elif asset_type == 'us_stock':
+                        if "payout_ratio" not in mem_data:
+                            mem_data["payout_ratio"] = "N/A"
+                            mem_data["payout_ratio_history"] = []
+
                     cached_data = mem_data
+                    # メモリキャッシュオブジェクト自身も更新データに差し替え
+                    scraper_instance.cache[code] = mem_data
                     source = "Memory"
                     is_fresh = True
-                else:
-                    scraper_instance.cache.pop(code, None)
 
             # 1b. DBキャッシュ確認 (メモリにない場合)
             if not cached_data:
                 db_data = db_cache_map.get(code)
                 if db_data:
-                    # 自己修復判定: DBキャッシュに新しいキーが含まれているか確認
-                    has_new_keys = True
+                    db_data = db_data.copy()
+                    # キーが欠損している場合はデフォルト値で自己修復(補完)し、キャッシュを有効とする
                     if asset_type == 'jp_stock':
-                        if "bps" not in db_data or "payout_ratio" not in db_data:
-                            has_new_keys = False
+                        if "bps" not in db_data:
+                            db_data["bps"] = "N/A"
+                        if "payout_ratio" not in db_data:
+                            db_data["payout_ratio"] = "N/A"
+                            db_data["payout_ratio_history"] = []
                     elif asset_type == 'us_stock':
                         if "payout_ratio" not in db_data:
-                            has_new_keys = False
-                    
-                    if has_new_keys:
-                        threshold_time = get_cache_threshold_time(asset_type, now_jst, market_times)
-                        updated_at_str = db_data.get("_db_updated_at_jst")
-                        if updated_at_str:
-                            try:
-                                updated_at = datetime.fromisoformat(updated_at_str).replace(tzinfo=history_manager.JST)
-                                if updated_at >= threshold_time or (now_jst - updated_at).total_seconds() < 3600:
-                                    is_fresh = True
-                                    cached_data = db_data
-                                    source = "DB"
-                            except ValueError: pass
+                            db_data["payout_ratio"] = "N/A"
+                            db_data["payout_ratio_history"] = []
+
+                    threshold_time = get_cache_threshold_time(asset_type, now_jst, market_times)
+                    updated_at_str = db_data.get("_db_updated_at_jst")
+                    if updated_at_str:
+                        try:
+                            updated_at = datetime.fromisoformat(updated_at_str).replace(tzinfo=history_manager.JST)
+                            if updated_at >= threshold_time or (now_jst - updated_at).total_seconds() < 3600:
+                                is_fresh = True
+                                cached_data = db_data
+                                source = "DB"
+                        except ValueError: pass
 
         # 鮮度が高いキャッシュがあれば、セマフォを確保して即座に返す (待機なし)
         if is_fresh and cached_data:

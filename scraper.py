@@ -545,6 +545,7 @@ class JPStockScraper(BaseScraper):
         return data
 
 class InvestTrustScraper(BaseScraper):
+    @cachedmethod(lambda self: self.cache, key=lambda self, code, **kwargs: code)
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
         logger.info(f"Fetching Invest Trust: {code}")
         res = self._make_request(f"https://finance.yahoo.co.jp/quote/{code}")
@@ -600,6 +601,7 @@ class InvestTrustScraper(BaseScraper):
         return data
 
 class USStockScraper(BaseScraper):
+    @cachedmethod(lambda self: self.cache, key=lambda self, code, **kwargs: code)
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
         logger.info(f"Fetching US Stock: {code}")
         res = self._make_request(f"https://finance.yahoo.co.jp/quote/{code}")
@@ -733,6 +735,7 @@ class USStockScraper(BaseScraper):
         return data
 
 class IndexScraper(BaseScraper):
+    @cachedmethod(lambda self: self.cache, key=lambda self, code, **kwargs: code)
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
         logger.info(f"Fetching Market Index: {code}")
         res = self._make_request(f"https://finance.yahoo.co.jp/quote/{code}")

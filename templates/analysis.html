@@ -113,28 +113,28 @@
                 </div>
                 <div class="analysis-right-column">
                     <section class="portfolio-list card">
-                        <div class="card-header" style="flex-wrap: wrap; gap: 10px;">
+                        <div class="card-header analysis-list-header">
                             <div class="analysis-tabs">
                                 <button class="analysis-tab-btn active" data-tab="details">銘柄詳細</button>
                                 <button class="analysis-tab-btn" data-tab="industry-kpi">業種別KPI</button>
                             </div>
-                            <div id="details-filter-controls" class="filter-controls" style="display: flex; align-items: center; gap: 15px; flex-grow: 1;">
-                                <input type="text" id="analysis-filter-input" placeholder="コード/銘柄名">
-                                <div class="searchable-select-wrapper">
-                                    <input type="text" id="analysis-industry-search" class="select-search-input" placeholder="業種検索...">
-                                    <select id="industry-filter"><option value="">すべての業種</option></select>
-                                </div>
-                                <select id="account-type-filter"><option value="">すべての口座種別</option></select>
-                                <select id="security-company-filter"><option value="">すべての証券会社</option></select>
-                                <select id="buy-signal-filter">
-                                    <option value="">すべてのシグナル</option>
-                                    <option value="strict-dip">✨ 買い場（反転狙い）</option>
-                                    <option value="strict-low">🎁 格安（じっくり仕込み）</option>
-                                    <option value="overheated">🚫 リスク（今は買わない）</option>
-                                </select>
-                                <button id="btn-recent-filter" class="btn-outline btn-sm" style="white-space: nowrap; display: none;">🔍 最近の銘柄</button>
-                            </div>
                             <button id="download-analysis-csv-button">この一覧をCSVでダウンロード</button>
+                        </div>
+                        <div id="details-filter-controls" class="analysis-filter-bar">
+                            <input type="text" id="analysis-filter-input" placeholder="コード/銘柄名">
+                            <div class="searchable-select-wrapper">
+                                <input type="text" id="analysis-industry-search" class="select-search-input" placeholder="業種検索...">
+                                <select id="industry-filter"><option value="">すべての業種</option></select>
+                            </div>
+                            <select id="account-type-filter"><option value="">すべての口座種別</option></select>
+                            <select id="security-company-filter"><option value="">すべての証券会社</option></select>
+                            <select id="buy-signal-filter">
+                                <option value="">すべてのシグナル</option>
+                                <option value="strict-dip">✨ 買い場（反転狙い）</option>
+                                <option value="strict-low">🎁 格安（じっくり仕込み）</option>
+                                <option value="overheated">🚫 リスク（今は買わない）</option>
+                            </select>
+                            <button id="btn-recent-filter" class="btn-outline btn-sm" style="white-space: nowrap; display: none;">🔍 最近の銘柄</button>
                         </div>
                         <div class="table-container" id="details-tab-content">
                             <table id="analysis-table">

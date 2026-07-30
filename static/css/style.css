@@ -1424,9 +1424,65 @@ button {
     box-sizing: border-box;
 }
 
+.analysis-list-header {
+    height: auto !important;
+    min-height: 55px;
+    padding: 0.75rem 1.5rem;
+}
+
 .card-header h3 {
     border-bottom: none;
     margin-bottom: 0;
+}
+
+/* --- Analysis Page Filter Bar --- */
+.analysis-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 12px;
+    padding: 0.75rem 1.5rem;
+    background-color: var(--header-bg-color, #f8f9fa);
+    border-bottom: 1px solid var(--border-color);
+    box-sizing: border-box;
+}
+
+[data-theme="dark"] .analysis-filter-bar {
+    background-color: rgba(255, 255, 255, 0.04);
+}
+
+.analysis-filter-bar input[type="text"],
+.analysis-filter-bar select {
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: var(--card-bg, #ffffff);
+    color: var(--text-color);
+    outline: none;
+    box-sizing: border-box;
+}
+
+.analysis-filter-bar input[type="text"]:focus,
+.analysis-filter-bar select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(78, 115, 223, 0.2);
+}
+
+.analysis-filter-bar #analysis-filter-input {
+    min-width: 120px;
+    flex: 1 1 130px;
+}
+
+.analysis-filter-bar select {
+    min-width: 120px;
+    flex: 1 1 130px;
+}
+
+.analysis-filter-bar .searchable-select-wrapper {
+    flex: 1 1 170px;
+    min-width: 170px;
+    background-color: var(--card-bg, #ffffff);
 }
 
 #download-analysis-csv-button {

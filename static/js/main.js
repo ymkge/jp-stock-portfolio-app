@@ -453,7 +453,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (asset.payout_ratio === undefined || asset.payout_ratio === null || asset.payout_ratio === 'N/A' || asset.payout_ratio === '--' || asset.payout_ratio === '-') {
                     return false;
                 }
-                const val = parseFloat(asset.payout_ratio);
+                const rawStr = String(asset.payout_ratio).replace(/%/g, '').trim();
+                const val = parseFloat(rawStr);
                 if (isNaN(val)) return false;
 
                 if (selectedPayoutRatio === '20-60') {
@@ -1031,7 +1032,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     signalFilter.addEventListener('change', filterAndRender);
-    if (payoutRatioFilter) payoutRatioFilter.addEventListener('change', filterAndRender);
+    if (payoutRatioFilter) {
+        ['change', 'input'].forEach(evt => payoutRatioFilter.addEventListener(evt, filterAndRender));
+    }
     showOnlyManagedAssetsCheckbox.addEventListener('input', filterAndRender);
     
     document.querySelectorAll('.select-all-assets').forEach(checkbox => checkbox.addEventListener('change', (e) => {

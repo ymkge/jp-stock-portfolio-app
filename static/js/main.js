@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const filterInput = document.getElementById('filter-input');
     const showOnlyManagedAssetsCheckbox = document.getElementById('show-only-managed-assets-checkbox');
     const signalFilter = document.getElementById('signal-filter');
+    const payoutRatioFilter = document.getElementById('payout-ratio-filter');
     const industryFilter = document.getElementById('industry-filter');
     const recentStocksToggleBtn = document.getElementById('recent-stocks-toggle-btn');
     const tabNav = document.querySelector('.tab-nav');
@@ -429,6 +430,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const showOnlyManaged = showOnlyManagedAssetsCheckbox.checked;
         const selectedSignal = signalFilter.value;
         const selectedIndustry = industryFilter.value;
+        const selectedPayoutRatio = payoutRatioFilter ? payoutRatioFilter.value : '';
         
         let filteredAssets = allAssetsData.filter(asset => asset.asset_type === activeTab);
 
@@ -443,6 +445,26 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 filteredAssets = filteredAssets.filter(asset => asset.industry === selectedIndustry);
             }
+        }
+
+        // 配当性向フィルタの適用 (国内株および米国株タブ)
+        if ((activeTab === 'jp_stock' || activeTab === 'us_stock') && selectedPayoutRatio) {
+            filteredAssets = filteredAssets.filter(asset => {
+                if (asset.payout_ratio === undefined || asset.payout_ratio === null || asset.payout_ratio === 'N/A' || asset.payout_ratio === '--' || asset.payout_ratio === '-') {
+                    return false;
+                }
+                const val = parseFloat(asset.payout_ratio);
+                if (isNaN(val)) return false;
+
+                if (selectedPayoutRatio === '20-60') {
+                    return val >= 20.0 && val <= 60.0;
+                } else if (selectedPayoutRatio === 'under-20') {
+                    return val < 20.0;
+                } else if (selectedPayoutRatio === 'over-60') {
+                    return val > 60.0;
+                }
+                return true;
+            });
         }
 
         // シグナルフィルタの適用 (国内株タブのみ)
@@ -1009,6 +1031,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     signalFilter.addEventListener('change', filterAndRender);
+    if (payoutRatioFilter) payoutRatioFilter.addEventListener('change', filterAndRender);
     showOnlyManagedAssetsCheckbox.addEventListener('input', filterAndRender);
     
     document.querySelectorAll('.select-all-assets').forEach(checkbox => checkbox.addEventListener('change', (e) => {

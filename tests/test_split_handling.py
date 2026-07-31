@@ -211,3 +211,45 @@ def test_delete_stock_history_all():
     # すべてのデータが削除されているはず
     assert price_count == 0
     assert analysis_count == 0
+
+def test_get_all_split_alerts():
+    code1 = "1111"
+    code2 = "2222"
+    
+    # 複数追加
+    history_manager.add_split_alert(code1, 2.0)
+    history_manager.add_split_alert(code2, 5.0)
+    
+    # code1をappliedに更新
+    history_manager.update_split_alert_status(code1, "applied")
+    
+    # get_pending_split_alerts には code2 のみ
+    pending = history_manager.get_pending_split_alerts()
+    assert len(pending) == 1
+    assert pending[0]["code"] == code2
+    
+    # get_all_split_alerts には両方含まれる
+    all_alerts = history_manager.get_all_split_alerts()
+    assert len(all_alerts) == 2
+    codes = [a["code"] for a in all_alerts]
+    assert code1 in codes
+    assert code2 in codes
+
+def test_api_get_split_history():
+    from fastapi.testclient import TestClient
+    from app import app
+
+    code = "3333"
+    history_manager.add_split_alert(code, 3.0)
+    history_manager.update_split_alert_status(code, "applied")
+
+    client = TestClient(app)
+    response = client.get("/api/split-history")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    target = [x for x in data if x["code"] == code]
+    assert len(target) == 1
+    assert target[0]["ratio"] == 3.0
+    assert target[0]["status"] == "applied"
+

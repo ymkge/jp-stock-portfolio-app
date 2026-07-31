@@ -1249,6 +1249,93 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ==========================================
+    // 株式分割履歴モーダル関連ロジック
+    // ==========================================
+    const btnShowSplitHistory = document.getElementById('btn-show-split-history');
+    const splitHistoryModal = document.getElementById('split-history-modal');
+    const splitHistoryContainer = document.getElementById('split-history-container');
+    const btnCloseSplitHistoryModal = document.getElementById('btn-close-split-history-modal');
+    const btnCloseSplitHistoryModalFooter = document.getElementById('btn-close-split-history-modal-footer');
+
+    async function loadAndShowSplitHistory() {
+        if (!splitHistoryContainer) return;
+        splitHistoryContainer.innerHTML = '<p style="text-align: center; color: #6c757d;">読み込み中...</p>';
+        if (splitHistoryModal) splitHistoryModal.classList.remove('hidden');
+
+        try {
+            const res = await fetch('/api/split-history');
+            if (!res.ok) throw new Error('分割履歴の取得に失敗しました');
+            const historyData = await res.json();
+
+            if (historyData.length === 0) {
+                splitHistoryContainer.innerHTML = '<p style="text-align: center; color: #6c757d;">過去の株式分割・併合履歴はありません。</p>';
+                return;
+            }
+
+            let tableHtml = `
+                <table class="split-detail-table" style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid var(--border-color, #e2e8f0);">
+                            <th style="padding: 8px; text-align: left;">銘柄</th>
+                            <th style="padding: 8px; text-align: center;">比率</th>
+                            <th style="padding: 8px; text-align: center;">検知日</th>
+                            <th style="padding: 8px; text-align: center;">状況</th>
+                            <th style="padding: 8px; text-align: center;">更新日</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            historyData.forEach(item => {
+                let statusBadge = '';
+                if (item.status === 'applied') {
+                    statusBadge = '<span class="split-badge-status applied" style="background: #28a745; color: #fff; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">✅ 適用済み</span>';
+                } else if (item.status === 'dismissed') {
+                    statusBadge = '<span class="split-badge-status dismissed" style="background: #6c757d; color: #fff; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">🚫 無視</span>';
+                } else {
+                    statusBadge = '<span class="split-badge-status pending" style="background: #ffc107; color: #212529; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">⏳ 保留中</span>';
+                }
+
+                const updatedDateStr = item.updated_at_jst ? item.updated_at_jst.split('T')[0] : item.detected_date;
+
+                tableHtml += `
+                    <tr style="border-bottom: 1px solid var(--border-color, #e2e8f0);">
+                        <td style="padding: 8px;"><strong>${item.name}</strong> (${item.code})</td>
+                        <td style="padding: 8px; text-align: center;">1 : ${item.ratio}</td>
+                        <td style="padding: 8px; text-align: center;">${item.detected_date}</td>
+                        <td style="padding: 8px; text-align: center;">${statusBadge}</td>
+                        <td style="padding: 8px; text-align: center; font-size: 0.85rem; color: #6c757d;">${updatedDateStr}</td>
+                    </tr>
+                `;
+            });
+
+            tableHtml += `
+                    </tbody>
+                </table>
+            `;
+            splitHistoryContainer.innerHTML = tableHtml;
+
+        } catch (err) {
+            console.error('Failed to fetch split history:', err);
+            splitHistoryContainer.innerHTML = `<p style="color: var(--danger-color, #e53e3e); text-align: center;">${err.message}</p>`;
+        }
+    }
+
+    const closeSplitHistoryModal = () => {
+        if (splitHistoryModal) splitHistoryModal.classList.add('hidden');
+    };
+
+    if (btnShowSplitHistory) btnShowSplitHistory.addEventListener('click', loadAndShowSplitHistory);
+    if (btnCloseSplitHistoryModal) btnCloseSplitHistoryModal.addEventListener('click', closeSplitHistoryModal);
+    if (btnCloseSplitHistoryModalFooter) btnCloseSplitHistoryModalFooter.addEventListener('click', closeSplitHistoryModal);
+    if (splitHistoryModal) {
+        splitHistoryModal.addEventListener('click', (e) => {
+            if (e.target === splitHistoryModal) closeSplitHistoryModal();
+        });
+    }
+
+
     // --- 初期実行 ---
     const initialCachedState = window.appState.getState('portfolio');
     if (initialCachedState) {

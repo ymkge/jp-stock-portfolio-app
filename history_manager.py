@@ -623,6 +623,23 @@ def get_pending_split_alerts() -> List[Dict[str, Any]]:
         logger.error(f"Error fetching pending split alerts: {e}")
         return []
 
+def get_all_split_alerts() -> List[Dict[str, Any]]:
+    """すべての株式分割アラート履歴（pending, applied, dismissed含む）を取得する"""
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT code, ratio, detected_date, status, updated_at_jst 
+                FROM split_alerts 
+                ORDER BY updated_at_jst DESC
+            """)
+            return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Error fetching all split alerts: {e}")
+        return []
+
+
 def has_pending_split_alert(code: str) -> bool:
     """指定銘柄に保留中の分割アラートがあるか確認する"""
     try:

@@ -36,6 +36,7 @@
                     </div>
                 </div>
                 <div class="nav-right">
+                    <button id="btn-show-split-history" class="btn-outline">✂️ 分割履歴</button>
                     <button id="refresh-all-button" class="btn-outline">全件更新</button>
                     <a href="/analysis" class="nav-link-btn btn-primary">📊 分析ページ</a>
                     <label class="theme-switch" for="dark-mode-toggle">
@@ -245,6 +246,25 @@
             </div>
             <div class="modal-footer" style="padding-top: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 10px;">
                 <button type="button" id="btn-close-split-modal-footer" class="btn-outline">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 株式分割履歴モーダル -->
+    <div id="split-history-modal" class="modal-overlay hidden">
+        <div class="modal-content large-modal" style="max-width: 700px;">
+            <div class="modal-header">
+                <h2>✂️ 株式分割・併合 履歴一覧</h2>
+                <button type="button" id="btn-close-split-history-modal" class="modal-close" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 20px 0;">
+                <p style="margin-bottom: 15px; font-size: 0.95rem;">過去に検知された株式分割・併合のアラートおよび適用履歴の一覧です。</p>
+                <div id="split-history-container" style="max-height: 400px; overflow-y: auto;">
+                    <!-- JSで動的に一覧テーブルを生成 -->
+                </div>
+            </div>
+            <div class="modal-footer" style="padding-top: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end;">
+                <button type="button" id="btn-close-split-history-modal-footer" class="btn-outline">閉じる</button>
             </div>
         </div>
     </div>

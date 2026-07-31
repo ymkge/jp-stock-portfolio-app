@@ -1875,3 +1875,25 @@ async def dismiss_split_alert(req: DismissSplitRequest):
     except Exception as e:
         logger.error(f"Error dismissing split alert: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/split-history")
+async def get_split_history():
+    """過去すべての株式分割・併合履歴を取得する"""
+    try:
+        alerts = history_manager.get_all_split_alerts()
+        results = []
+        for alert in alerts:
+            code = alert["code"]
+            name = get_stock_name_from_db(code) or code
+            results.append({
+                "code": code,
+                "name": name,
+                "ratio": alert["ratio"],
+                "detected_date": alert["detected_date"],
+                "status": alert["status"],
+                "updated_at_jst": alert["updated_at_jst"]
+            })
+        return results
+    except Exception as e:
+        logger.error(f"Error fetching split history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

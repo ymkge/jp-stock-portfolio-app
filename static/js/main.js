@@ -1357,9 +1357,36 @@ document.addEventListener('DOMContentLoaded', () => {
     const llmResultContainer = document.getElementById('llm-result-container');
     const llmModalTitle = document.getElementById('llm-modal-title');
 
+    const policyModalAlert = document.getElementById('policy-modal-alert');
+
+    function showPolicyModalAlert(message, type = 'info') {
+        if (!policyModalAlert) return;
+        policyModalAlert.textContent = message;
+        policyModalAlert.classList.remove('hidden');
+        
+        const isDark = document.documentElement.classList.contains('dark-mode') || document.body.classList.contains('dark-mode');
+        if (type === 'info') {
+            policyModalAlert.style.backgroundColor = isDark ? '#1e3a8a' : '#d1ecf1';
+            policyModalAlert.style.color = isDark ? '#93c5fd' : '#0c5460';
+            policyModalAlert.style.borderColor = isDark ? '#2563eb' : '#bee5eb';
+        } else if (type === 'success') {
+            policyModalAlert.style.backgroundColor = isDark ? '#14532d' : '#d4edda';
+            policyModalAlert.style.color = isDark ? '#86efac' : '#155724';
+            policyModalAlert.style.borderColor = isDark ? '#166534' : '#c3e6cb';
+        } else if (type === 'danger') {
+            policyModalAlert.style.backgroundColor = isDark ? '#7f1d1d' : '#f8d7da';
+            policyModalAlert.style.color = isDark ? '#fca5a5' : '#721c24';
+            policyModalAlert.style.borderColor = isDark ? '#991b1b' : '#f5c6cb';
+        }
+        setTimeout(() => {
+            if (policyModalAlert) policyModalAlert.classList.add('hidden');
+        }, 5000);
+    }
+
     // 1. 設定モーダル開閉
     if (btnOpenPolicyConfig) {
         btnOpenPolicyConfig.addEventListener('click', async () => {
+            if (policyModalAlert) policyModalAlert.classList.add('hidden');
             try {
                 const res = await fetch('/api/investment-policy');
                 if (res.ok) {
@@ -1420,10 +1447,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     showAlert('投資方針およびAI設定を保存しました。', 'success');
                     closePolicyModal();
                 } else {
+                    showPolicyModalAlert('設定の保存に失敗しました。', 'danger');
                     showAlert('設定の保存に失敗しました。', 'danger');
                 }
             } catch (e) {
                 console.error('Error saving policy:', e);
+                showPolicyModalAlert('設定の保存中に通信エラーが発生しました。', 'danger');
                 showAlert('設定の保存中に通信エラーが発生しました。', 'danger');
             }
         });
@@ -1442,6 +1471,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (res.ok) {
                     const config = await res.json();
                     policyPromptTextarea.value = config.policy_prompt || '';
+                    showPolicyModalAlert('✓ プロンプトを初期デフォルト値にリセットしました。', 'info');
                     showAlert('プロンプトを初期デフォルト値にリセットしました。', 'info');
                 }
             } catch (e) {

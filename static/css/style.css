@@ -355,7 +355,7 @@ button {
     position: fixed;
     top: 20px;
     right: 20px;
-    z-index: 1050;
+    z-index: 2100; /* モーダル(z-index: 1000)よりも手前に表示 */
     width: 350px;
 }
 
@@ -364,10 +364,12 @@ button {
     padding: 0.75rem 1.25rem;
     margin-bottom: 1rem;
     border: 1px solid transparent;
-    border-radius: 0.25rem;
+    border-radius: 0.35rem;
     opacity: 0;
     transform: translateX(100%);
     transition: opacity 0.3s, transform 0.4s;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    font-weight: 500;
 }
 
 .alert.show {
@@ -396,6 +398,30 @@ button {
     color: #856404;
     background-color: #fff3cd;
     border-color: #ffeeba;
+}
+
+.alert-info {
+    color: #0c5460;
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+}
+
+[data-theme="dark"] .alert-info {
+    color: #93c5fd;
+    background-color: #1e3a8a;
+    border-color: #2563eb;
+}
+
+[data-theme="dark"] .alert-success {
+    color: #86efac;
+    background-color: #14532d;
+    border-color: #166534;
+}
+
+[data-theme="dark"] .alert-danger {
+    color: #fca5a5;
+    background-color: #7f1d1d;
+    border-color: #991b1b;
 }
 
 .main-header {

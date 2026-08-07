@@ -14,6 +14,9 @@ venv/
 portfolio.json
 portfolio.json.lock
 recent_stocks.json
+investment_policy.json
+investment_policy.json.lock
+investment_policy.json.tmp
 portfolio_history.db
 .agents/
 

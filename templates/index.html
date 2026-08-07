@@ -36,6 +36,7 @@
                     </div>
                 </div>
                 <div class="nav-right">
+                    <button id="btn-open-policy-config" class="btn-outline">⚙️ 投資方針</button>
                     <button id="btn-show-split-history" class="btn-outline">✂️ 分割履歴</button>
                     <button id="refresh-all-button" class="btn-outline">全件更新</button>
                     <a href="/analysis" class="nav-link-btn btn-primary">📊 分析ページ</a>
@@ -265,6 +266,66 @@
             </div>
             <div class="modal-footer" style="padding-top: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end;">
                 <button type="button" id="btn-close-split-history-modal-footer" class="btn-outline">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 投資方針 & LLM 設定モーダル -->
+    <div id="investment-policy-modal" class="modal-overlay hidden">
+        <div class="modal-content large-modal" style="max-width: 750px;">
+            <div class="modal-header">
+                <h2>⚙️ 投資方針 & AI診断設定</h2>
+                <button type="button" id="btn-close-policy-modal" class="modal-close" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 15px 0;">
+                <form id="investment-policy-form">
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label for="policy-api-key-input" style="font-weight: bold;">Google AI Studio API Key (Gemini API)</label>
+                        <input type="password" id="policy-api-key-input" placeholder="AIzaSy... (空欄の場合は環境変数 GEMINI_API_KEY を参照)" style="width: 100%; padding: 8px; font-family: monospace;">
+                        <small id="api-key-status-help" style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;"></small>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label for="policy-model-select" style="font-weight: bold;">使用モデル (Google AI Studio 無料枠)</label>
+                        <select id="policy-model-select" style="width: 100%; padding: 8px;">
+                            <option value="gemini-flash-latest">gemini-flash-latest (推奨: 高速・高品質)</option>
+                            <option value="gemini-flash-lite-latest">gemini-flash-lite-latest (超軽量・省トークン)</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <label for="policy-prompt-textarea" style="font-weight: bold; margin: 0;">自分の投資方針プロンプト</label>
+                            <button type="button" id="btn-reset-policy-prompt" class="btn-sm btn-outline" style="font-size: 0.8rem;">🔄 デフォルトに戻す</button>
+                        </div>
+                        <textarea id="policy-prompt-textarea" rows="12" style="width: 100%; padding: 10px; font-family: monospace; font-size: 0.85rem; line-height: 1.4; resize: vertical;" placeholder="あなたの投資方針や銘柄選定ルールを入力してください..."></textarea>
+                    </div>
+                    <div class="modal-footer" style="padding-top: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 10px;">
+                        <button type="button" id="btn-cancel-policy-modal" class="btn-outline">キャンセル</button>
+                        <button type="submit" class="btn-primary">保存する</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI投資方針適合診断 モーダル -->
+    <div id="llm-diagnosis-modal" class="modal-overlay hidden">
+        <div class="modal-content large-modal" style="max-width: 800px;">
+            <div class="modal-header">
+                <h2 id="llm-modal-title">🤖 AI投資方針適合診断</h2>
+                <button type="button" id="btn-close-llm-modal" class="modal-close" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 15px 0;">
+                <div id="llm-loading-container" class="hidden" style="text-align: center; padding: 40px 20px;">
+                    <div class="llm-spinner" style="margin: 0 auto 15px;"></div>
+                    <p style="font-size: 1.05rem; font-weight: 600; color: #3b82f6;">ユーザーの投資方針と銘柄データを照合中...</p>
+                    <p style="font-size: 0.85rem; color: #64748b;">Gemini API が割安度、還元の盾（DOE/累進配当）、事業成長性、立ち回りを総合分析しています</p>
+                </div>
+                <div id="llm-result-container">
+                    <!-- JSで動的に診断結果カードを描画 -->
+                </div>
+            </div>
+            <div class="modal-footer" style="padding-top: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end;">
+                <button type="button" id="btn-close-llm-modal-footer" class="btn-outline">閉じる</button>
             </div>
         </div>
     </div>

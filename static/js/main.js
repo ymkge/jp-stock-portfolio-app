@@ -561,6 +561,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const isDiamond = jpStock.is_diamond || (jpStock.buy_signal && jpStock.buy_signal.is_diamond);
             if (jpStock.buy_signal) nameHtml += renderBuySignalBadge(jpStock.buy_signal, isDiamond);
             if (jpStock.sell_signal) nameHtml += renderSellSignalBadge(jpStock.sell_signal, isDiamond);
+            nameHtml += `<button class="btn-llm-diagnose" data-code="${jpStock.code}" data-asset-type="${jpStock.asset_type || 'jp_stock'}" title="${jpStock.name} (${jpStock.code}) の投資方針適合度をAI診断">🤖 AI診断</button>`;
             createCell(nameHtml + `</div>`);
             createCell(jpStock.industry || 'N/A');
             createCell(renderScoreAsStars(jpStock.score, jpStock.score_details, jpStock.asset_type));
@@ -696,7 +697,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             createCell(`<input type="checkbox" class="asset-checkbox" data-code="${usStock.code}">`);
-            createCell(usStock.code, 'numeric'); createCell(`<a href="https://finance.yahoo.co.jp/quote/${usStock.code}" target="_blank">${usStock.name}</a>`);
+            createCell(usStock.code, 'numeric'); createCell(`<a href="https://finance.yahoo.co.jp/quote/${usStock.code}" target="_blank">${usStock.name}</a> <button class="btn-llm-diagnose" data-code="${usStock.code}" data-asset-type="us_stock" title="${usStock.name} のAI適合診断">🤖 AI診断</button>`);
             createCell(usStock.market || 'N/A'); createCell(usStock.price, 'numeric');
             createCell(`${usStock.change} (${(usStock.change_percent && usStock.change_percent !== 'N/A') ? usStock.change_percent + '%' : 'N/A'})`, 'numeric');
             createCell(formatMarketCap(usStock.market_cap), 'numeric');
@@ -1334,6 +1335,252 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.target === splitHistoryModal) closeSplitHistoryModal();
         });
     }
+
+    // ==========================================
+    // LLM AI Diagnosis & Policy Config (Issue #237)
+    // ==========================================
+    const btnOpenPolicyConfig = document.getElementById('btn-open-policy-config');
+    const investmentPolicyModal = document.getElementById('investment-policy-modal');
+    const btnClosePolicyModal = document.getElementById('btn-close-policy-modal');
+    const btnCancelPolicyModal = document.getElementById('btn-cancel-policy-modal');
+    const investmentPolicyForm = document.getElementById('investment-policy-form');
+    const policyApiKeyInput = document.getElementById('policy-api-key-input');
+    const policyModelSelect = document.getElementById('policy-model-select');
+    const policyPromptTextarea = document.getElementById('policy-prompt-textarea');
+    const btnResetPolicyPrompt = document.getElementById('btn-reset-policy-prompt');
+    const apiKeyStatusHelp = document.getElementById('api-key-status-help');
+
+    const llmDiagnosisModal = document.getElementById('llm-diagnosis-modal');
+    const btnCloseLlmModal = document.getElementById('btn-close-llm-modal');
+    const btnCloseLlmModalFooter = document.getElementById('btn-close-llm-modal-footer');
+    const llmLoadingContainer = document.getElementById('llm-loading-container');
+    const llmResultContainer = document.getElementById('llm-result-container');
+    const llmModalTitle = document.getElementById('llm-modal-title');
+
+    // 1. 設定モーダル開閉
+    if (btnOpenPolicyConfig) {
+        btnOpenPolicyConfig.addEventListener('click', async () => {
+            try {
+                const res = await fetch('/api/investment-policy');
+                if (res.ok) {
+                    const config = await res.json();
+                    policyApiKeyInput.value = '';
+                    policyApiKeyInput.placeholder = config.api_key_masked ? `設定済み (${config.api_key_masked})` : 'AIzaSy... (空欄の場合は環境変数 GEMINI_API_KEY を参照)';
+                    if (apiKeyStatusHelp) {
+                        if (config.has_api_key) {
+                            apiKeyStatusHelp.textContent = config.is_using_env_key ? '✓ 環境変数 GEMINI_API_KEY が検出されました。' : '✓ 画面から保存された APIキー が有効です。';
+                            apiKeyStatusHelp.style.color = '#10b981';
+                        } else {
+                            apiKeyStatusHelp.textContent = '⚠️ APIキーが設定されていません。Google AI Studio から無料キーを取得して設定してください。';
+                            apiKeyStatusHelp.style.color = '#f59e0b';
+                        }
+                    }
+                    policyModelSelect.value = config.selected_model || 'gemini-flash-latest';
+                    policyPromptTextarea.value = config.policy_prompt || '';
+                }
+            } catch (e) {
+                console.error('Failed to load investment policy config:', e);
+            }
+            if (investmentPolicyModal) investmentPolicyModal.classList.remove('hidden');
+        });
+    }
+
+    const closePolicyModal = () => {
+        if (investmentPolicyModal) investmentPolicyModal.classList.add('hidden');
+    };
+    if (btnClosePolicyModal) btnClosePolicyModal.addEventListener('click', closePolicyModal);
+    if (btnCancelPolicyModal) btnCancelPolicyModal.addEventListener('click', closePolicyModal);
+    if (investmentPolicyModal) {
+        investmentPolicyModal.addEventListener('click', (e) => {
+            if (e.target === investmentPolicyModal) closePolicyModal();
+        });
+    }
+
+    // 2. 設定の保存
+    if (investmentPolicyForm) {
+        investmentPolicyForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const apiKeyVal = policyApiKeyInput.value.trim();
+            const modelVal = policyModelSelect.value;
+            const promptVal = policyPromptTextarea.value.trim();
+            
+            try {
+                const payload = {
+                    selected_model: modelVal,
+                    policy_prompt: promptVal
+                };
+                if (apiKeyVal) payload.api_key = apiKeyVal;
+
+                const res = await fetch('/api/investment-policy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    showAlert('投資方針およびAI設定を保存しました。', 'success');
+                    closePolicyModal();
+                } else {
+                    showAlert('設定の保存に失敗しました。', 'danger');
+                }
+            } catch (e) {
+                console.error('Error saving policy:', e);
+                showAlert('設定の保存中に通信エラーが発生しました。', 'danger');
+            }
+        });
+    }
+
+    // 3. プロンプトリセット
+    if (btnResetPolicyPrompt) {
+        btnResetPolicyPrompt.addEventListener('click', async () => {
+            if (!confirm('投資方針プロンプトをデフォルトの「インカムゲイン特化型・リスク管理専門」の内容に戻しますか？')) return;
+            try {
+                const res = await fetch('/api/investment-policy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reset: true })
+                });
+                if (res.ok) {
+                    const config = await res.json();
+                    policyPromptTextarea.value = config.policy_prompt || '';
+                    showAlert('プロンプトを初期デフォルト値にリセットしました。', 'info');
+                }
+            } catch (e) {
+                console.error('Error resetting policy:', e);
+            }
+        });
+    }
+
+    // 4. AI診断モーダルの閉鎖
+    const closeLlmModal = () => {
+        if (llmDiagnosisModal) llmDiagnosisModal.classList.add('hidden');
+    };
+    if (btnCloseLlmModal) btnCloseLlmModal.addEventListener('click', closeLlmModal);
+    if (btnCloseLlmModalFooter) btnCloseLlmModalFooter.addEventListener('click', closeLlmModal);
+    if (llmDiagnosisModal) {
+        llmDiagnosisModal.addEventListener('click', (e) => {
+            if (e.target === llmDiagnosisModal) closeLlmModal();
+        });
+    }
+
+    // 5. テーブル内「🤖 AI診断」ボタンのイベント委譲 (デリゲーション & event.stopPropagation)
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.btn-llm-diagnose');
+        if (!btn) return;
+        
+        e.stopPropagation(); // ソートや行選択のバブリング防止
+        const code = btn.dataset.code;
+        const assetType = btn.dataset.assetType || 'jp_stock';
+        if (!code) return;
+        
+        runLlmDiagnosis(code, assetType, btn);
+    });
+
+    // 6. AI診断実行ロジック
+    async function runLlmDiagnosis(code, assetType, triggerBtn) {
+        const asset = allAssetsData.find(a => a.code === code);
+        const stockName = asset ? asset.name : code;
+        
+        if (llmModalTitle) llmModalTitle.textContent = `🤖 AI投資方針適合診断 (${code} ${stockName})`;
+        if (llmLoadingContainer) llmLoadingContainer.classList.remove('hidden');
+        if (llmResultContainer) llmResultContainer.innerHTML = '';
+        if (llmDiagnosisModal) llmDiagnosisModal.classList.remove('hidden');
+        
+        if (triggerBtn) triggerBtn.disabled = true;
+        
+        try {
+            const res = await fetch('/api/llm/diagnose', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: code, asset_type: assetType })
+            });
+            
+            const data = await res.json();
+            if (llmLoadingContainer) llmLoadingContainer.classList.add('hidden');
+            
+            if (!res.ok || data.error) {
+                const errMsg = data.message || data.detail || (typeof data === 'string' ? data : 'AI診断の実行中にエラーが発生しました。');
+                renderLlmErrorCard(errMsg);
+                return;
+            }
+            
+            renderLlmResultCard(data, stockName, code);
+            
+        } catch (e) {
+            console.error('LLM Diagnosis error:', e);
+            if (llmLoadingContainer) llmLoadingContainer.classList.add('hidden');
+            renderLlmErrorCard('通信エラーが発生しました。ネットワーク接続を確認してください。');
+        } finally {
+            if (triggerBtn) triggerBtn.disabled = false;
+        }
+    }
+
+    function renderLlmErrorCard(message) {
+        if (!llmResultContainer) return;
+        llmResultContainer.innerHTML = `
+            <div class="llm-card" style="border-left: 4px solid #ef4444; background: #fef2f2;">
+                <h3 style="color: #991b1b; margin-top: 0; font-size: 1rem;">⚠️ 診断を完了できませんでした</h3>
+                <p style="color: #7f1d1d; line-height: 1.5; font-size: 0.9rem;">${message}</p>
+                <div style="margin-top: 15px;">
+                    <button type="button" class="btn-sm btn-outline" id="btn-err-open-policy-config">⚙️ 設定画面を開いて確認</button>
+                </div>
+            </div>
+        `;
+        const btnErrConfig = document.getElementById('btn-err-open-policy-config');
+        if (btnErrConfig) {
+            btnErrConfig.addEventListener('click', () => {
+                closeLlmModal();
+                if (btnOpenPolicyConfig) btnOpenPolicyConfig.click();
+            });
+        }
+    }
+
+    function renderLlmResultCard(data, stockName, code) {
+        if (!llmResultContainer) return;
+        
+        let fitBadgeClass = 'fit-badge-caution';
+        let fitBadgeIcon = '🟡';
+        if (data.fit_level === 'fit') {
+            fitBadgeClass = 'fit-badge-fit';
+            fitBadgeIcon = '🟢';
+        } else if (data.fit_level === 'unfit') {
+            fitBadgeClass = 'fit-badge-unfit';
+            fitBadgeIcon = '🔴';
+        }
+
+        const html = `
+            <div class="llm-card">
+                <div class="llm-card-header">
+                    <div>
+                        <span class="fit-badge ${fitBadgeClass}">
+                            ${fitBadgeIcon} ${data.decision_label || '適合度評価完了'}
+                        </span>
+                        <span style="margin-left: 10px; font-weight: bold; font-size: 0.95rem; color: #475569;">
+                            確信度: ${data.confidence_score}%
+                        </span>
+                    </div>
+                    <small style="color: #94a3b8; font-size: 0.75rem;">Model: ${data.model_used || 'Gemini'}</small>
+                </div>
+
+                <div style="margin-bottom: 12px; font-weight: 600; font-size: 0.95rem; color: #1e293b;">
+                    【概算配当利回り】 ${data.estimated_yield} | 【S株購入目安】 ${data.recommended_shares}
+                </div>
+
+                <div class="llm-section-title">📌 総合判定サマリー</div>
+                <div class="llm-text-content">${data.summary || '判定完了'}</div>
+
+                <div class="llm-section-title">🛡️ 「還元の盾」とバリュエーション評価</div>
+                <div class="llm-text-content">${data.shield_and_valuation || 'データなし'}</div>
+
+                <div class="llm-section-title">🏢 10年スパンの事業評価（強みとリスク）</div>
+                <div class="llm-text-content">${data.business_10y_eval || 'データなし'}</div>
+
+                <div class="llm-section-title">💡 本システム（S株ナンピン）での立ち回りアドバイス</div>
+                <div class="llm-text-content">${data.tactical_advice || 'データなし'}</div>
+            </div>
+        `;
+        llmResultContainer.innerHTML = html;
+    }
+
 
 
     // --- 初期実行 ---

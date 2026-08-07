@@ -14,6 +14,8 @@ import scraper
 import portfolio_manager
 import recent_stocks_manager
 import history_manager
+from investment_policy_manager import InvestmentPolicyManager
+from llm_service import LLMDiagnosisService
 import json
 import logging
 import sqlite3
@@ -1897,3 +1899,82 @@ async def get_split_history():
     except Exception as e:
         logger.error(f"Error fetching split history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- 投資方針 & LLM 診断関連 API ---
+class InvestmentPolicySaveRequest(BaseModel):
+    api_key: Optional[str] = None
+    selected_model: Optional[str] = None
+    policy_prompt: Optional[str] = None
+    reset: bool = False
+
+class LLMDiagnoseRequest(BaseModel):
+    code: str
+    asset_type: str = "jp_stock"
+
+policy_manager_instance = InvestmentPolicyManager()
+llm_service_instance = LLMDiagnosisService(policy_manager_instance)
+
+@app.get("/api/investment-policy")
+async def get_investment_policy():
+    """現在の投資方針およびLLM設定（APIキーマスク化済み）を取得"""
+    try:
+        return policy_manager_instance.get_masked_config()
+    except Exception as e:
+        logger.error(f"Error fetching investment policy: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/investment-policy")
+async def save_investment_policy(req: InvestmentPolicySaveRequest):
+    """投資方針またはLLM設定を保存/リセット"""
+    try:
+        if req.reset:
+            policy_manager_instance.reset_policy_prompt()
+        else:
+            policy_manager_instance.save_config(
+                api_key=req.api_key,
+                selected_model=req.selected_model,
+                policy_prompt=req.policy_prompt
+            )
+        return policy_manager_instance.get_masked_config()
+    except Exception as e:
+        logger.error(f"Error saving investment policy: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/llm/diagnose")
+async def diagnose_stock_with_llm(req: LLMDiagnoseRequest):
+    """指定された銘柄コードのLLM適合診断を実行"""
+    try:
+        code = req.code
+        asset_type = req.asset_type
+        
+        # 現在の資産データ（キャッシュ/最新）を取得
+        asset_data, is_cached = fetch_asset_data_smart_cached(code, asset_type)
+        if not asset_data or asset_data.get("error"):
+            err_msg = asset_data.get("error_message") if isinstance(asset_data, dict) else None
+            raise HTTPException(status_code=400, detail=err_msg or f"銘柄コード {code} のデータが取得できませんでした。")
+
+        # 評価ロジックを補完・実行
+        try:
+            enriched_data, _ = _enrich_stock_data([asset_data], asset_type)
+            stock_data = enriched_data[0] if enriched_data else asset_data
+        except Exception as ee:
+            logger.warning(f"Failed to enrich stock data for {code}: {ee}")
+            stock_data = asset_data
+
+        # ポートフォリオサマリーを計算
+        portfolio_summary = {}
+        try:
+            raw_portfolio = portfolio_manager.load_portfolio()
+            portfolio_summary = portfolio_manager.calculate_holding_values(raw_portfolio, {code: stock_data})
+        except Exception as pe:
+            logger.warning(f"Failed to calculate portfolio summary for {code}: {pe}")
+
+        # LLM診断サービス呼び出し
+        res = llm_service_instance.diagnose_stock(stock_data, portfolio_summary)
+        return res
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error diagnosing stock with LLM: {e}")
+        raise HTTPException(status_code=500, detail=f"AI診断の実行中にエラーが発生しました: {str(e)}")

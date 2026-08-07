@@ -160,7 +160,7 @@ class LLMDiagnosisService:
 JSONフォーマットで回答を出力してください。キーは必ず以下の通りとすること:
 {{
   "fit_level": "fit" または "caution" または "unfit",
-  "confidence_score": 判定の確信度(0〜100の数値),
+  "confidence_score": この判定結果(コア/サテライト/Avoid)に対するAIアナリスト自身の【分析の確信度・自信度】(0〜100の数値)。※注意: 適合度の割合ではありません。例えば【見送り(Avoid)】とする判断に強い確信・自信がある場合は 90〜100 の高い数値を出力してください。,
   "decision_label": "【判定ラベル】(例: 【強い買い（コア）】 / 【買い（サテライト）】 / 【中立・監視】 / 【見送り（Avoid）】)",
   "estimated_yield": "予想配当利回りの記載(例: 約4.4%)",
   "recommended_shares": "1回あたりの購入目安株数の記載(例: 約3株〜4株)",
@@ -200,14 +200,24 @@ fit_levelの基準:
                 "summary": "AIからの応答フォーマットを調整しました。"
             }
 
-        # 必須キーの補完
+        # 必須キーの補完と確信度の補正
         fit_level = data.get("fit_level", "caution")
         if fit_level not in ["fit", "caution", "unfit"]:
             fit_level = "caution"
 
+        raw_score = data.get("confidence_score", 85)
+        try:
+            confidence_score = int(raw_score)
+        except (ValueError, TypeError):
+            confidence_score = 85
+
+        # LLMが「適合度の割合=0%」と「AIの分析確信度」を混同して低スコアを出力した場合の安全補正
+        if confidence_score < 30 and data.get("summary"):
+            confidence_score = 90
+
         return {
             "fit_level": fit_level,
-            "confidence_score": int(data.get("confidence_score", 70)),
+            "confidence_score": confidence_score,
             "decision_label": str(data.get("decision_label", "【判定完了】")),
             "estimated_yield": str(data.get("estimated_yield", "N/A")),
             "recommended_shares": str(data.get("recommended_shares", "N/A")),

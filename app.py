@@ -1940,6 +1940,30 @@ async def save_investment_policy(req: InvestmentPolicySaveRequest):
         logger.error(f"Error saving investment policy: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+async def fetch_asset_data_smart_cached(code: str, asset_type: str = "jp_stock") -> Tuple[Dict[str, Any], bool]:
+    """
+    指定された単一銘柄のスマートキャッシュ・リアルタイムデータを取得する。
+    1. メモリキャッシュまたは直接スクレイピング
+    2. 失敗時はSQLite日次データから復元
+    """
+    try:
+        scraper_instance = scraper.get_scraper(asset_type)
+        data = await asyncio.to_thread(scraper_instance.fetch_data, code)
+        if data and not data.get("error"):
+            return data, True
+            
+        db_data = history_manager.get_latest_daily_data(code)
+        if db_data:
+            return db_data, True
+            
+        if data:
+            return data, False
+            
+        return {"code": code, "asset_type": asset_type, "error": "データが取得できませんでした"}, False
+    except Exception as e:
+        logger.error(f"Error in fetch_asset_data_smart_cached for {code}: {e}")
+        return {"code": code, "asset_type": asset_type, "error": str(e)}, False
+
 @app.post("/api/llm/diagnose")
 async def diagnose_stock_with_llm(req: LLMDiagnoseRequest):
     """指定された銘柄コードのLLM適合診断を実行"""
@@ -1948,7 +1972,7 @@ async def diagnose_stock_with_llm(req: LLMDiagnoseRequest):
         asset_type = req.asset_type
         
         # 現在の資産データ（キャッシュ/最新）を取得
-        asset_data, is_cached = fetch_asset_data_smart_cached(code, asset_type)
+        asset_data, is_cached = await fetch_asset_data_smart_cached(code, asset_type)
         if not asset_data or asset_data.get("error"):
             err_msg = asset_data.get("error_message") if isinstance(asset_data, dict) else None
             raise HTTPException(status_code=400, detail=err_msg or f"銘柄コード {code} のデータが取得できませんでした。")

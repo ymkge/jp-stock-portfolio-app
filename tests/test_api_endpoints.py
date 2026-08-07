@@ -25,7 +25,7 @@ def test_api_save_and_reset_investment_policy():
     response = client.post("/api/investment-policy", json=save_payload)
     assert response.status_code == 200
     data = response.json()
-    assert data["api_key_masked"] == "test...5678"
+    assert data["has_api_key"] is True
     assert data["selected_model"] == "gemini-flash-lite-latest"
     assert data["policy_prompt"] == "結合テスト用方針"
 

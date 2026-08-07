@@ -311,8 +311,13 @@
     <!-- AI投資方針適合診断 モーダル -->
     <div id="llm-diagnosis-modal" class="modal-overlay hidden">
         <div class="modal-content large-modal" style="max-width: 800px;">
-            <div class="modal-header">
-                <h2 id="llm-modal-title">🤖 AI投資方針適合診断</h2>
+            <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <h2 id="llm-modal-title" style="margin: 0;">🤖 AI投資方針適合診断</h2>
+                    <span id="llm-cache-badge" class="badge-cached hidden" style="background: #e2e8f0; color: #475569; font-size: 0.75rem; padding: 3px 10px; border-radius: 12px; font-weight: 600; border: 1px solid #cbd5e1;">
+                        ⚡ キャッシュ表示 (12:34)
+                    </span>
+                </div>
                 <button type="button" id="btn-close-llm-modal" class="modal-close" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">&times;</button>
             </div>
             <div class="modal-body" style="padding: 15px 0;">
@@ -325,7 +330,10 @@
                     <!-- JSで動的に診断結果カードを描画 -->
                 </div>
             </div>
-            <div class="modal-footer" style="padding-top: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end;">
+            <div class="modal-footer" style="padding-top: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                <button type="button" id="btn-re-diagnose-llm" class="btn-secondary" style="display: flex; align-items: center; gap: 4px; font-size: 0.88rem; padding: 6px 12px;">
+                    🔄 再診断 (最新データで診断)
+                </button>
                 <button type="button" id="btn-close-llm-modal-footer" class="btn-outline">閉じる</button>
             </div>
         </div>

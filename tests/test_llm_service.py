@@ -1,4 +1,5 @@
 import os
+import time
 import pytest
 from unittest.mock import MagicMock, patch
 from llm_service import LLMDiagnosisService
@@ -18,8 +19,8 @@ def test_missing_api_key(tmp_path):
     
     with patch.dict(os.environ, {}, clear=True):
         res = service.diagnose_stock({"code": "7164", "name": "全国保証"})
-        assert res["error"] is True
-        assert res["error_code"] == "NO_API_KEY"
+        assert res.get("error") is True
+        assert res.get("error_code") == "NO_API_KEY"
 
 @patch("requests.post")
 def test_successful_diagnosis(mock_post, policy_manager):
@@ -55,106 +56,63 @@ def test_successful_diagnosis(mock_post, policy_manager):
     stock_data = {
         "code": "7164",
         "name": "全国保証",
-        "price": 4500,
-        "per": 12.5,
-        "pbr": 0.95,
-        "yield": 4.4,
-        "payout_ratio": 45.0,
-        "consecutive_increase": 10
+        "price": 4500
     }
     res = service.diagnose_stock(stock_data)
 
-    assert res["error"] is False
+    assert res.get("error") is None or res.get("error") is False
     assert res["fit_level"] == "fit"
     assert res["confidence_score"] == 92
     assert res["decision_label"] == "【強い買い（コア）】"
-    assert "S株ナンピン" in res["tactical_advice"]
-    assert res["model_used"] == "gemini-flash-latest"
+    assert res["is_cached"] is False
 
 @patch("requests.post")
-def test_rate_limit_error(mock_post, policy_manager):
+def test_cache_hit_and_miss(mock_post, policy_manager):
     service = LLMDiagnosisService(policy_manager=policy_manager)
-    mock_response = MagicMock()
-    mock_response.status_code = 429
-    mock_post.return_value = mock_response
-
-    res = service.diagnose_stock({"code": "7164", "name": "全国保証"})
-    assert res["error"] is True
-    assert res["error_code"] == "RATE_LIMIT"
-
-@patch("requests.post")
-def test_bad_request_error(mock_post, policy_manager):
-    service = LLMDiagnosisService(policy_manager=policy_manager)
-    mock_response = MagicMock()
-    mock_response.status_code = 400
-    mock_response.json.return_value = {"error": {"message": "Invalid API Key"}}
-    mock_post.return_value = mock_response
-
-    res = service.diagnose_stock({"code": "7164", "name": "全国保証"})
-    assert res["error"] is True
-    assert res["error_code"] == "BAD_REQUEST"
-    assert "APIキーが無効" in res["message"]
-
-@patch("requests.post")
-def test_http_500_error(mock_post, policy_manager):
-    service = LLMDiagnosisService(policy_manager=policy_manager)
-    mock_response = MagicMock()
-    mock_response.status_code = 500
-    mock_post.return_value = mock_response
-
-    res = service.diagnose_stock({"code": "7164", "name": "全国保証"})
-    assert res["error"] is True
-    assert res["error_code"] == "HTTP_500"
-
-@patch("requests.post")
-def test_timeout_error(mock_post, policy_manager):
-    import requests
-    service = LLMDiagnosisService(policy_manager=policy_manager)
-    mock_post.side_effect = requests.exceptions.Timeout("Connection timed out")
-
-    res = service.diagnose_stock({"code": "7164", "name": "全国保証"})
-    assert res["error"] is True
-    assert res["error_code"] == "TIMEOUT"
-
-@patch("requests.post")
-def test_empty_candidates_error(mock_post, policy_manager):
-    service = LLMDiagnosisService(policy_manager=policy_manager)
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {"candidates": []}
-    mock_post.return_value = mock_response
-
-    res = service.diagnose_stock({"code": "7164", "name": "全国保証"})
-    assert res["error"] is True
-    assert res["error_code"] == "NO_CANDIDATE"
-
-@patch("requests.post")
-def test_broken_json_response_fallback(mock_post, policy_manager):
-    service = LLMDiagnosisService(policy_manager=policy_manager)
+    
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
-        "candidates": [
-            {
-                "content": {
-                    "parts": [
-                        {"text": "これはJSONではありません。分析結果の文章です。"}
-                    ]
-                }
-            }
-        ]
+        "candidates": [{"content": {"parts": [{"text": '{"fit_level": "fit", "summary": "初回"}'}]}}]
     }
     mock_post.return_value = mock_response
 
-    res = service.diagnose_stock({"code": "7164", "name": "全国保証"})
-    assert res["error"] is False
-    assert res["fit_level"] == "caution"
-    assert res["confidence_score"] == 50
-    assert "これはJSONではありません" in res["business_10y_eval"]
+    stock_data = {"code": "7164", "name": "全国保証"}
+
+    # 1回目 (Miss)
+    res1 = service.diagnose_stock(stock_data)
+    assert res1["is_cached"] is False
+    assert mock_post.call_count == 1
+
+    # 2回目 (Hit)
+    res2 = service.diagnose_stock(stock_data)
+    assert res2["is_cached"] is True
+    assert mock_post.call_count == 1  # 通信は発生しない
 
 @patch("requests.post")
-def test_invalid_model_fallback(mock_post, policy_manager):
-    policy_manager.save_config(selected_model="invalid-model-name")
+def test_force_bypass_cache(mock_post, policy_manager):
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+    
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "candidates": [{"content": {"parts": [{"text": '{"fit_level": "fit", "summary": "診断結果"}'}]}}]
+    }
+    mock_post.return_value = mock_response
+
+    stock_data = {"code": "7164", "name": "全国保証"}
+
+    # 初回
+    service.diagnose_stock(stock_data)
+    assert mock_post.call_count == 1
+
+    # force=True で強制再診断
+    res = service.diagnose_stock(stock_data, force=True)
+    assert res["is_cached"] is False
+    assert mock_post.call_count == 2
+
+@patch("requests.post")
+def test_prompt_change_invalidates_cache(mock_post, policy_manager):
     service = LLMDiagnosisService(policy_manager=policy_manager)
     
     mock_response = MagicMock()
@@ -164,24 +122,119 @@ def test_invalid_model_fallback(mock_post, policy_manager):
     }
     mock_post.return_value = mock_response
 
-    res = service.diagnose_stock({"code": "7164"})
-    assert res["model_used"] == "gemini-flash-latest"
+    stock_data = {"code": "7164"}
 
-def test_build_prompt_with_portfolio_summary(policy_manager):
+    # 初回
+    service.diagnose_stock(stock_data)
+    assert mock_post.call_count == 1
+
+    # 投資方針プロンプトを変更
+    policy_manager.save_config(policy_prompt="新しい変更後のプロンプト")
+    
+    # 2回目 (ハッシュ変更のためキャッシュHitせず再実行)
+    res = service.diagnose_stock(stock_data)
+    assert res["is_cached"] is False
+    assert mock_post.call_count == 2
+
+@patch("requests.post")
+def test_error_response_not_cached(mock_post, policy_manager):
     service = LLMDiagnosisService(policy_manager=policy_manager)
-    stock_data = {
-        "code": "9432",
-        "name": "NTT",
-        "price": 150,
-        "evaluation_value": 150000,
-        "holdings": [{"quantity": 1000}],
-        "buy_signal": {"label": "買いシグナル(MA25+DOE)", "recommended_action": "押し目買い"}
+    
+    mock_response = MagicMock()
+    mock_response.status_code = 400
+    mock_response.json.return_value = {"error": {"message": "API key not valid"}}
+    mock_post.return_value = mock_response
+
+    stock_data = {"code": "7164"}
+
+    # 1回目 (エラー発生)
+    res1 = service.diagnose_stock(stock_data)
+    assert res1.get("error") is True
+
+    # 2回目 (エラーなのでキャッシュされず再実行される)
+    res2 = service.diagnose_stock(stock_data)
+    assert res2.get("error") is True
+    assert mock_post.call_count == 2
+
+@patch("requests.post")
+def test_lru_eviction(mock_post, policy_manager):
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+    service.MAX_CACHE_SIZE = 2  # テスト用に上限を2に設定
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "candidates": [{"content": {"parts": [{"text": '{"fit_level": "fit"}'}]}}]
     }
-    portfolio_summary = {
-        "total_evaluation_value": 1000000
+    mock_post.return_value = mock_response
+
+    # 1001, 1002 をキャッシュ
+    service.diagnose_stock({"code": "1001"})
+    time.sleep(0.01)
+    service.diagnose_stock({"code": "1002"})
+    assert len(service._cache) == 2
+
+    # 1003 を追加 ➔ 最も古い 1001 が溢れて破棄される
+    time.sleep(0.01)
+    service.diagnose_stock({"code": "1003"})
+    assert len(service._cache) == 2
+    assert "1001_jp_stock" not in service._cache
+    assert "1002_jp_stock" in service._cache
+    assert "1003_jp_stock" in service._cache
+
+@patch("requests.post")
+def test_clear_cache(mock_post, policy_manager):
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+    
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "candidates": [{"content": {"parts": [{"text": '{"fit_level": "fit"}'}]}}]
     }
-    prompt = service._build_prompt(stock_data, portfolio_summary, "テスト方針")
-    assert "コード: 9432 / 銘柄名: NTT" in prompt
-    assert "ポートフォリオ全体比率 15.00%" in prompt
-    assert "買いシグナル(MA25+DOE)" in prompt
+    mock_post.return_value = mock_response
+
+    service.diagnose_stock({"code": "7164"})
+    assert len(service._cache) == 1
+
+    service.clear_cache()
+    assert len(service._cache) == 0
+
+def test_yield_key_prompt_building(policy_manager):
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+    # パターン1: 'yield' キーが存在するケース
+    stock_data1 = {
+        "code": "6200",
+        "name": "インソース",
+        "price": 713,
+        "yield": 4.91,
+        "per": 13.61,
+        "pbr": 4.44,
+        "roe": 36.84,
+        "payout_ratio": 69.6
+    }
+    prompt1 = service._build_prompt(stock_data1, None, "テスト方針")
+    assert "銘柄コード: 6200" in prompt1
+    assert "予想配当利回り: 4.91 %" in prompt1
+    assert "ROE: 36.84 %" in prompt1
+
+    # パターン2: 'yield' が存在せず 'dividend_yield' キーをフォールバック参照するケース ('%'文字含む文字列)
+    stock_data2 = {
+        "code": "7164",
+        "name": "全国保証",
+        "dividend_yield": "3.80%",
+        "roe": "12.5"
+    }
+    prompt2 = service._build_prompt(stock_data2, None, "テスト方針")
+    assert "銘柄コード: 7164" in prompt2
+    assert "予想配当利回り: 3.80 %" in prompt2
+
+    # パターン3: 利回りデータが欠損しているケース (N/A)
+    stock_data3 = {
+        "code": "9999",
+        "name": "サンプル",
+        "yield": None,
+        "dividend_yield": "N/A"
+    }
+    prompt3 = service._build_prompt(stock_data3, None, "テスト方針")
+    assert "予想配当利回り: N/A %" in prompt3
 

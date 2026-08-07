@@ -1506,13 +1506,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // 6. AI診断実行ロジック
-    async function runLlmDiagnosis(code, assetType, triggerBtn) {
+    let currentDiagnoseCode = null;
+    let currentDiagnoseAssetType = 'jp_stock';
+    const llmCacheBadge = document.getElementById('llm-cache-badge');
+    const btnReDiagnoseLlm = document.getElementById('btn-re-diagnose-llm');
+
+    async function runLlmDiagnosis(code, assetType, triggerBtn, force = false) {
+        currentDiagnoseCode = code;
+        currentDiagnoseAssetType = assetType;
+
         const asset = allAssetsData.find(a => a.code === code);
         const stockName = asset ? asset.name : code;
         
         if (llmModalTitle) llmModalTitle.textContent = `🤖 AI投資方針適合診断 (${code} ${stockName})`;
         if (llmLoadingContainer) llmLoadingContainer.classList.remove('hidden');
         if (llmResultContainer) llmResultContainer.innerHTML = '';
+        if (llmCacheBadge) llmCacheBadge.classList.add('hidden');
         if (llmDiagnosisModal) llmDiagnosisModal.classList.remove('hidden');
         
         if (triggerBtn) triggerBtn.disabled = true;
@@ -1521,7 +1530,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/llm/diagnose', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code: code, asset_type: assetType })
+                body: JSON.stringify({ code: code, asset_type: assetType, force: force })
             });
             
             const data = await res.json();
@@ -1533,6 +1542,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
+            // キャッシュバッジの動的表示
+            if (llmCacheBadge && data.is_cached) {
+                llmCacheBadge.textContent = `⚡ キャッシュ表示 (${data.diagnosed_at || '有効'})`;
+                llmCacheBadge.classList.remove('hidden');
+            }
+
             renderLlmResultCard(data, stockName, code);
             
         } catch (e) {
@@ -1542,6 +1557,15 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             if (triggerBtn) triggerBtn.disabled = false;
         }
+    }
+
+    // 「🔄 再診断 (最新データで診断)」ボタンのイベントバインド
+    if (btnReDiagnoseLlm) {
+        btnReDiagnoseLlm.addEventListener('click', () => {
+            if (currentDiagnoseCode) {
+                runLlmDiagnosis(currentDiagnoseCode, currentDiagnoseAssetType, btnReDiagnoseLlm, true);
+            }
+        });
     }
 
     function renderLlmErrorCard(message) {

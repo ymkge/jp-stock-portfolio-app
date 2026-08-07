@@ -64,13 +64,16 @@ def test_api_llm_diagnose_success(mock_diagnose, mock_fetch):
 
     payload = {
         "code": "7164",
-        "asset_type": "jp_stock"
+        "asset_type": "jp_stock",
+        "force": True
     }
     response = client.post("/api/llm/diagnose", json=payload)
     assert response.status_code == 200
     data = response.json()
     assert data["fit_level"] == "fit"
     assert data["decision_label"] == "【強い買い（コア）】"
+    mock_diagnose.assert_called_once()
+    assert mock_diagnose.call_args.kwargs.get("force") is True
 
 @patch("app.fetch_asset_data_smart_cached")
 def test_api_llm_diagnose_asset_not_found(mock_fetch):

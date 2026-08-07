@@ -144,6 +144,8 @@ class InvestmentPolicyManager:
             if not os.path.exists(self.filepath):
                 return DEFAULT_CONFIG.copy()
             
+            needs_update = False
+            data = {}
             lock_file = open(self.lock_filepath, "w")
             try:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_SH)
@@ -153,18 +155,13 @@ class InvestmentPolicyManager:
                 # api_key が含まれていたら削除
                 if "api_key" in data:
                     del data["api_key"]
+                    needs_update = True
                 
                 # キーの不足を補完
-                updated = False
                 for k, v in DEFAULT_CONFIG.items():
                     if k not in data:
                         data[k] = v
-                        updated = True
-                
-                if updated:
-                    self._save_data_internal(data)
-                    
-                return data
+                        needs_update = True
             except Exception as e:
                 print(f"Error loading investment policy: {e}")
                 return DEFAULT_CONFIG.copy()
@@ -174,6 +171,11 @@ class InvestmentPolicyManager:
                 except Exception:
                     pass
                 lock_file.close()
+
+            if needs_update:
+                self._save_data_internal(data)
+
+            return data
 
     def save_config(self, api_key: Optional[str] = None, selected_model: Optional[str] = None, policy_prompt: Optional[str] = None) -> Dict[str, Any]:
         with self._thread_lock:

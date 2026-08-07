@@ -1910,6 +1910,7 @@ class InvestmentPolicySaveRequest(BaseModel):
 class LLMDiagnoseRequest(BaseModel):
     code: str
     asset_type: str = "jp_stock"
+    force: bool = False
 
 policy_manager_instance = InvestmentPolicyManager()
 llm_service_instance = LLMDiagnosisService(policy_manager_instance)
@@ -1935,6 +1936,8 @@ async def save_investment_policy(req: InvestmentPolicySaveRequest):
                 selected_model=req.selected_model,
                 policy_prompt=req.policy_prompt
             )
+        # 投資方針更新成功時にLLMキャッシュを一括破棄
+        llm_service_instance.clear_cache()
         return policy_manager_instance.get_masked_config()
     except Exception as e:
         logger.error(f"Error saving investment policy: {e}")
@@ -1993,8 +1996,8 @@ async def diagnose_stock_with_llm(req: LLMDiagnoseRequest):
         except Exception as pe:
             logger.warning(f"Failed to calculate portfolio summary for {code}: {pe}")
 
-        # LLM診断サービス呼び出し
-        res = llm_service_instance.diagnose_stock(stock_data, portfolio_summary)
+        # LLM診断サービス呼び出し (forceフラグを引き渡し)
+        res = llm_service_instance.diagnose_stock(stock_data, portfolio_summary, force=req.force)
         return res
 
     except HTTPException as he:

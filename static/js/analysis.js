@@ -325,10 +325,49 @@ document.addEventListener('DOMContentLoaded', () => {
         const divCanvas = document.getElementById('dividend-history-chart');
         if (divCanvas) {
             const existingChart = Chart.getChart(divCanvas); if (existingChart) existingChart.destroy();
+            const divOptions = JSON.parse(JSON.stringify(commonOptions));
+            divOptions.plugins = divOptions.plugins || {};
+            divOptions.plugins.tooltip = divOptions.plugins.tooltip || {};
+            divOptions.plugins.tooltip.callbacks = {
+                label: (c) => `${c.dataset.label}: ${isAmountVisible ? formatNumber(c.raw, 0) + '円' : '***円'}`,
+                afterLabel: (c) => {
+                    const idx = c.dataIndex;
+                    const dataArr = c.dataset.data;
+                    const val = c.raw || 0;
+                    if (idx === 0) {
+                        return isAmountVisible ? '前月比: -' : '前月比: ***円';
+                    }
+                    const prevVal = dataArr[idx - 1] || 0;
+                    const diff = val - prevVal;
+                    
+                    if (!isAmountVisible) {
+                        return '前月比: ***円';
+                    }
+                    
+                    if (diff > 0) {
+                        if (prevVal > 0) {
+                            const pct = ((diff / prevVal) * 100).toFixed(1);
+                            return `前月比: +${formatNumber(diff, 0)}円 (+${pct}%)`;
+                        } else {
+                            return `前月比: +${formatNumber(diff, 0)}円 (新規計測)`;
+                        }
+                    } else if (diff < 0) {
+                        if (prevVal > 0) {
+                            const pct = ((diff / prevVal) * 100).toFixed(1);
+                            return `前月比: ${formatNumber(diff, 0)}円 (${pct}%)`;
+                        } else {
+                            return `前月比: ${formatNumber(diff, 0)}円`;
+                        }
+                    } else {
+                        return `前月比: ±0円`;
+                    }
+                }
+            };
+
             new Chart(divCanvas.getContext('2d'), {
                 type: 'bar',
                 data: { labels: labels, datasets: [{ label: '年間配当予定額', data: dividends, backgroundColor: '#1cc88a', borderRadius: 4 }] },
-                options: commonOptions
+                options: divOptions
             });
         }
     }
@@ -903,7 +942,22 @@ document.addEventListener('DOMContentLoaded', () => {
         monthlyDividendChart = new Chart(canvas.getContext('2d'), {
             type: 'bar',
             data: { labels: months, datasets: [{ label: '予想受取額', data: mData, backgroundColor: '#1cc88a', borderRadius: 4 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: colors.text } }, tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${isAmountVisible ? formatNumber(c.raw, 0) + '円' : '***円'}` } } }, scales: { x: { grid: { color: colors.grid }, ticks: { color: colors.muted } }, y: { beginAtZero: true, grid: { color: colors.grid }, ticks: { color: colors.muted, callback: (v) => isAmountVisible ? formatNumber(v, 0) + '円' : '***円' } } } }
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: colors.text } },
+                    tooltip: {
+                        callbacks: {
+                            label: (c) => `${c.dataset.label}: ${isAmountVisible ? formatNumber(c.raw, 0) + '円' : '***円'}`
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { color: colors.grid }, ticks: { color: colors.muted } },
+                    y: { beginAtZero: true, grid: { color: colors.grid }, ticks: { color: colors.muted, callback: (v) => isAmountVisible ? formatNumber(v, 0) + '円' : '***円' } }
+                }
+            }
         });
     }
 

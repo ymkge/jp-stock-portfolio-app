@@ -86,3 +86,35 @@ def test_api_llm_diagnose_asset_not_found(mock_fetch):
     response = client.post("/api/llm/diagnose", json=payload)
     assert response.status_code == 400
     assert "銘柄コード 0000 のデータが取得できませんでした。" in response.json()["detail"]
+
+
+def test_monthly_dividend_chart_tooltip_rollback():
+    """monthly-dividend-chart のツールチップから afterLabel (前月比表示) が削除され、予想受取額のみが表示されることを検証"""
+    import os
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # monthly-dividend-chart の定義部分を抽出
+    monthly_chart_section = content.split("getElementById('monthly-dividend-chart')")[1].split("updateChart")[0]
+    
+    # label の存在確認と afterLabel の非存在確認
+    assert "label: (c) => `${c.dataset.label}:" in monthly_chart_section
+    assert "afterLabel" not in monthly_chart_section
+
+
+def test_dividend_history_chart_tooltip_retention():
+    """dividend-history-chart のツールチップに afterLabel (前月比表示) が引き続き維持されていることを検証"""
+    import os
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # dividend-history-chart の定義部分を抽出
+    history_chart_section = content.split("getElementById('dividend-history-chart')")[1].split("processAnalysisData")[0]
+    
+    # label および afterLabel (前月比) の維持確認
+    assert "label: (c) =>" in history_chart_section
+    assert "afterLabel: (c) =>" in history_chart_section
+    assert "前月比:" in history_chart_section
+

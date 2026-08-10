@@ -1622,6 +1622,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="llm-section-title">📌 総合判定サマリー</div>
                 <div class="llm-text-content">${data.summary || '判定完了'}</div>
 
+                <div class="llm-section-title">📊 直近の業績動向と収益力</div>
+                <div class="llm-text-content">${data.performance_summary || 'データなし'}</div>
+
                 <div class="llm-section-title">🛡️ 「還元の盾」とバリュエーション評価</div>
                 <div class="llm-text-content">${data.shield_and_valuation || 'データなし'}</div>
 

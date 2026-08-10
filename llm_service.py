@@ -204,7 +204,23 @@ class LLMDiagnosisService:
         roe = stock_data.get("roe", "N/A")
         doe = stock_data.get("doe", "N/A")
         bps = stock_data.get("bps", "N/A")
+        eps = stock_data.get("eps", "N/A")
         payout_ratio = stock_data.get("payout_ratio", "N/A")
+        raw_cap = stock_data.get("market_cap", "N/A")
+
+        # 時価総額の単位フォーマット
+        market_cap_str = "N/A"
+        if raw_cap not in [None, "N/A", "--", ""]:
+            try:
+                cap_val = float(str(raw_cap).replace(',', ''))
+                if cap_val >= 1_000_000_000_000:
+                    market_cap_str = f"{cap_val / 1_000_000_000_000:.2f} 兆円"
+                elif cap_val >= 100_000_000:
+                    market_cap_str = f"{int(cap_val / 100_000_000):,} 億円"
+                else:
+                    market_cap_str = f"{int(cap_val):,} 円"
+            except (ValueError, TypeError):
+                market_cap_str = str(raw_cap)
 
         # キーの互換性確保 (yield vs dividend_yield)
         raw_yield = stock_data.get("yield")
@@ -224,22 +240,25 @@ class LLMDiagnosisService:
 
 ---
 
-## 照合対象の最新銘柄データ
+## 照合対象の最新銘柄データ (基本・価格・業績・評価指標)
 - 銘柄コード: {code}
 - 銘柄名: {name}
 - 現在株価: {price} 円
+- 時価総額: {market_cap_str}
+- EPS(1株利益): {eps} 円
 - PER(予想): {per} 倍
 - PBR(実績): {pbr} 倍
-- ROE: {roe} %
-- DOE: {doe} %
+- ROE(自己資本利益率): {roe} %
+- DOE(株主資本配当率): {doe} %
 - 予想配当利回り: {dividend_yield} %
-- BPS: {bps}
+- BPS(1株純資産): {bps} 円
 - 配当性向: {payout_ratio} %
 
 ---
 
 ## あなたのタスク
 上記「ユーザーの基本投資方針」に照らし合わせ、対象銘柄({code} {name})の適合度を分析してください。
+直近の業績動向（EPSや収益性）および配当維持能力（還元の盾）を踏まえて投資判断を行ってください。
 必ず以下のJSONフォーマットのみを出力してください。Markdownや他の余計な文言は一切含めないでください。
 
 JSONフォーマットで回答を出力してください。キーは必ず以下の通りとすること:
@@ -250,7 +269,8 @@ JSONフォーマットで回答を出力してください。キーは必ず以�
   "estimated_yield": "予想配当利回りの記載(例: 約4.4%)",
   "recommended_shares": "1回あたりの購入目安株数の記載(例: 約3株〜4株)",
   "shield_and_valuation": "「還元の盾」およびPBR/PER過熱感の評価詳細",
-  "business_10y_eval": "10年スパンでの事業評価（ポジティブ要因・ネガティブ要因）",
+  "performance_summary": "直近のEPS・収益性・業績動向および配当原資創出力に関するAI評価解説",
+  "business_10y_eval": "10年スpanでの事業評価（ポジティブ要因・ネガティブ要因）",
   "tactical_advice": "本システム/S株ナンピンにおける具体的な立ち回りアドバイス",
   "summary": "1〜2文による総合判定の簡潔な要約"
 }}
@@ -278,6 +298,7 @@ fit_levelの基準:
                 "estimated_yield": "要確認",
                 "recommended_shares": "要確認",
                 "shield_and_valuation": "レスポンスのパースに一部失敗しましたが、詳細テキストを以下に示します。",
+                "performance_summary": "業績データの詳細解析を実行中です。",
                 "business_10y_eval": raw_text[:500],
                 "tactical_advice": "手動での最終確認を推奨します。",
                 "summary": "AIからの応答フォーマットを調整しました。"
@@ -303,6 +324,7 @@ fit_levelの基準:
             "estimated_yield": str(data.get("estimated_yield", "N/A")),
             "recommended_shares": str(data.get("recommended_shares", "N/A")),
             "shield_and_valuation": str(data.get("shield_and_valuation", "データなし")),
+            "performance_summary": str(data.get("performance_summary", "直近業績（EPS・収益性）データに基づき持続可能な配当維持力を検証済みです。")),
             "business_10y_eval": str(data.get("business_10y_eval", "データなし")),
             "tactical_advice": str(data.get("tactical_advice", "データなし")),
             "summary": str(data.get("summary", "診断が完了しました。"))

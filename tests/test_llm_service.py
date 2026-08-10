@@ -215,7 +215,7 @@ def test_yield_key_prompt_building(policy_manager):
     prompt1 = service._build_prompt(stock_data1, None, "テスト方針")
     assert "銘柄コード: 6200" in prompt1
     assert "予想配当利回り: 4.91 %" in prompt1
-    assert "ROE: 36.84 %" in prompt1
+    assert "ROE(自己資本利益率): 36.84 %" in prompt1
 
     # パターン2: 'yield' が存在せず 'dividend_yield' キーをフォールバック参照するケース ('%'文字含む文字列)
     stock_data2 = {
@@ -237,4 +237,95 @@ def test_yield_key_prompt_building(policy_manager):
     }
     prompt3 = service._build_prompt(stock_data3, None, "テスト方針")
     assert "予想配当利回り: N/A %" in prompt3
+
+def test_performance_summary_and_eps_building(policy_manager):
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+    stock_data = {
+        "code": "6200",
+        "name": "インソース",
+        "price": 713,
+        "eps": 52.4,
+        "market_cap": "60778000000",
+        "per": 13.61,
+        "pbr": 4.44,
+        "roe": 36.84
+    }
+    prompt = service._build_prompt(stock_data, None, "テスト方針")
+    assert "EPS(1株利益): 52.4 円" in prompt
+    assert "時価総額: 607 億円" in prompt
+
+    # パースの検証 (performance_summaryの抽出)
+    raw_text = '{"fit_level": "fit", "performance_summary": "直近のEPSは52.4円で順調に推移しています。"}'
+    parsed = service._parse_llm_json(raw_text)
+    assert parsed["performance_summary"] == "直近のEPSは52.4円で順調に推移しています。"
+
+
+def test_market_cap_formatting_detailed(policy_manager):
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+    
+    # 1. 兆円単位
+    p1 = service._build_prompt({"code": "7203", "market_cap": 2500000000000}, None, "方針")
+    assert "時価総額: 2.50 兆円" in p1
+
+    # 2. 億円単位
+    p2 = service._build_prompt({"code": "6200", "market_cap": 60778000000}, None, "方針")
+    assert "時価総額: 607 億円" in p2
+
+    # 3. 円単位 (1億円未満)
+    p3 = service._build_prompt({"code": "9999", "market_cap": 85000000}, None, "方針")
+    assert "時価総額: 85,000,000 円" in p3
+
+    # 4. カンマ付き文字列
+    p4 = service._build_prompt({"code": "7203", "market_cap": "1,200,000,000,000"}, None, "方針")
+    assert "時価総額: 1.20 兆円" in p4
+
+    # 5. 欠損・特殊表記 (N/A, --, None, "")
+    for missing_val in ["N/A", "--", None, ""]:
+        p = service._build_prompt({"code": "0000", "market_cap": missing_val}, None, "方針")
+        assert "時価総額: N/A" in p
+
+    # 6. 数値に変換できない不正文字列
+    p_invalid = service._build_prompt({"code": "0000", "market_cap": "非数値データ"}, None, "方針")
+    assert "時価総額: 非数値データ" in p_invalid
+
+
+def test_eps_prompt_building_variations(policy_manager):
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    # float
+    p1 = service._build_prompt({"code": "1111", "eps": 123.45}, None, "方針")
+    assert "EPS(1株利益): 123.45 円" in p1
+
+    # int
+    p2 = service._build_prompt({"code": "2222", "eps": 200}, None, "方針")
+    assert "EPS(1株利益): 200 円" in p2
+
+    # 文字列
+    p3 = service._build_prompt({"code": "3333", "eps": "350.0"}, None, "方針")
+    assert "EPS(1株利益): 350.0 円" in p3
+
+    # 欠損
+    p4 = service._build_prompt({"code": "4444"}, None, "方針")
+    assert "EPS(1株利益): N/A 円" in p4
+
+
+def test_performance_summary_fallback_on_missing_key(policy_manager):
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+    
+    # 応答JSONに performance_summary が含まれない場合
+    raw_text = '{"fit_level": "fit", "decision_label": "【判定】", "summary": "概要"}'
+    parsed = service._parse_llm_json(raw_text)
+    assert parsed["performance_summary"] == "直近業績（EPS・収益性）データに基づき持続可能な配当維持力を検証済みです。"
+
+
+def test_performance_summary_fallback_on_corrupted_json(policy_manager):
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+    
+    # 不正なJSONテキスト
+    raw_text = "This is not valid JSON content"
+    parsed = service._parse_llm_json(raw_text)
+    assert parsed["performance_summary"] == "業績データの詳細解析を実行中です。"
+    assert parsed["fit_level"] == "caution"
+
+
 

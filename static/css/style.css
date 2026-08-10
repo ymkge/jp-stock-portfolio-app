@@ -2172,3 +2172,125 @@ button {
     border-radius: 6px;
     border-left: 3px solid var(--primary-color);
 }
+
+/* ==========================================
+   Disclaimer Banner & Footer (Issue #247)
+   ========================================== */
+html.disclaimer-closed #top-disclaimer-banner {
+    display: none !important;
+}
+
+.top-disclaimer-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 14px;
+    margin-bottom: 12px;
+    background-color: var(--disclaimer-bg, #fffbe6);
+    border: 1px solid var(--disclaimer-border, #ffe58f);
+    border-radius: 6px;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--disclaimer-text, #595959);
+    transition: opacity 0.2s ease, max-height 0.2s ease;
+}
+
+[data-theme="dark"] .top-disclaimer-banner,
+.dark-mode .top-disclaimer-banner {
+    background-color: var(--disclaimer-bg-dark, #1e293b);
+    border-color: var(--disclaimer-border-dark, #334155);
+    color: var(--disclaimer-text-dark, #cbd5e1);
+}
+
+.disclaimer-icon {
+    font-size: 0.95rem;
+    line-height: 1;
+    margin-top: 1px;
+    flex-shrink: 0;
+}
+
+.disclaimer-text {
+    flex: 1 1 auto;
+}
+
+.disclaimer-text strong {
+    color: var(--disclaimer-strong-text, #d48806);
+}
+
+[data-theme="dark"] .disclaimer-text strong,
+.dark-mode .disclaimer-text strong {
+    color: var(--disclaimer-strong-text-dark, #fbbf24);
+}
+
+.disclaimer-close-btn {
+    background: transparent;
+    border: none;
+    font-size: 1.1rem;
+    line-height: 1;
+    color: var(--text-muted, #888);
+    cursor: pointer;
+    padding: 0 4px;
+    margin-left: 6px;
+    flex-shrink: 0;
+    transition: color 0.15s ease;
+}
+
+.disclaimer-close-btn:hover {
+    color: var(--text-color, #333);
+}
+
+.app-disclaimer-footer {
+    margin-top: 2rem;
+    padding: 1.5rem 1rem;
+    background-color: var(--header-bg-color, #f8fafc);
+    border-top: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 8px;
+    font-size: 0.78rem;
+    color: var(--text-muted, #64748b);
+    line-height: 1.5;
+}
+
+[data-theme="dark"] .app-disclaimer-footer,
+.dark-mode .app-disclaimer-footer {
+    background-color: rgba(15, 23, 42, 0.4);
+    border-top-color: #334155;
+    color: #94a3b8;
+}
+
+.app-disclaimer-footer .footer-title {
+    font-weight: bold;
+    margin-bottom: 6px;
+    color: var(--text-color, #334155);
+}
+
+[data-theme="dark"] .app-disclaimer-footer .footer-title,
+.dark-mode .app-disclaimer-footer .footer-title {
+    color: #e2e8f0;
+}
+
+.app-disclaimer-footer .footer-text {
+    margin-bottom: 10px;
+}
+
+.app-disclaimer-footer .footer-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border-color, #cbd5e1);
+    font-size: 0.75rem;
+}
+
+.btn-restore-disclaimer {
+    background: transparent;
+    border: none;
+    color: var(--primary-color, #3b82f6);
+    font-size: 0.75rem;
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+}
+
+.btn-restore-disclaimer:hover {
+    color: var(--primary-hover-color, #2563eb);
+}

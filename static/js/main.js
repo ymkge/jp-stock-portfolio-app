@@ -1650,4 +1650,26 @@ document.addEventListener('DOMContentLoaded', () => {
     } else { loadAssetsFromStorage(); }
     fetchAndRenderAllData(false);
     checkAndShowSplitAlerts(); // 初期表示時に確実にアラートをフェッチする (新規)
+
+    // 免責事項バナーの制御 (閉じる / 再表示 & localStorage 連携)
+    const btnCloseDisclaimer = document.getElementById('btn-close-disclaimer');
+    const btnRestoreDisclaimer = document.getElementById('btn-restore-disclaimer');
+
+    if (btnCloseDisclaimer) {
+        btnCloseDisclaimer.addEventListener('click', () => {
+            document.documentElement.classList.add('disclaimer-closed');
+            localStorage.setItem('disclaimer_banner_closed', 'true');
+        });
+    }
+
+    if (btnRestoreDisclaimer) {
+        btnRestoreDisclaimer.addEventListener('click', () => {
+            document.documentElement.classList.remove('disclaimer-closed');
+            localStorage.removeItem('disclaimer_banner_closed');
+            const topBanner = document.getElementById('top-disclaimer-banner');
+            if (topBanner) {
+                topBanner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        });
+    }
 });

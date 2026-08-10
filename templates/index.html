@@ -6,11 +6,14 @@
     <title>国内株式ポートフォリオ</title>
     <link rel="stylesheet" href="/static/css/style.css?v=3.2">
     <script>
-        // テーマの初期適用（チラつき防止）
+        // テーマおよび免責バナー表示の初期適用（チラつき防止）
         (function() {
             const theme = localStorage.getItem('theme');
             if (theme === 'dark') {
                 document.documentElement.classList.add('dark-mode');
+            }
+            if (localStorage.getItem('disclaimer_banner_closed') === 'true') {
+                document.documentElement.classList.add('disclaimer-closed');
             }
         })();
     </script>
@@ -45,6 +48,15 @@
                     </label>
                 </div>
             </header>
+
+            <!-- 免責事項スリムバナー -->
+            <div id="top-disclaimer-banner" class="top-disclaimer-banner" role="region" aria-label="免責事項通知">
+                <span class="disclaimer-icon">⚠️</span>
+                <span class="disclaimer-text">
+                    <strong>免責事項:</strong> 本アプリで提供される情報・指標・売買シグナルおよびAI診断結果は一般的な情報提供を目的としており、投資勧誘や個別助言を目的としたものではありません。投資の最終決定はご自身の判断と自己責任で行ってください。運用に伴う損害・損失について開発者および運営者は一切の責任を負いません。
+                </span>
+                <button type="button" id="btn-close-disclaimer" class="disclaimer-close-btn" title="免責事項バナーを閉じる" aria-label="閉じる">&times;</button>
+            </div>
 
             <!-- 株式分割アラートバナー (新規) -->
             <div id="split-alert-banner" class="split-alert-banner hidden">
@@ -175,6 +187,23 @@
                     </div>
                 </div>
             </section>
+
+            <!-- フッター免責事項領域 -->
+            <footer class="app-disclaimer-footer">
+                <div class="footer-content">
+                    <p class="footer-title">【利用規約・免責条項】</p>
+                    <p class="footer-text">
+                        ① <strong>投資助言等の否定</strong>: 本アプリは金融商品取引業者ではなく、投資助言や個別の投資勧誘を行うものではありません。<br>
+                        ② <strong>データの無保証</strong>: 株価データ、各種指標、スクレイピング先の仕様変更等により生じた情報の誤り・遅延・欠損について一切の責任を負いません。<br>
+                        ③ <strong>AI診断結果の性質</strong>: AI適合診断は生成AIによる機械的な情報整理であり、将来の株価動向・利回り・減配リスク等を保証するものではありません。<br>
+                        ④ <strong>完全免責</strong>: 本アプリの利用、または利用不能によって生じたすべての直接的・間接的・派生的損害、失われた利益、含み損等について、開発者は理由の如何を問わず一切の責任を負わないものとします。
+                    </p>
+                    <div class="footer-bottom">
+                        <span>&copy; JP Stock Portfolio App. All rights reserved.</span>
+                        <button type="button" id="btn-restore-disclaimer" class="btn-restore-disclaimer">🔗 免責バナーを再表示</button>
+                    </div>
+                </div>
+            </footer>
         </main>
     </div>
 
@@ -329,6 +358,9 @@
                 <div id="llm-result-container">
                     <!-- JSで動的に診断結果カードを描画 -->
                 </div>
+                <p class="llm-disclaimer-note" style="margin-top: 15px; font-size: 0.75rem; color: var(--text-muted, #94a3b8); text-align: center; line-height: 1.4;">
+                    ※ AI適合診断は生成AIによる機械的な情報整理であり、将来の株価・配当・成果を保証するものではありません。投資の最終判断は必ずご自身の責任で行ってください。
+                </p>
             </div>
             <div class="modal-footer" style="padding-top: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
                 <button type="button" id="btn-re-diagnose-llm" class="btn-secondary" style="display: flex; align-items: center; gap: 4px; font-size: 0.88rem; padding: 6px 12px;">

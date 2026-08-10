@@ -118,3 +118,33 @@ def test_dividend_history_chart_tooltip_retention():
     assert "afterLabel: (c) =>" in history_chart_section
     assert "前月比:" in history_chart_section
 
+
+def test_disclaimer_banner_and_footer_in_html():
+    """トップ画面 (/) および分析画面 (/analysis) に免責事項バナー・フッター・法的4要素・AIモーダル注記が正しく含まれていることを検証"""
+    res_index = client.get("/")
+    assert res_index.status_code == 200
+    assert "top-disclaimer-banner" in res_index.text
+    assert "免責事項:" in res_index.text
+    assert "一切の責任を負いません" in res_index.text
+    assert "app-disclaimer-footer" in res_index.text
+    # 法的4要素の検証
+    assert "投資助言等の否定" in res_index.text
+    assert "データの無保証" in res_index.text
+    assert "AI診断結果の性質" in res_index.text
+    assert "完全免責" in res_index.text
+    # 再表示ボタンおよびAI診断モーダル注記の検証
+    assert "btn-restore-disclaimer" in res_index.text
+    assert "llm-disclaimer-note" in res_index.text
+
+    res_analysis = client.get("/analysis")
+    assert res_analysis.status_code == 200
+    assert "top-disclaimer-banner" in res_analysis.text
+    assert "app-disclaimer-footer" in res_analysis.text
+    assert "投資助言等の否定" in res_analysis.text
+    assert "データの無保証" in res_analysis.text
+    assert "AI診断結果の性質" in res_analysis.text
+    assert "完全免責" in res_analysis.text
+    assert "btn-restore-disclaimer" in res_analysis.text
+
+
+

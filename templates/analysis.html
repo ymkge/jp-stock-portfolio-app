@@ -6,6 +6,18 @@
     <title>ポートフォリオ分析</title>
     <link rel="stylesheet" href="/static/css/style.css?v=3.2">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // テーマおよび免責バナー表示の初期適用（チラつき防止）
+        (function() {
+            const theme = localStorage.getItem('theme');
+            if (theme === 'dark') {
+                document.documentElement.classList.add('dark-mode');
+            }
+            if (localStorage.getItem('disclaimer_banner_closed') === 'true') {
+                document.documentElement.classList.add('disclaimer-closed');
+            }
+        })();
+    </script>
 </head>
 <body>
     <div class="container">
@@ -26,6 +38,15 @@
                     </div>
                 </div>
             </header>
+
+            <!-- 免責事項スリムバナー -->
+            <div id="top-disclaimer-banner" class="top-disclaimer-banner" role="region" aria-label="免責事項通知">
+                <span class="disclaimer-icon">⚠️</span>
+                <span class="disclaimer-text">
+                    <strong>免責事項:</strong> 本アプリで提供される情報・指標・売買シグナルおよびAI診断結果は一般的な情報提供を目的としており、投資勧誘や個別助言を目的としたものではありません。投資の最終決定はご自身の判断と自己責任で行ってください。運用に伴う損害・損失について開発者および運営者は一切の責任を負いません。
+                </span>
+                <button type="button" id="btn-close-disclaimer" class="disclaimer-close-btn" title="免責事項バナーを閉じる" aria-label="閉じる">&times;</button>
+            </div>
             
             <div id="loading-indicator" class="loading-indicator hidden" style="text-align: center; padding: 20px; font-size: 1.1rem;">データを取得中...</div>
             <div id="update-report-container" class="hidden" style="margin-bottom: 1.5rem;"></div>
@@ -189,6 +210,23 @@
                     </section>
                 </div>
             </div>
+
+            <!-- フッター免責事項領域 -->
+            <footer class="app-disclaimer-footer">
+                <div class="footer-content">
+                    <p class="footer-title">【利用規約・免責条項】</p>
+                    <p class="footer-text">
+                        ① <strong>投資助言等の否定</strong>: 本アプリは金融商品取引業者ではなく、投資助言や個別の投資勧誘を行うものではありません。<br>
+                        ② <strong>データの無保証</strong>: 株価データ、各種指標、スクレイピング先の仕様変更等により生じた情報の誤り・遅延・欠損について一切の責任を負いません。<br>
+                        ③ <strong>AI診断結果の性質</strong>: AI適合診断は生成AIによる機械的な情報整理であり、将来の株価動向・利回り・減配リスク等を保証するものではありません。<br>
+                        ④ <strong>完全免責</strong>: 本アプリの利用、または利用不能によって生じたすべての直接的・間接的・派生的損害、失われた利益、含み損等について、開発者は理由の如何を問わず一切の責任を負わないものとします。
+                    </p>
+                    <div class="footer-bottom">
+                        <span>&copy; JP Stock Portfolio App. All rights reserved.</span>
+                        <button type="button" id="btn-restore-disclaimer" class="btn-restore-disclaimer">🔗 免責バナーを再表示</button>
+                    </div>
+                </div>
+            </footer>
         </main>
     </div>
 

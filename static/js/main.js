@@ -1616,34 +1616,52 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="fit-badge ${fitBadgeClass}">
                             ${fitBadgeIcon} ${data.decision_label || '適合度評価完了'}
                         </span>
-                        <span style="margin-left: 10px; font-weight: bold; font-size: 0.95rem; color: #475569;">
+                        <span style="margin-left: 10px; font-weight: bold; font-size: 0.88rem; color: var(--text-color);">
                             確信度: ${data.confidence_score}%
                         </span>
                     </div>
-                    <small style="color: #94a3b8; font-size: 0.75rem;">Model: ${data.model_used || 'Gemini'}</small>
+                    <small style="color: #94a3b8; font-size: 0.72rem;">Model: ${data.model_used || 'Gemini'}</small>
                 </div>
 
-                <div style="margin-bottom: 12px; font-weight: 600; font-size: 0.95rem; color: #1e293b;">
+                <div style="margin-bottom: 8px; font-weight: 600; font-size: 0.88rem; color: var(--text-color);">
                     【概算配当利回り】 ${data.estimated_yield} | 【S株購入目安】 ${data.recommended_shares}
                 </div>
 
-                <div class="llm-section-title">📌 総合判定サマリー</div>
-                <div class="llm-text-content">${data.summary || '判定完了'}</div>
+                <div class="llm-grid-container">
+                    <div class="llm-column">
+                        <div class="llm-section-block">
+                            <div class="llm-section-title">📌 総合判定サマリー</div>
+                            <div class="llm-text-content">${data.summary || '判定完了'}</div>
+                        </div>
 
-                <div class="llm-section-title">📊 直近の業績動向と収益力</div>
-                <div class="llm-text-content">${data.performance_summary || 'データなし'}</div>
+                        <div class="llm-section-block">
+                            <div class="llm-section-title">📊 直近の業績動向と収益力</div>
+                            <div class="llm-text-content">${data.performance_summary || 'データなし'}</div>
+                        </div>
 
-                <div class="llm-section-title">📉 材料出尽くし・反転シグナル分析</div>
-                <div class="llm-text-content">${data.material_exhaustion_eval || '定量的データおよびマクロ動向を分析済みです。'}</div>
+                        <div class="llm-section-block">
+                            <div class="llm-section-title">📉 材料出尽くし・反転シグナル分析</div>
+                            <div class="llm-text-content">${data.material_exhaustion_eval || '定量的データおよびマクロ動向を分析済みです。'}</div>
+                        </div>
+                    </div>
 
-                <div class="llm-section-title">🛡️ 「還元の盾」とバリュエーション評価</div>
-                <div class="llm-text-content">${data.shield_and_valuation || 'データなし'}</div>
+                    <div class="llm-column">
+                        <div class="llm-section-block">
+                            <div class="llm-section-title">🛡️ 「還元の盾」とバリュエーション評価</div>
+                            <div class="llm-text-content">${data.shield_and_valuation || 'データなし'}</div>
+                        </div>
 
-                <div class="llm-section-title">🏢 10年スパンの事業評価（強みとリスク）</div>
-                <div class="llm-text-content">${data.business_10y_eval || 'データなし'}</div>
+                        <div class="llm-section-block">
+                            <div class="llm-section-title">🏢 10年スパンの事業評価（強みとリスク）</div>
+                            <div class="llm-text-content">${data.business_10y_eval || 'データなし'}</div>
+                        </div>
 
-                <div class="llm-section-title">💡 本システム（S株ナンピン）での立ち回りアドバイス</div>
-                <div class="llm-text-content">${data.tactical_advice || 'データなし'}</div>
+                        <div class="llm-section-block">
+                            <div class="llm-section-title">💡 本システムでの立ち回りアドバイス</div>
+                            <div class="llm-text-content">${data.tactical_advice || 'データなし'}</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
         llmResultContainer.innerHTML = html;

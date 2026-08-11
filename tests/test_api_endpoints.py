@@ -147,4 +147,45 @@ def test_disclaimer_banner_and_footer_in_html():
     assert "btn-restore-disclaimer" in res_analysis.text
 
 
+def test_llm_modal_first_view_and_responsive_css():
+    """案件 #248: AI診断モーダルのファーストVIEW完全収容、内部スクロール、グリッドレイアウト、ダークモードCSSの検証"""
+    import os
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    # 1. モーダル高さ制限と内部スクロール検証
+    assert "#llm-diagnosis-modal .modal-dialog" in css_content
+    assert "#llm-diagnosis-modal .modal-content" in css_content
+    assert "#llm-diagnosis-modal .modal-body" in css_content
+    assert "max-height: 88vh;" in css_content
+    assert "max-height: calc(88vh - 120px);" in css_content
+    assert "overflow-y: auto;" in css_content
+
+    # 2. レスポンシブ2列レイアウトとコンパクトブロック検証
+    assert ".llm-grid-container" in css_content
+    assert "grid-template-columns: 1fr 1fr;" in css_content
+    assert "@media (max-width: 768px)" in css_content
+    assert "grid-template-columns: 1fr;" in css_content
+    assert ".llm-section-block" in css_content
+
+    # 3. ダークモード配色設計検証
+    assert "body.dark-mode .llm-section-block" in css_content
+
+    # 4. 他モーダルへの副作用防止確認（汎用モーダルクラスを直接汚染せず#llm-diagnosis-modalでスコープしているか）
+    assert "#llm-diagnosis-modal .modal-body {" in css_content
+
+    # JS/HTML構造検証
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "main.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    assert "llm-grid-container" in js_content
+    assert "llm-column" in js_content
+    assert "llm-section-block" in js_content
+    assert "llm-section-title" in js_content
+    assert "llm-text-content" in js_content
+
+
+
 

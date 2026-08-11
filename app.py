@@ -570,35 +570,115 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
         "is_long_adjustment": is_long_adjustment # UI互換性のために明示的に返す
     }
 
-def reconcile_signals(buy_signal: Optional[dict], sell_signal: Optional[dict]) -> tuple[Optional[dict], Optional[dict]]:
+def calculate_material_exhaustion_signal(stock_data: Dict[str, Any], market_summary: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     """
-    購入シグナルと売却シグナルが同時に発生した場合の優先順位を調整し、
-    ユーザーの混乱を避けるために適切な方を一つに絞り込む。
+    材料出尽くし感による株価変動シグナルを判定する。
+    1. 🚨 好材料出尽くし警戒 (Sell the Fact Risk): 高値圏での過熱 + 反落初動
+    2. ✨ 悪材料出尽くし・アク抜け (Bad News Bottoming): 極限底値圏からの反転上昇
     """
-    if not buy_signal or not sell_signal:
-        return buy_signal, sell_signal
+    if stock_data.get("asset_type", "jp_stock") != "jp_stock":
+        return None
+
+    try:
+        price_val = stock_data.get("price")
+        if isinstance(price_val, str): price_val = price_val.replace(',', '')
+        price = float(price_val or 0)
+        if price <= 0: return None
+
+        rsi = stock_data.get("rsi14")
+        if isinstance(rsi, str): rsi = float(rsi) if rsi != "N/A" else None
+        
+        rci = stock_data.get("rci26")
+        if isinstance(rci, str): rci = float(rci) if rci != "N/A" else None
+
+        ma25 = stock_data.get("ma25") or stock_data.get("moving_average_25")
+        ma75 = stock_data.get("ma75") or stock_data.get("moving_average_75")
+        ma200 = stock_data.get("ma200") or stock_data.get("moving_average_200")
+
+        # 前日比 (チェンジ)
+        change_val = stock_data.get("change")
+        if isinstance(change_val, str): change_val = change_val.replace(',', '').replace('+', '')
+        change = float(change_val or 0)
+
+        dev_25 = ((price - ma25) / ma25 * 100) if ma25 and ma25 > 0 else 0
+        dev_75 = ((price - ma75) / ma75 * 100) if ma75 and ma75 > 0 else 0
+        dev_200 = ((price - ma200) / ma200 * 100) if ma200 and ma200 > 0 else 0
+
+        rsi_prev = stock_data.get("rsi14_prev")
+        if isinstance(rsi_prev, str): rsi_prev = float(rsi_prev) if rsi_prev != "N/A" else None
+
+        # 1. 🚨 好材料出尽くし警戒 (Sell the Fact Risk)
+        # 高値圏(25日線+5%超 または 75日線+10%超) × RSI ≧ 65 × RCI ≧ +70 × (前日比マイナス または RSI下降)
+        if (dev_25 >= 5.0 or dev_75 >= 10.0) and (rsi is not None and rsi >= 65.0) and (rci is not None and rci >= 70.0):
+            if change < 0 or (rsi_prev is not None and rsi < rsi_prev):
+                reasons = [
+                    f"買われすぎ高値圏(25日線乖離:{dev_25:+.1f}%, RSI:{rsi:.1f})",
+                    f"RCI高値圏({rci:+.1f})からの反落初動"
+                ]
+                return {
+                    "type": "sell_the_fact",
+                    "level": 2,
+                    "icon": "🚨",
+                    "label": "🚨 出尽くし警戒",
+                    "recommended_action": "買われすぎ高値圏からの反落初動。好材料出尽くしによる利益確定売りに注意（高値掴み厳禁）。",
+                    "current_status": f"【好材料出尽くし警戒】高値圏(RSI:{rsi:.1f}, 25日線乖離:{dev_25:+.1f}%)から反落に転じています。好決算発表後であっても利益確定売りに押されるリスクが高い状態です。",
+                    "reasons": reasons
+                }
+
+        # 2. ✨ 悪材料出尽くし・アク抜け (Bad News Bottoming)
+        # 極限売られすぎ(75日線-10%以下 または 200日線-15%以下) × RSI ≦ 30 × RCI ≦ -70 × (前日比プラス または RSI上昇)
+        if (dev_75 <= -10.0 or dev_200 <= -15.0) and (rsi is not None and rsi <= 30.0) and (rci is not None and rci <= -70.0):
+            if change > 0 or (rsi_prev is not None and rsi > rsi_prev):
+                reasons = [
+                    f"売られすぎ極限圏(75日線乖離:{dev_75:+.1f}%, RSI:{rsi:.1f})",
+                    f"RCI底値圏({rci:+.1f})からの反転上昇"
+                ]
+                return {
+                    "type": "bad_news_bottoming",
+                    "level": 2,
+                    "icon": "✨",
+                    "label": "✨ アク抜け期待",
+                    "recommended_action": "売られすぎ極限圏からの反転上昇を検知。悪材料出尽くし・アク抜けによる逆張り打診買い場。",
+                    "current_status": f"【悪材料出尽くし・アク抜け】極限の売られすぎ圏(RSI:{rsi:.1f}, 75日線乖離:{dev_75:+.1f}%)から反転上昇を開始しました。業績懸念の一巡による買戻し(アク抜け)が期待できる立ち上がりです。",
+                    "reasons": reasons
+                }
+    except Exception as e:
+        logger.warning(f"Error calculating material exhaustion signal for {stock_data.get('code')}: {e}")
+
+    return None
+
+def reconcile_signals(buy_signal: Optional[dict], sell_signal: Optional[dict], exhaustion_signal: Optional[dict] = None) -> Any:
+    """
+    購入シグナル、売却シグナル、および材料出尽くしシグナルが同時に発生した場合の優先順位を調整し、
+    ユーザーの混乱を避けるために適切な出力を一つまたは整合した組み合わせに絞り込む。
+    """
+    # 2引数で呼ばれた場合は後方互換で2要素タプルを返す
+    return_two = exhaustion_signal is None
+
+    if not buy_signal and not sell_signal and not exhaustion_signal:
+        return (buy_signal, sell_signal) if return_two else (buy_signal, sell_signal, exhaustion_signal)
 
     # 1. 売却側が「落ちるナイフ (Lv4)」の場合
-    # 長期的な下落トレンドは、ファンダメンタルズがどれだけ良くても最優先のリスク。
-    # すべての購入シグナルを無効化する。
-    if sell_signal.get("level") == 4:
-        return None, sell_signal
+    if sell_signal and sell_signal.get("level") == 4:
+        return (None, sell_signal) if return_two else (None, sell_signal, None)
 
-    # 2. 売却側が「ピークアウト (Lv2)」または「過熱気味 (Lv1)」の場合
-    # これらはテクニカル的な買われすぎからの反転リスクを示しており、
-    # たとえ押し目買いの条件（フィボナッチ等）を満たしていても、短期的には警戒が勝る。
-    if sell_signal.get("level") in [1, 2]:
-        # 売却側（警告）を優先し、購入側を非表示にする。
-        return None, sell_signal
+    # 2. 材料出尽くしが「🚨 出尽くし警戒 (Sell the Fact)」の場合
+    if exhaustion_signal and exhaustion_signal.get("type") == "sell_the_fact":
+        return (None, sell_signal or exhaustion_signal) if return_two else (None, sell_signal or exhaustion_signal, exhaustion_signal)
 
-    # 3. 売却側が「長期調整 (Lv3: 75日線割れ)」の場合
-    # 購入シグナル（注目・チャンス）が出ているなら、購入側を優先する。
-    # 新しいロジックでは、購入側のラベルに「逆張り」が明示されるため、
-    # トレンドが下向きであるというリスク情報は維持される。
-    if sell_signal.get("level") == 3:
-        return buy_signal, None
+    # 3. 材料出尽くしが「✨ アク抜け期待 (Bad News Bottoming)」の場合
+    if exhaustion_signal and exhaustion_signal.get("type") == "bad_news_bottoming":
+        return (exhaustion_signal, None) if return_two else (exhaustion_signal, None, exhaustion_signal)
 
-    return buy_signal, sell_signal
+    # 4. 既存の売却側が「ピークアウト (Lv2)」または「過熱気味 (Lv1)」の場合
+    if sell_signal and sell_signal.get("level") in [1, 2]:
+        return (None, sell_signal) if return_two else (None, sell_signal, exhaustion_signal)
+
+    # 5. 売却側が「長期調整 (Lv3: 75日線割れ)」の場合
+    if sell_signal and sell_signal.get("level") == 3:
+        return (buy_signal, None) if return_two else (buy_signal, None, exhaustion_signal)
+
+    return (buy_signal, sell_signal) if return_two else (buy_signal, sell_signal, exhaustion_signal)
 
 def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
@@ -686,11 +766,16 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
         # シグナルの判定
         merged_data["buy_signal"] = calculate_buy_signal(merged_data)
         merged_data["sell_signal"] = calculate_sell_signal(merged_data)
+        merged_data["exhaustion_signal"] = calculate_material_exhaustion_signal(merged_data)
 
-        # 重複・相反シグナルの抑制
-        merged_data["buy_signal"], merged_data["sell_signal"] = reconcile_signals(
-            merged_data.get("buy_signal"), merged_data.get("sell_signal")
+        # 重複・相反シグナルの抑制 (モック等の2要素/3要素返却に安全対応)
+        rec_res = reconcile_signals(
+            merged_data.get("buy_signal"), merged_data.get("sell_signal"), merged_data.get("exhaustion_signal")
         )
+        if isinstance(rec_res, (list, tuple)) and len(rec_res) == 3:
+            merged_data["buy_signal"], merged_data["sell_signal"], merged_data["exhaustion_signal"] = rec_res
+        else:
+            merged_data["buy_signal"], merged_data["sell_signal"] = rec_res[0], rec_res[1]
 
         # 簡易的な価格乖離検知 (株式分割の疑い)
         price_val = merged_data.get("price")

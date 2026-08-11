@@ -222,6 +222,12 @@ class LLMDiagnosisService:
             except (ValueError, TypeError):
                 market_cap_str = str(raw_cap)
 
+        # 材料出尽くし情報の抽出
+        exhaustion_sig = stock_data.get("exhaustion_signal")
+        exhaustion_info = "特になし (安定推移)"
+        if exhaustion_sig:
+            exhaustion_info = f"{exhaustion_sig.get('label', '')} - {exhaustion_sig.get('recommended_action', '')}"
+
         # キーの互換性確保 (yield vs dividend_yield)
         raw_yield = stock_data.get("yield")
         if raw_yield in [None, "", "N/A"]:
@@ -253,12 +259,13 @@ class LLMDiagnosisService:
 - 予想配当利回り: {dividend_yield} %
 - BPS(1株純資産): {bps} 円
 - 配当性向: {payout_ratio} %
+- テクニカル材料出尽くし検知: {exhaustion_info}
 
 ---
 
 ## あなたのタスク
 上記「ユーザーの基本投資方針」に照らし合わせ、対象銘柄({code} {name})の適合度を分析してください。
-直近の業績動向（EPSや収益性）および配当維持能力（還元の盾）を踏まえて投資判断を行ってください。
+直近の業績動向（EPSや収益性）、配当維持能力（還元の盾）、および【材料出尽くし感（好材料出尽くし下落リスク / 悪材料アク抜け大底判定）やマクロ地政学・災害・米国市況ショックの影響度】を踏まえて投資判断を行ってください。
 必ず以下のJSONフォーマットのみを出力してください。Markdownや他の余計な文言は一切含めないでください。
 
 JSONフォーマットで回答を出力してください。キーは必ず以下の通りとすること:
@@ -270,7 +277,8 @@ JSONフォーマットで回答を出力してください。キーは必ず以�
   "recommended_shares": "1回あたりの購入目安株数の記載(例: 約3株〜4株)",
   "shield_and_valuation": "「還元の盾」およびPBR/PER過熱感の評価詳細",
   "performance_summary": "直近のEPS・収益性・業績動向および配当原資創出力に関するAI評価解説",
-  "business_10y_eval": "10年スpanでの事業評価（ポジティブ要因・ネガティブ要因）",
+  "material_exhaustion_eval": "材料出尽くし（好材料出尽くし下落リスク / 悪材料アク抜け大底判定）およびマクロショック影響度のAI評価解説",
+  "business_10y_eval": "10年スパンでの事業評価（ポジティブ要因・ネガティブ要因）",
   "tactical_advice": "本システム/S株ナンピンにおける具体的な立ち回りアドバイス",
   "summary": "1〜2文による総合判定の簡潔な要約"
 }}
@@ -299,6 +307,7 @@ fit_levelの基準:
                 "recommended_shares": "要確認",
                 "shield_and_valuation": "レスポンスのパースに一部失敗しましたが、詳細テキストを以下に示します。",
                 "performance_summary": "業績データの詳細解析を実行中です。",
+                "material_exhaustion_eval": "材料出尽くしおよび市場変動の解析を実行中です。",
                 "business_10y_eval": raw_text[:500],
                 "tactical_advice": "手動での最終確認を推奨します。",
                 "summary": "AIからの応答フォーマットを調整しました。"
@@ -325,6 +334,7 @@ fit_levelの基準:
             "recommended_shares": str(data.get("recommended_shares", "N/A")),
             "shield_and_valuation": str(data.get("shield_and_valuation", "データなし")),
             "performance_summary": str(data.get("performance_summary", "直近業績（EPS・収益性）データに基づき持続可能な配当維持力を検証済みです。")),
+            "material_exhaustion_eval": str(data.get("material_exhaustion_eval", "テクニカル指標およびマクロ要因に基づく材料出尽くしリスクを分析済みです。")),
             "business_10y_eval": str(data.get("business_10y_eval", "データなし")),
             "tactical_advice": str(data.get("tactical_advice", "データなし")),
             "summary": str(data.get("summary", "診断が完了しました。"))

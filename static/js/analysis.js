@@ -476,6 +476,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const isDiamond = item.is_diamond || (item.buy_signal && item.buy_signal.is_diamond);
             if (item.buy_signal) nameHtml += renderBuySignalBadge(item.buy_signal, isDiamond);
             if (item.sell_signal) nameHtml += renderSellSignalBadge(item.sell_signal, isDiamond);
+            if (item.exhaustion_signal) nameHtml += renderExhaustionSignalBadge(item.exhaustion_signal);
             createCell(nameHtml);
             createCell(item.industry || 'N/A');
             createCell(item.asset_type === 'jp_stock' ? '国内株式' : (item.asset_type === 'investment_trust' ? '投資信託' : (item.asset_type === 'us_stock' ? '米国株式' : 'N/A')));
@@ -1118,6 +1119,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const title = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${signal.reasons.join('\n')}`;
         const label = (isDiamond ? '💎 ' : '') + signal.label;
         return `<span class="signal-badge-base ${themeClass}" title="${title}"><span class="signal-badge-text"><span class="buy-signal-icon-inner">${signal.icon}</span>${label}</span></span>`;
+    }
+
+    function renderExhaustionSignalBadge(signal) {
+        if (!signal) return '';
+        let themeClass = signal.type === 'sell_the_fact' ? 'theme-exhaustion-warn' : 'theme-exhaustion-rebound';
+        const title = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${signal.reasons.join('\n')}`;
+        return `<span class="signal-badge-base ${themeClass}" title="${title}"><span class="signal-badge-text"><span class="buy-signal-icon-inner">${signal.icon}</span>${signal.label}</span></span>`;
     }
 
     function getHighlightClass(key, value, assetType) {

@@ -561,6 +561,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const isDiamond = jpStock.is_diamond || (jpStock.buy_signal && jpStock.buy_signal.is_diamond);
             if (jpStock.buy_signal) nameHtml += renderBuySignalBadge(jpStock.buy_signal, isDiamond);
             if (jpStock.sell_signal) nameHtml += renderSellSignalBadge(jpStock.sell_signal, isDiamond);
+            if (jpStock.exhaustion_signal) nameHtml += renderExhaustionSignalBadge(jpStock.exhaustion_signal);
             nameHtml += `<button class="btn-llm-diagnose" data-code="${jpStock.code}" data-asset-type="${jpStock.asset_type || 'jp_stock'}" title="${jpStock.name} (${jpStock.code}) の投資方針適合度をAI診断">🤖 AI診断</button>`;
             createCell(nameHtml + `</div>`);
             createCell(jpStock.industry || 'N/A');
@@ -829,6 +830,13 @@ document.addEventListener('DOMContentLoaded', () => {
         // 売却時はisDiamond属性があったとしても、アイコンに含める程度に留め、背景色はthemeClassに委ねる
         const label = (isDiamond ? '💎 ' : '') + signal.label;
         return `<span class="signal-badge-base ${themeClass}" title="${title}"><span class="signal-badge-text"><span class="buy-signal-icon-inner">${signal.icon}</span>${label}</span></span>`;
+    }
+
+    function renderExhaustionSignalBadge(signal) {
+        if (!signal) return '';
+        let themeClass = signal.type === 'sell_the_fact' ? 'theme-exhaustion-warn' : 'theme-exhaustion-rebound';
+        const title = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${signal.reasons.join('\n')}`;
+        return `<span class="signal-badge-base ${themeClass}" title="${title}"><span class="signal-badge-text"><span class="buy-signal-icon-inner">${signal.icon}</span>${signal.label}</span></span>`;
     }
 
     function renderScoreAsStars(score, details, assetType) {
@@ -1624,6 +1632,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 <div class="llm-section-title">📊 直近の業績動向と収益力</div>
                 <div class="llm-text-content">${data.performance_summary || 'データなし'}</div>
+
+                <div class="llm-section-title">📉 材料出尽くし・反転シグナル分析</div>
+                <div class="llm-text-content">${data.material_exhaustion_eval || '定量的データおよびマクロ動向を分析済みです。'}</div>
 
                 <div class="llm-section-title">🛡️ 「還元の盾」とバリュエーション評価</div>
                 <div class="llm-text-content">${data.shield_and_valuation || 'データなし'}</div>

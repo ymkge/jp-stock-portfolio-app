@@ -318,14 +318,32 @@ def test_performance_summary_fallback_on_missing_key(policy_manager):
     assert parsed["performance_summary"] == "直近業績（EPS・収益性）データに基づき持続可能な配当維持力を検証済みです。"
 
 
-def test_performance_summary_fallback_on_corrupted_json(policy_manager):
+def test_material_exhaustion_eval_prompt_and_parsing(policy_manager):
     service = LLMDiagnosisService(policy_manager=policy_manager)
-    
-    # 不正なJSONテキスト
-    raw_text = "This is not valid JSON content"
+    stock_data = {
+        "code": "6200",
+        "name": "インソース",
+        "price": 713,
+        "exhaustion_signal": {
+            "type": "sell_the_fact",
+            "label": "🚨 出尽くし警戒",
+            "recommended_action": "買われすぎ高値圏からの反落初動。"
+        }
+    }
+    prompt = service._build_prompt(stock_data, None, "テスト方針")
+    assert "テクニカル材料出尽くし検知: 🚨 出尽くし警戒 - 買われすぎ高値圏からの反落初動。" in prompt
+    assert "【材料出尽くし感（好材料出尽くし下落リスク / 悪材料アク抜け大底判定）やマクロ地政学・災害・米国市況ショックの影響度】" in prompt
+
+    # JSONパースの検証
+    raw_text = '{"fit_level": "caution", "material_exhaustion_eval": "好材料出尽くしによる一時的な利益確定売りが発生しています。"}'
     parsed = service._parse_llm_json(raw_text)
-    assert parsed["performance_summary"] == "業績データの詳細解析を実行中です。"
-    assert parsed["fit_level"] == "caution"
+    assert parsed["material_exhaustion_eval"] == "好材料出尽くしによる一時的な利益確定売りが発生しています。"
+
+    # キー欠損フォールバックの検証
+    raw_missing = '{"fit_level": "fit"}'
+    parsed_missing = service._parse_llm_json(raw_missing)
+    assert parsed_missing["material_exhaustion_eval"] == "テクニカル指標およびマクロ要因に基づく材料出尽くしリスクを分析済みです。"
+
 
 
 

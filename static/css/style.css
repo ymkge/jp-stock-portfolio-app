@@ -2294,3 +2294,65 @@ html.disclaimer-closed #top-disclaimer-banner {
 .btn-restore-disclaimer:hover {
     color: var(--primary-hover-color, #2563eb);
 }
+
+/* --------------------------------------------------
+ * 材料出尽くしシグナル & AI評価カード スタイル (#246)
+ * -------------------------------------------------- */
+.badge.theme-exhaustion-warn {
+    background: linear-gradient(135deg, #fff2e8 0%, #ffbb96 100%);
+    color: #d4380d;
+    border: 1px solid #ff7a45;
+    font-weight: 600;
+}
+
+body.dark-mode .badge.theme-exhaustion-warn {
+    background: linear-gradient(135deg, #431407 0%, #7c2d12 100%);
+    color: #ff9c6e;
+    border: 1px solid #ea580c;
+}
+
+.badge.theme-exhaustion-rebound {
+    background: linear-gradient(135deg, #e6f7ff 0%, #91caff 100%);
+    color: #0958d9;
+    border: 1px solid #4096ff;
+    font-weight: 600;
+}
+
+body.dark-mode .badge.theme-exhaustion-rebound {
+    background: linear-gradient(135deg, #0c2d48 0%, #104e8b 100%);
+    color: #69b1ff;
+    border: 1px solid #1677ff;
+}
+
+.exhaustion-eval-card {
+    background: var(--card-bg-color, #ffffff);
+    border: 1px solid #91caff;
+    border-left: 4px solid #1677ff;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-top: 14px;
+    box-shadow: 0 2px 6px rgba(22, 119, 255, 0.08);
+}
+
+body.dark-mode .exhaustion-eval-card {
+    background: var(--card-bg-color, #1e293b);
+    border-color: #1677ff;
+    border-left-color: #4096ff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.exhaustion-eval-card .card-title {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text-color, #1e293b);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.exhaustion-eval-card .card-body-text {
+    font-size: 0.85rem;
+    line-height: 1.55;
+    color: var(--text-muted, #475569);
+}

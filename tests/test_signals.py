@@ -1,5 +1,5 @@
 import pytest
-from app import calculate_score, calculate_buy_signal, calculate_sell_signal, reconcile_signals
+from app import calculate_score, calculate_buy_signal, calculate_sell_signal, calculate_material_exhaustion_signal, reconcile_signals
 
 def test_calculate_score_basic():
     """スコア計算の基本的なテスト"""
@@ -180,4 +180,108 @@ def test_calculate_buy_signal_with_price_position_and_yield():
     sig = calculate_buy_signal(data_missing)
     assert sig is not None
     assert sig["label"] == "📈 注目(順張り)"  # 従来通りのラベルにフォールバック
+
+
+def test_calculate_material_exhaustion_signal():
+    """材料出尽くしシグナルの判定テスト"""
+    # 1. 好材料出尽くし警戒 (Sell the Fact)
+    stock_warn = {
+        "asset_type": "jp_stock",
+        "price": 1100,
+        "ma25": 1000,
+        "ma75": 950,
+        "rsi14": 70,
+        "rci26": 80,
+        "change": -10,
+        "rsi14_prev": 72
+    }
+    sig_warn = calculate_material_exhaustion_signal(stock_warn)
+    assert sig_warn is not None
+    assert sig_warn["type"] == "sell_the_fact"
+    assert "🚨 出尽くし警戒" in sig_warn["label"]
+
+    # 2. 悪材料出尽くし・アク抜け (Bad News Bottoming)
+    stock_rebound = {
+        "asset_type": "jp_stock",
+        "price": 850,
+        "ma75": 1000,
+        "ma200": 1050,
+        "rsi14": 25,
+        "rci26": -80,
+        "change": 15,
+        "rsi14_prev": 22
+    }
+    sig_rebound = calculate_material_exhaustion_signal(stock_rebound)
+    assert sig_rebound is not None
+    assert sig_rebound["type"] == "bad_news_bottoming"
+    assert "✨ アク抜け期待" in sig_rebound["label"]
+
+def test_material_exhaustion_signal_edge_cases():
+    """材料出尽くしシグナルのエッジケース・型変換・資産タイプフィルタテスト"""
+    # 非日本株の場合は None
+    us_stock = {"asset_type": "us_stock", "price": 100, "rsi14": 80, "rci26": 90}
+    assert calculate_material_exhaustion_signal(us_stock) is None
+
+    # 文字列のカンマや符号クリーニング
+    stock_str = {
+        "asset_type": "jp_stock",
+        "price": "1,100",
+        "ma25": 1000,
+        "rsi14": "70.0",
+        "rci26": "+80.0",
+        "change": "-10.0",
+        "rsi14_prev": "72.0"
+    }
+    sig = calculate_material_exhaustion_signal(stock_str)
+    assert sig is not None
+    assert sig["type"] == "sell_the_fact"
+
+    # 75日線離脱(-10%以下)でのアク抜け判定 (200日線なし)
+    stock_75 = {
+        "asset_type": "jp_stock",
+        "price": 85,
+        "ma75": 100,
+        "rsi14": 28,
+        "rci26": -75,
+        "change": 2,
+        "rsi14_prev": 25
+    }
+    sig75 = calculate_material_exhaustion_signal(stock_75)
+    assert sig75 is not None
+    assert sig75["type"] == "bad_news_bottoming"
+
+    # 不正データ・データ欠損時の安全返却 (None)
+    stock_corrupt = {"asset_type": "jp_stock", "price": "invalid", "rsi14": "N/A"}
+    assert calculate_material_exhaustion_signal(stock_corrupt) is None
+
+def test_reconcile_signals_with_exhaustion():
+    """材料出尽くしシグナルの相反調停テスト"""
+    buy = {"level": 2, "label": "チャンス"}
+    sell = {"level": 4, "label": "落ちるナイフ"}
+    exh_rebound = {"type": "bad_news_bottoming", "label": "✨ アク抜け期待"}
+
+    # 落ちるナイフ(Lv4) 発生時はアク抜けであっても購入非表示
+    b_res, s_res, e_res = reconcile_signals(buy, sell, exh_rebound)
+    assert b_res is None
+    assert s_res == sell
+    assert e_res is None
+
+    # 好材料出尽くし警戒発生時は購入側を抑制
+    exh_warn = {"type": "sell_the_fact", "label": "🚨 出尽くし警戒"}
+    b_res2, s_res2, e_res2 = reconcile_signals(buy, None, exh_warn)
+    assert b_res2 is None
+    assert e_res2 == exh_warn
+
+    # 2引数で呼ばれた場合の互換性テスト
+    b_2, s_2 = reconcile_signals(buy, None)
+    assert b_2 == buy
+    assert s_2 is None
+
+    # アク抜け期待(bad_news_bottoming)の場合は購入シグナルとして昇格・調整される
+    b_res3, s_res3, e_res3 = reconcile_signals(None, None, exh_rebound)
+    assert b_res3 == exh_rebound
+    assert s_res3 is None
+    assert e_res3 == exh_rebound
+
+
 

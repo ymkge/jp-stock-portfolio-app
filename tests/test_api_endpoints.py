@@ -228,6 +228,28 @@ def test_llm_modal_dark_mode_visibility_issue249():
     assert 'color: #f1f5f9 !important;' in css_content
 
 
+def test_dark_mode_table_ui_enhancements_issues_251_252_253():
+    """案件 #251, #252, #253: ダークモード時銘柄テーブルUI修復（ヘッダー背景色、銘柄名リンク高輝度シアン化、ホバー白化防止）の検証"""
+    import os
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    # Issue #251: 銘柄コードヘッダーの背景・文字色アサーション
+    assert '[data-theme="dark"] table.portfolio-table th' in css_content
+    assert 'background-color: #1e293b !important;' in css_content
+    assert 'color: #f8fafc !important;' in css_content
+
+    # Issue #252: 銘柄名リンク高輝度シアンブルーアサーション
+    assert '[data-theme="dark"] table.portfolio-table a' in css_content
+    assert 'color: #38bdf8 !important;' in css_content
+    assert 'color: #7dd3fc !important;' in css_content
+
+    # Issue #253: ホバー時行白化防止（スレートハイライト #334155）アサーション
+    assert '[data-theme="dark"] .portfolio-table tbody tr:hover' in css_content
+    assert 'background-color: #334155 !important;' in css_content
+
+
 
 
 

@@ -2342,6 +2342,65 @@ body.dark-mode .llm-model-tag,
 }
 
 /* ==========================================
+   Dark Mode Table UI Enhancements (Issues #251, #252, #253)
+   ========================================== */
+
+/* Issue #251: 銘柄コードを含むテーブルヘッダーの背景・文字色固定 */
+[data-theme="dark"] table.portfolio-table th,
+[data-theme="dark"] #analysis-table th,
+[data-theme="dark"] #industry-kpi-table th,
+body.dark-mode table.portfolio-table th,
+body.dark-mode #analysis-table th,
+body.dark-mode #industry-kpi-table th,
+.dark-mode table.portfolio-table th,
+.dark-mode #analysis-table th,
+.dark-mode #industry-kpi-table th {
+    background-color: #1e293b !important;
+    color: #f8fafc !important;
+}
+
+/* Issue #252: 銘柄名リンク色の視認性改善 */
+[data-theme="dark"] table.portfolio-table a,
+[data-theme="dark"] #analysis-table a,
+[data-theme="dark"] #industry-kpi-table a,
+body.dark-mode table.portfolio-table a,
+body.dark-mode #analysis-table a,
+body.dark-mode #industry-kpi-table a,
+.dark-mode table.portfolio-table a,
+.dark-mode #analysis-table a,
+.dark-mode #industry-kpi-table a {
+    color: #38bdf8 !important;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+[data-theme="dark"] table.portfolio-table a:hover,
+[data-theme="dark"] #analysis-table a:hover,
+[data-theme="dark"] #industry-kpi-table a:hover,
+body.dark-mode table.portfolio-table a:hover,
+body.dark-mode #analysis-table a:hover,
+body.dark-mode #industry-kpi-table a:hover,
+.dark-mode table.portfolio-table a:hover,
+.dark-mode #analysis-table a:hover,
+.dark-mode #industry-kpi-table a:hover {
+    color: #7dd3fc !important;
+    text-decoration: underline;
+}
+
+/* Issue #253: マウスON (ホバー) 時の行白化・文字消失の完全防止 */
+[data-theme="dark"] .portfolio-table tbody tr:hover,
+[data-theme="dark"] #analysis-table tbody tr:hover,
+[data-theme="dark"] #industry-kpi-table tbody tr:hover,
+body.dark-mode .portfolio-table tbody tr:hover,
+body.dark-mode #analysis-table tbody tr:hover,
+body.dark-mode #industry-kpi-table tbody tr:hover,
+.dark-mode .portfolio-table tbody tr:hover,
+.dark-mode #analysis-table tbody tr:hover,
+.dark-mode #industry-kpi-table tbody tr:hover {
+    background-color: #334155 !important;
+}
+
+/* ==========================================
    Disclaimer Banner & Footer (Issue #247)
    ========================================== */
 html.disclaimer-closed #top-disclaimer-banner {

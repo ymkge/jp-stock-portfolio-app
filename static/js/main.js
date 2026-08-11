@@ -1629,7 +1629,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 <div class="llm-grid-container">
                     <div class="llm-column">
-                        <div class="llm-section-block">
+                        <div class="llm-section-block theme-highlight-summary">
                             <div class="llm-section-title">📌 総合判定サマリー</div>
                             <div class="llm-text-content">${data.summary || '判定完了'}</div>
                         </div>
@@ -1656,7 +1656,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="llm-text-content">${data.business_10y_eval || 'データなし'}</div>
                         </div>
 
-                        <div class="llm-section-block">
+                        <div class="llm-section-block theme-highlight-action">
                             <div class="llm-section-title">💡 本システムでの立ち回りアドバイス</div>
                             <div class="llm-text-content">${data.tactical_advice || 'データなし'}</div>
                         </div>

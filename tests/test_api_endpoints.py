@@ -172,7 +172,13 @@ def test_llm_modal_first_view_and_responsive_css():
     # 3. ダークモード配色設計検証
     assert "body.dark-mode .llm-section-block" in css_content
 
-    # 4. 他モーダルへの副作用防止確認（汎用モーダルクラスを直接汚染せず#llm-diagnosis-modalでスコープしているか）
+    # 4. 強調スタイルの検証 (#249)
+    assert ".llm-section-block.theme-highlight-summary" in css_content
+    assert ".llm-section-block.theme-highlight-action" in css_content
+    assert "body.dark-mode .llm-section-block.theme-highlight-summary" in css_content
+    assert "body.dark-mode .llm-section-block.theme-highlight-action" in css_content
+
+    # 5. 他モーダルへの副作用防止確認（汎用モーダルクラスを直接汚染せず#llm-diagnosis-modalでスコープしているか）
     assert "#llm-diagnosis-modal .modal-body {" in css_content
 
     # JS/HTML構造検証
@@ -183,6 +189,8 @@ def test_llm_modal_first_view_and_responsive_css():
     assert "llm-grid-container" in js_content
     assert "llm-column" in js_content
     assert "llm-section-block" in js_content
+    assert "theme-highlight-summary" in js_content
+    assert "theme-highlight-action" in js_content
     assert "llm-section-title" in js_content
     assert "llm-text-content" in js_content
 

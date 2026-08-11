@@ -2114,6 +2114,13 @@ button {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
+[data-theme="dark"] .llm-card,
+body.dark-mode .llm-card,
+.dark-mode .llm-card {
+    background: #111827 !important;
+    border-color: #334155 !important;
+}
+
 #llm-diagnosis-modal .modal-dialog {
     max-height: 88vh;
     margin: 20px auto;
@@ -2208,17 +2215,31 @@ body.dark-mode .llm-section-block {
 }
 
 .llm-section-block.theme-highlight-summary .llm-section-title {
-    color: #065f46;
+    color: #047857;
 }
 
-body.dark-mode .llm-section-block.theme-highlight-summary {
-    background: rgba(6, 78, 59, 0.3);
-    border: 1px solid #047857;
-    border-left: 4px solid #34d399;
+.llm-section-block.theme-highlight-summary .llm-text-content {
+    color: #166534;
 }
 
-body.dark-mode .llm-section-block.theme-highlight-summary .llm-section-title {
-    color: #6ee7b7;
+[data-theme="dark"] .llm-section-block.theme-highlight-summary,
+body.dark-mode .llm-section-block.theme-highlight-summary,
+.dark-mode .llm-section-block.theme-highlight-summary {
+    background: #064e3b !important;
+    border: 1px solid #059669 !important;
+    border-left: 4px solid #34d399 !important;
+}
+
+[data-theme="dark"] .llm-section-block.theme-highlight-summary .llm-section-title,
+body.dark-mode .llm-section-block.theme-highlight-summary .llm-section-title,
+.dark-mode .llm-section-block.theme-highlight-summary .llm-section-title {
+    color: #6ee7b7 !important;
+}
+
+[data-theme="dark"] .llm-section-block.theme-highlight-summary .llm-text-content,
+body.dark-mode .llm-section-block.theme-highlight-summary .llm-text-content,
+.dark-mode .llm-section-block.theme-highlight-summary .llm-text-content {
+    color: #ffffff !important;
 }
 
 /* 立ち回り（アクション）強調カード */
@@ -2229,17 +2250,31 @@ body.dark-mode .llm-section-block.theme-highlight-summary .llm-section-title {
 }
 
 .llm-section-block.theme-highlight-action .llm-section-title {
+    color: #b45309;
+}
+
+.llm-section-block.theme-highlight-action .llm-text-content {
     color: #92400e;
 }
 
-body.dark-mode .llm-section-block.theme-highlight-action {
-    background: rgba(120, 53, 15, 0.3);
-    border: 1px solid #b45309;
-    border-left: 4px solid #fbbf24;
+[data-theme="dark"] .llm-section-block.theme-highlight-action,
+body.dark-mode .llm-section-block.theme-highlight-action,
+.dark-mode .llm-section-block.theme-highlight-action {
+    background: #78350f !important;
+    border: 1px solid #d97706 !important;
+    border-left: 4px solid #fbbf24 !important;
 }
 
-body.dark-mode .llm-section-block.theme-highlight-action .llm-section-title {
-    color: #fde047;
+[data-theme="dark"] .llm-section-block.theme-highlight-action .llm-section-title,
+body.dark-mode .llm-section-block.theme-highlight-action .llm-section-title,
+.dark-mode .llm-section-block.theme-highlight-action .llm-section-title {
+    color: #fde047 !important;
+}
+
+[data-theme="dark"] .llm-section-block.theme-highlight-action .llm-text-content,
+body.dark-mode .llm-section-block.theme-highlight-action .llm-text-content,
+.dark-mode .llm-section-block.theme-highlight-action .llm-text-content {
+    color: #ffffff !important;
 }
 
 .llm-section-title {
@@ -2261,6 +2296,49 @@ body.dark-mode .llm-section-block.theme-highlight-action .llm-section-title {
     background: transparent;
     border: none;
     padding: 0;
+}
+
+[data-theme="dark"] .llm-section-block .llm-text-content,
+body.dark-mode .llm-section-block .llm-text-content,
+.dark-mode .llm-section-block .llm-text-content {
+    color: #e2e8f0;
+}
+
+.llm-meta-strip {
+    margin-bottom: 8px;
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: var(--text-color, #1e293b);
+}
+
+[data-theme="dark"] .llm-meta-strip,
+body.dark-mode .llm-meta-strip,
+.dark-mode .llm-meta-strip {
+    color: #f1f5f9 !important;
+}
+
+.llm-confidence-tag {
+    margin-left: 10px;
+    font-weight: bold;
+    font-size: 0.88rem;
+    color: var(--text-color, #475569);
+}
+
+[data-theme="dark"] .llm-confidence-tag,
+body.dark-mode .llm-confidence-tag,
+.dark-mode .llm-confidence-tag {
+    color: #e2e8f0 !important;
+}
+
+.llm-model-tag {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
+[data-theme="dark"] .llm-model-tag,
+body.dark-mode .llm-model-tag,
+.dark-mode .llm-model-tag {
+    color: #cbd5e1 !important;
 }
 
 /* ==========================================

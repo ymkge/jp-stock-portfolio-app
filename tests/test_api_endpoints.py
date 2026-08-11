@@ -195,5 +195,40 @@ def test_llm_modal_first_view_and_responsive_css():
     assert "llm-text-content" in js_content
 
 
+def test_llm_modal_dark_mode_visibility_issue249():
+    """案件 #249: AI診断モーダル強調カードおよび標準カードのダークモード文字視認性・セレクタ網羅性の詳細検証"""
+    import os
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    # 1. セレクタ網羅検証 ([data-theme="dark"], body.dark-mode, .dark-mode)
+    assert '[data-theme="dark"] .llm-section-block.theme-highlight-summary' in css_content
+    assert 'body.dark-mode .llm-section-block.theme-highlight-summary' in css_content
+    assert '.dark-mode .llm-section-block.theme-highlight-summary' in css_content
+
+    assert '[data-theme="dark"] .llm-section-block.theme-highlight-action' in css_content
+    assert 'body.dark-mode .llm-section-block.theme-highlight-action' in css_content
+    assert '.dark-mode .llm-section-block.theme-highlight-action' in css_content
+
+    # 2. 強調カードの純白高コントラスト文字色修復 (#ffffff !important)
+    assert "#ffffff !important" in css_content
+
+    # 3. 標準他4カードおよび親コンテナ.llm-cardのダークモード背景・文字色保証
+    assert "color: #e2e8f0;" in css_content
+    assert '[data-theme="dark"] .llm-card' in css_content
+    assert "background: #111827 !important;" in css_content
+
+    # 4. 上部ヘッダー（確信度, Model, 概算利回り帯）のダークモード文字視認性保証 (補正2)
+    assert '[data-theme="dark"] .llm-confidence-tag' in css_content
+    assert 'color: #e2e8f0 !important;' in css_content
+    assert '[data-theme="dark"] .llm-model-tag' in css_content
+    assert 'color: #cbd5e1 !important;' in css_content
+    assert '[data-theme="dark"] .llm-meta-strip' in css_content
+    assert 'color: #f1f5f9 !important;' in css_content
+
+
+
+
 
 

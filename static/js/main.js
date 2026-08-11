@@ -1616,14 +1616,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="fit-badge ${fitBadgeClass}">
                             ${fitBadgeIcon} ${data.decision_label || '適合度評価完了'}
                         </span>
-                        <span style="margin-left: 10px; font-weight: bold; font-size: 0.88rem; color: var(--text-color);">
+                        <span class="llm-confidence-tag">
                             確信度: ${data.confidence_score}%
                         </span>
                     </div>
-                    <small style="color: #94a3b8; font-size: 0.72rem;">Model: ${data.model_used || 'Gemini'}</small>
+                    <small class="llm-model-tag">Model: ${data.model_used || 'Gemini'}</small>
                 </div>
 
-                <div style="margin-bottom: 8px; font-weight: 600; font-size: 0.88rem; color: var(--text-color);">
+                <div class="llm-meta-strip">
                     【概算配当利回り】 ${data.estimated_yield} | 【S株購入目安】 ${data.recommended_shares}
                 </div>
 

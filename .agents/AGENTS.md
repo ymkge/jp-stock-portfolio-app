@@ -698,6 +698,16 @@ AI診断レポートの情報量増加に伴い、モーダルが画面上下へ
   - プレースホルダーを `#94a3b8 !important` で高輝度可視化し、ドロップダウンを展開した際の `option` 背景まで完璧なダークテーマに統一。
 - **目的**: テーブル本体だけでなく、ヘッダーレポート帯から検索フィルタバーに至るまで画面全体の統一感と視認性を極限まで高める。
 
+### 2.49 国内株式ポートフォリオ体質 (DNA) 文章のダークモード修復 (`style.css`) [バグ修正 #254]
+
+ポートフォリオ分析ページにおいて、ダークモード表示時に DNA 診断メッセージボックス (`.dna-diagnosis-box`) が白背景残存し、テキストが淡色同化して消滅する問題を根本修正した設計ロジック。
+
+- **トリプルセレクタの網羅定義**:
+  - `[data-theme="dark"] .dna-diagnosis-box`, `body.dark-mode .dna-diagnosis-box`, `.dark-mode .dna-diagnosis-box` を定義し、テーマ適用方式の違いによるオーバーライド不全を解決。
+  - `background-color: #1e293b !important; border-left: 4px solid #38bdf8 !important; color: #f8fafc !important;` を指定（コントラスト比 13.2:1 AAA適合）。
+  - インフォアイコン (`.dna-info-icon`) も `background: #334155 !important; color: #cbd5e1 !important;` で暗色調和を確保。
+- **目的**: ポートフォリオ診断コメントを視覚的に際立たせ、暗色画面での可読性とアクセシビリティを最大化する。
+
 ## 7. 自動テスト・運用基準 (Issue #1 導入) [新基準]
 
 本アプリの品質を維持するため、以下のテスト基準を遵守すること。

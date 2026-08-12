@@ -272,6 +272,31 @@ def test_dark_mode_update_report_and_filter_styles_issue_255():
     assert 'color: #94a3b8 !important;' in css_content
 
 
+def test_dark_mode_dna_diagnosis_box_issue254():
+    """案件 #254: 国内株式ポートフォリオ体質 (DNA) 診断ボックスおよびインフォアイコンのダークモード文字視認性・セレクタ網羅性の検証"""
+    import os
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    # 1. dna-diagnosis-box のトリプルセレクタ網羅検証 ([data-theme="dark"], body.dark-mode, .dark-mode)
+    assert '[data-theme="dark"] .dna-diagnosis-box' in css_content
+    assert 'body.dark-mode .dna-diagnosis-box' in css_content
+    assert '.dark-mode .dna-diagnosis-box' in css_content
+
+    # 2. dna-diagnosis-box のスタイル定義アサーション (#1e293b, #38bdf8, #f8fafc)
+    assert 'background-color: #1e293b !important;' in css_content
+    assert 'border-left: 4px solid #38bdf8 !important;' in css_content
+    assert 'color: #f8fafc !important;' in css_content
+
+    # 3. dna-info-icon のトリプルセレクタとスタイル定義アサーション
+    assert '[data-theme="dark"] .dna-info-icon' in css_content
+    assert 'body.dark-mode .dna-info-icon' in css_content
+    assert '.dark-mode .dna-info-icon' in css_content
+    assert 'background: #334155 !important;' in css_content
+    assert 'color: #cbd5e1 !important;' in css_content
+
+
 
 
 

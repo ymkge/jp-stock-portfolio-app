@@ -1379,14 +1379,20 @@ button {
     line-height: 1.5;
 }
 
-/* Dark Mode support for DNA boxes */
-[data-theme="dark"] .dna-diagnosis-box {
-    background: rgba(255,255,255,0.05);
-    color: var(--text-color);
+/* Dark Mode support for DNA boxes (#254) */
+[data-theme="dark"] .dna-diagnosis-box,
+body.dark-mode .dna-diagnosis-box,
+.dark-mode .dna-diagnosis-box {
+    background-color: #1e293b !important;
+    border-left: 4px solid #38bdf8 !important;
+    color: #f8fafc !important;
 }
-[data-theme="dark"] .dna-info-icon {
-    background: #444;
-    color: #bbb;
+
+[data-theme="dark"] .dna-info-icon,
+body.dark-mode .dna-info-icon,
+.dark-mode .dna-info-icon {
+    background: #334155 !important;
+    color: #cbd5e1 !important;
 }
 
 /* --- Portfolio Radar Chart --- */

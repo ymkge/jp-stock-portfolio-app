@@ -341,6 +341,34 @@ def test_dark_mode_holding_management_modal_issue_258():
     assert '[data-theme="dark"] #cancel-form-btn' in css_content
 
 
+def test_dark_mode_split_alert_modal_issue_260():
+    """案件 #260: 株式分割適用確認モーダル(#split-alert-modal)および分割詳細カード(.split-detail-card)のダークモード文字同化・デザイン修復の検証"""
+    import os
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    # 1. モーダル親コンテナ (#split-alert-modal) アサーション
+    assert '[data-theme="dark"] #split-alert-modal .modal-content' in css_content
+    assert 'body.dark-mode #split-alert-modal .modal-content' in css_content
+    assert '.dark-mode #split-alert-modal .modal-content' in css_content
+
+    # 2. 分割詳細カード (.split-detail-card) およびヘッダーアサーション
+    assert '[data-theme="dark"] .split-detail-card' in css_content
+    assert 'body.dark-mode .split-detail-card' in css_content
+    assert '.dark-mode .split-detail-card' in css_content
+    assert '[data-theme="dark"] .split-detail-header' in css_content
+
+    # 3. プレビューテーブル (.split-detail-table) アサーション
+    assert '[data-theme="dark"] .split-detail-table th' in css_content
+    assert '[data-theme="dark"] .split-detail-table td' in css_content
+
+    # 4. アクションボタン (btn-dismiss-split, btn-apply-split) アサーション
+    assert '[data-theme="dark"] .btn-dismiss-split' in css_content
+    assert '[data-theme="dark"] .btn-apply-split' in css_content
+    assert 'background-color: #0284c7 !important;' in css_content
+
+
 
 
 

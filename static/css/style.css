@@ -2829,3 +2829,125 @@ body.dark-mode .btn-secondary:hover,
     background-color: #475569 !important;
     color: #ffffff !important;
 }
+
+/* ==========================================
+   Split Alert Modal & History Modal Improvements (#260)
+   ========================================== */
+
+/* 1. モーダル親コンテナ */
+[data-theme="dark"] #split-alert-modal .modal-content,
+body.dark-mode #split-alert-modal .modal-content,
+.dark-mode #split-alert-modal .modal-content,
+[data-theme="dark"] #split-history-modal .modal-content,
+body.dark-mode #split-history-modal .modal-content,
+.dark-mode #split-history-modal .modal-content {
+    background-color: #111827 !important;
+    border: 1px solid #334155 !important;
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] #split-alert-modal .modal-header,
+body.dark-mode #split-alert-modal .modal-header,
+.dark-mode #split-alert-modal .modal-header,
+[data-theme="dark"] #split-history-modal .modal-header,
+body.dark-mode #split-history-modal .modal-header,
+.dark-mode #split-history-modal .modal-header,
+[data-theme="dark"] #split-alert-modal .modal-footer,
+body.dark-mode #split-alert-modal .modal-footer,
+.dark-mode #split-alert-modal .modal-footer,
+[data-theme="dark"] #split-history-modal .modal-footer,
+body.dark-mode #split-history-modal .modal-footer,
+.dark-mode #split-history-modal .modal-footer {
+    border-color: #334155 !important;
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] #btn-close-split-modal,
+[data-theme="dark"] #btn-close-split-history-modal,
+body.dark-mode #btn-close-split-modal,
+body.dark-mode #btn-close-split-history-modal,
+.dark-mode #btn-close-split-modal,
+.dark-mode #btn-close-split-history-modal {
+    color: #cbd5e1 !important;
+}
+
+/* 2. 分割詳細カード */
+[data-theme="dark"] .split-detail-card,
+body.dark-mode .split-detail-card,
+.dark-mode .split-detail-card {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] .split-detail-header,
+body.dark-mode .split-detail-header,
+.dark-mode .split-detail-header {
+    border-bottom: 1px solid #334155 !important;
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] .split-detail-header span:last-child,
+body.dark-mode .split-detail-header span:last-child,
+.dark-mode .split-detail-header span:last-child {
+    color: #94a3b8 !important;
+}
+
+/* 3. プレビューテーブル */
+[data-theme="dark"] .split-detail-table th,
+body.dark-mode .split-detail-table th,
+.dark-mode .split-detail-table th {
+    color: #94a3b8 !important;
+    border-bottom: 1px solid #334155 !important;
+}
+
+[data-theme="dark"] .split-detail-table td,
+body.dark-mode .split-detail-table td,
+.dark-mode .split-detail-table td {
+    color: #f8fafc !important;
+    border-bottom: 1px solid #334155 !important;
+}
+
+/* 4. アクションボタン & ホバー動作 */
+[data-theme="dark"] .btn-dismiss-split,
+body.dark-mode .btn-dismiss-split,
+.dark-mode .btn-dismiss-split,
+[data-theme="dark"] #btn-close-split-modal-footer,
+body.dark-mode #btn-close-split-modal-footer,
+.dark-mode #btn-close-split-modal-footer,
+[data-theme="dark"] #btn-close-split-history-modal-footer,
+body.dark-mode #btn-close-split-history-modal-footer,
+.dark-mode #btn-close-split-history-modal-footer {
+    background-color: #334155 !important;
+    border: 1px solid #475569 !important;
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] .btn-dismiss-split:hover,
+body.dark-mode .btn-dismiss-split:hover,
+.dark-mode .btn-dismiss-split:hover,
+[data-theme="dark"] #btn-close-split-modal-footer:hover,
+body.dark-mode #btn-close-split-modal-footer:hover,
+.dark-mode #btn-close-split-modal-footer:hover,
+[data-theme="dark"] #btn-close-split-history-modal-footer:hover,
+body.dark-mode #btn-close-split-history-modal-footer:hover,
+.dark-mode #btn-close-split-history-modal-footer:hover {
+    background-color: #475569 !important;
+    border-color: #64748b !important;
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] .btn-apply-split,
+body.dark-mode .btn-apply-split,
+.dark-mode .btn-apply-split {
+    background-color: #0284c7 !important;
+    border: 1px solid #38bdf8 !important;
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] .btn-apply-split:hover,
+body.dark-mode .btn-apply-split:hover,
+.dark-mode .btn-apply-split:hover {
+    background-color: #0369a1 !important;
+    border-color: #7dd3fc !important;
+}

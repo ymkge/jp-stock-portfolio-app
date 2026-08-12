@@ -745,6 +745,18 @@ AI診断レポートの情報量増加に伴い、モーダルが画面上下へ
   - 自動記録されるアラートはすべて `status='pending'` とし、ユーザーが「適用」ボタンを押すまで `portfolio.json` や DBデータは一切自動改変されない安全設計を徹底。
 - **目的**: 手動コマンドを一切意識させることなく、株式分割を完全自動かつ安全に検出・通知する。
 
+### 2.53 株式分割適用確認モーダルのダークモードUI修復 (`style.css`) [バグ修正 #260]
+
+メインページにおいて「✂️ 株式分割の適用確認モーダル」 (`#split-alert-modal`) および履歴モーダル (`#split-history-modal`) を開いた際、分割詳細カード (`.split-detail-card`) が白背景露出して文字が同化・消滅する問題を根本修正した設計ロジック。
+
+- **親コンテナ＆分割カードの完全不透明暗色統一**:
+  - 親ダイアログ `#split-alert-modal .modal-content` に対し `background-color: #111827 !important; border: 1px solid #334155 !important;` を指定。
+  - 分割詳細カード `.split-detail-card` に対し `background-color: #1e293b !important; border: 1px solid #334155 !important; color: #f8fafc !important;` を適用し、白背景露出を100%排除。
+- **テーブル・アクションボタンのコントラスト最適化**:
+  - プレビューテーブル `th` を `#94a3b8 !important`、`td` を `#f8fafc !important` へ変更。
+  - 無視ボタン `.btn-dismiss-split` を `#334155` 基調、適用ボタン `.btn-apply-split` を高輝度シアンブルー `#0284c7` に統一。
+- **目的**: 株式分割の確認・適用UIを視認性・統一感の非常に高いダークテーマへ昇華させる。
+
 ## 7. 自動テスト・運用基準 (Issue #1 導入) [新基準]
 
 本アプリの品質を維持するため、以下のテスト基準を遵守すること。

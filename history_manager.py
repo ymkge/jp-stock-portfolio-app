@@ -589,6 +589,19 @@ def _to_float(value):
     except (ValueError, TypeError):
         return 0.0
 
+def round_split_ratio(ratio: float) -> float:
+    """検知された分割比率を、代表的な株式分割・併合比率に丸める"""
+    common_ratios = [
+        0.01, 0.02, 0.04, 0.05, 0.1, 0.2, 0.5,           # 併合 (100:1, 50:1, 25:1, 20:1, 10:1, 5:1, 2:1)
+        1.1, 1.15, 1.2, 1.25, 1.3, 1.5,                  # 特殊な小規模分割
+        2.0, 2.5, 3.0, 4.0, 5.0, 10.0,                   # 一般的な分割
+        15.0, 20.0, 25.0, 50.0, 100.0                    # 大口分割 (NTT 1:25分割等に対応)
+    ]
+    for r in common_ratios:
+        if abs(ratio - r) / r <= 0.05 or abs(ratio - r) <= 0.1:
+            return r
+    return round(ratio, 4)
+
 def add_split_alert(code: str, ratio: float) -> bool:
     """株式分割アラートを追加・更新する"""
     try:

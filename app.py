@@ -788,10 +788,16 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
                     ratio = last_db_price / current_price
                     # 30%以上の乖離（1:1.45以上の分割、または逆の併合）を検知
                     if ratio >= 1.45 or ratio <= 0.7:
-                        # すでに確定アラートがない場合のみ、簡易警告フラグを設定
+                        # すでに確定アラートがない場合、即座にDBへアラートを自動保存（永続化）
                         if not history_manager.has_pending_split_alert(code):
+                            rounded_ratio = history_manager.round_split_ratio(ratio)
                             merged_data["potential_split"] = True
-                            merged_data["potential_split_ratio"] = round(ratio, 2)
+                            merged_data["potential_split_ratio"] = rounded_ratio
+                            try:
+                                history_manager.add_split_alert(code, rounded_ratio)
+                                logger.info(f"Auto-persisted split alert for {code} with ratio {rounded_ratio}")
+                            except Exception as alert_e:
+                                logger.error(f"Failed to auto-persist split alert for {code}: {alert_e}")
         except Exception as e:
             logger.warning(f"Error checking potential split for {code}: {e}")
 

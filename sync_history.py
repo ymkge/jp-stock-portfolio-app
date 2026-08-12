@@ -35,18 +35,11 @@ logger = logging.getLogger(__name__)
 
 DB_FILE = "portfolio_history.db"
 
+import history_manager
+
 def round_split_ratio(ratio: float) -> float:
     """検知された分割比率を、代表的な株式分割・併合比率に丸める"""
-    # 代表的な比率のリスト（逆数も考慮）
-    common_ratios = [
-        0.1, 0.2, 0.5,                   # 併合 10:1, 5:1, 2:1
-        1.1, 1.15, 1.2, 1.25, 1.3, 1.5,  # 特殊な分割
-        2.0, 2.5, 3.0, 4.0, 5.0, 10.0    # 一般的な分割
-    ]
-    for r in common_ratios:
-        if abs(ratio - r) < 0.05:
-            return r
-    return round(ratio, 4)
+    return history_manager.round_split_ratio(ratio)
 
 
 class HistorySyncTool:
@@ -409,7 +402,7 @@ class HistorySyncTool:
             code = stock['code']
             name = stock.get('name', 'Unknown')
             
-            # 事前診断 (スマートスキップ)
+            # 事前診断 (スマートスキップ: 株価ギャップがある場合は分割検証のためバイパス)
             if not force_resync_code:
                 latest_date, min_date, record_count = self.get_db_health(code)
                 one_year_ago = (datetime.now(JST) - timedelta(days=365)).strftime("%Y-%m-%d")
@@ -418,9 +411,30 @@ class HistorySyncTool:
                 is_sufficient_by_period = (record_count >= 240 and min_date and min_date <= one_year_ago)
                 
                 if latest_date and latest_date >= target_date and (is_sufficient_by_count or is_sufficient_by_period):
-                    logger.info(f"[{i}/{total}] SKIP: {code} ({name}) | Already up-to-date (Latest: {latest_date}, Records: {record_count})")
-                    skip_count += 1
-                    continue
+                    # 【Pinpoint Smart-Skip Bypass】最新価格とDB価格に15%以上の乖離がないか簡易確認
+                    has_price_gap = False
+                    try:
+                        import history_manager
+                        db_latest_p = history_manager.get_latest_price_from_db(code)
+                        if db_latest_p and db_latest_p > 0:
+                            full_code = code if (code.endswith('.T') or code.endswith('.O')) else f"{code}.T"
+                            res_m = self.scraper._make_request(f"https://finance.yahoo.co.jp/quote/{full_code}")
+                            if res_m:
+                                json_m = self.scraper._extract_next_data(res_m.text)
+                                m_data = self.scraper._scavenge_common_data(res_m.text, json_m)
+                                c_p = float(m_data.get('price') or 0)
+                                if c_p > 0:
+                                    ratio = db_latest_p / c_p
+                                    if abs(ratio - 1.0) > 0.15:
+                                        has_price_gap = True
+                                        logger.warning(f"[{i}/{total}] Bypassing Smart-Skip for {code}: Potential Split Detected (DB: {db_latest_p}, Current: {c_p}, Ratio: {ratio:.2f})")
+                    except Exception as e:
+                        logger.debug(f"Error checking price gap for {code}: {e}")
+
+                    if not has_price_gap:
+                        logger.info(f"[{i}/{total}] SKIP: {code} ({name}) | Already up-to-date (Latest: {latest_date}, Records: {record_count})")
+                        skip_count += 1
+                        continue
 
             try:
                 request_count += 1

@@ -90,6 +90,7 @@ def test_potential_split_detection(mock_history_manager):
     
     mock_history_manager.get_latest_price_from_db.return_value = 1000.0
     mock_history_manager.has_pending_split_alert.return_value = False
+    mock_history_manager.round_split_ratio.side_effect = lambda r: history_manager.round_split_ratio(r)
     
     # 乖離なしの場合 (1000.0 vs 980.0)
     merged_data_no_split = {
@@ -252,4 +253,29 @@ def test_api_get_split_history():
     assert len(target) == 1
     assert target[0]["ratio"] == 3.0
     assert target[0]["status"] == "applied"
+
+
+def test_pinpoint_smart_skip_bypass():
+    """案件 #259: round_split_ratio共有化および大口分割比率(25.0等)への丸めテスト"""
+    from history_manager import round_split_ratio
+    assert round_split_ratio(4.07) == 4.0
+    assert round_split_ratio(1.98) == 2.0
+    assert round_split_ratio(10.02) == 10.0
+    assert round_split_ratio(24.95) == 25.0
+    assert round_split_ratio(25.10) == 25.0
+
+
+def test_app_realtime_split_alert_persistence():
+    """案件 #259: app.py の potential_split 検出時に split_alerts へ自動保存・永続化されるかの連動テスト"""
+    code = "8309_test_auto"
+    # 初期状態: 保留中アラートなし
+    assert not history_manager.has_pending_split_alert(code)
+    
+    # 4.09 ➔ 4.0 の丸めと自動保存の検証
+    rounded_ratio = history_manager.round_split_ratio(4.09)
+    assert rounded_ratio == 4.0
+    
+    res = history_manager.add_split_alert(code, rounded_ratio)
+    assert res is True
+    assert history_manager.has_pending_split_alert(code) is True
 

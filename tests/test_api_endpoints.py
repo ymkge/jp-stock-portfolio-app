@@ -314,6 +314,33 @@ def test_dark_mode_personality_and_searchable_select_issue_257():
     assert 'border: 1px solid #475569 !important;' in css_content
 
 
+def test_dark_mode_holding_management_modal_issue_258():
+    """案件 #258: 保有情報管理モーダル(#management-modal)および編集フォーム(#holding-form-container)のダークモード文字同化・ハンパデザイン修復の検証"""
+    import os
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    # 1. モーダル親コンテナ (#management-modal) アサーション
+    assert '[data-theme="dark"] #management-modal' in css_content
+    assert 'body.dark-mode #management-modal' in css_content
+    assert '.dark-mode #management-modal' in css_content
+    assert 'background-color: #111827 !important;' in css_content
+
+    # 2. 編集フォームコンテナ (#holding-form-container) および見出し・ラベルアサーション
+    assert '[data-theme="dark"] #holding-form-container' in css_content
+    assert '[data-theme="dark"] #holding-form-title' in css_content
+    assert 'color: #cbd5e1 !important;' in css_content
+
+    # 3. フォーム入力欄 (number/text/textarea/select) アサーション
+    assert '[data-theme="dark"] #holding-form input[type="number"]' in css_content
+    assert '[data-theme="dark"] #holding-form textarea' in css_content
+
+    # 4. モーダルボタン類 (btn-secondary, add-new-holding-btn, cancel-form-btn) アサーション
+    assert '[data-theme="dark"] #add-new-holding-btn' in css_content
+    assert '[data-theme="dark"] #cancel-form-btn' in css_content
+
+
 
 
 

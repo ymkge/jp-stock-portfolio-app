@@ -2721,3 +2721,111 @@ body.dark-mode .searchable-select-wrapper .select-search-input::placeholder,
     color: #94a3b8 !important;
     opacity: 1;
 }
+
+/* ==========================================
+   Management Modal & Holding Form Improvements (#258)
+   ========================================== */
+
+/* 1. 保有情報管理モーダル全体 (#management-modal) */
+[data-theme="dark"] #management-modal,
+body.dark-mode #management-modal,
+.dark-mode #management-modal {
+    background-color: #111827 !important;
+    border: 1px solid #334155 !important;
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] #modal-title,
+body.dark-mode #modal-title,
+.dark-mode #modal-title {
+    color: #f8fafc !important;
+}
+
+/* 2. 編集フォームコンテナ (#holding-form-container) の白背景脱却 */
+[data-theme="dark"] #holding-form-container,
+body.dark-mode #holding-form-container,
+.dark-mode #holding-form-container {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] #holding-form-title,
+body.dark-mode #holding-form-title,
+.dark-mode #holding-form-title {
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] #holding-form .form-group label,
+body.dark-mode #holding-form .form-group label,
+.dark-mode #holding-form .form-group label {
+    color: #cbd5e1 !important;
+}
+
+/* 3. フォーム入力・エリア (input, select, textarea) のダーク高視認性スタイル */
+[data-theme="dark"] #holding-form input[type="number"],
+[data-theme="dark"] #holding-form input[type="text"],
+[data-theme="dark"] #holding-form select,
+[data-theme="dark"] #holding-form textarea,
+body.dark-mode #holding-form input[type="number"],
+body.dark-mode #holding-form input[type="text"],
+body.dark-mode #holding-form select,
+body.dark-mode #holding-form textarea,
+.dark-mode #holding-form input[type="number"],
+.dark-mode #holding-form input[type="text"],
+.dark-mode #holding-form select,
+.dark-mode #holding-form textarea {
+    background-color: #0f172a !important;
+    border: 1px solid #475569 !important;
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] #holding-form input::placeholder,
+[data-theme="dark"] #holding-form textarea::placeholder,
+body.dark-mode #holding-form input::placeholder,
+body.dark-mode #holding-form textarea::placeholder,
+.dark-mode #holding-form input::placeholder,
+.dark-mode #holding-form textarea::placeholder {
+    color: #94a3b8 !important;
+    opacity: 1;
+}
+
+/* 4. モーダル内ボタン類 (.btn-secondary, #cancel-form-btn, #close-modal-btn) の質感統一 */
+[data-theme="dark"] #add-new-holding-btn,
+[data-theme="dark"] #cancel-form-btn,
+[data-theme="dark"] #close-modal-btn,
+[data-theme="dark"] #modal-close-btn,
+[data-theme="dark"] .btn-secondary,
+body.dark-mode #add-new-holding-btn,
+body.dark-mode #cancel-form-btn,
+body.dark-mode #close-modal-btn,
+body.dark-mode #modal-close-btn,
+body.dark-mode .btn-secondary,
+.dark-mode #add-new-holding-btn,
+.dark-mode #cancel-form-btn,
+.dark-mode #close-modal-btn,
+.dark-mode #modal-close-btn,
+.dark-mode .btn-secondary {
+    background-color: #334155 !important;
+    color: #f8fafc !important;
+    border: 1px solid #475569 !important;
+}
+
+[data-theme="dark"] #add-new-holding-btn:hover,
+[data-theme="dark"] #cancel-form-btn:hover,
+[data-theme="dark"] #close-modal-btn:hover,
+[data-theme="dark"] #modal-close-btn:hover,
+[data-theme="dark"] .btn-secondary:hover,
+body.dark-mode #add-new-holding-btn:hover,
+body.dark-mode #cancel-form-btn:hover,
+body.dark-mode #close-modal-btn:hover,
+body.dark-mode #modal-close-btn:hover,
+body.dark-mode .btn-secondary:hover,
+.dark-mode #add-new-holding-btn:hover,
+.dark-mode #cancel-form-btn:hover,
+.dark-mode #close-modal-btn:hover,
+.dark-mode #modal-close-btn:hover,
+.dark-mode .btn-secondary:hover {
+    background-color: #475569 !important;
+    color: #ffffff !important;
+}

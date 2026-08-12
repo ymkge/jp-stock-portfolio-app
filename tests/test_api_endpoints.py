@@ -250,6 +250,28 @@ def test_dark_mode_table_ui_enhancements_issues_251_252_253():
     assert 'background-color: #334155 !important;' in css_content
 
 
+def test_dark_mode_update_report_and_filter_styles_issue_255():
+    """案件 #255: ダークモード時 銘柄取得レポート帯(.update-report)および各種検索・フィルタフォーム(input/select/option)の視認性修復の検証"""
+    import os
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    # 1. 取得レポート帯 (.update-report) アサーション
+    assert '[data-theme="dark"] .update-report' in css_content
+    assert 'background-color: #1e293b !important;' in css_content
+    assert 'border: 1px solid #334155 !important;' in css_content
+    assert 'color: #e2e8f0 !important;' in css_content
+    assert 'color: #cbd5e1 !important;' in css_content
+
+    # 2. 検索・フィルタ入力フォーム (input/select/option/placeholder) アサーション
+    assert '[data-theme="dark"] input[type="text"]' in css_content
+    assert '[data-theme="dark"] select' in css_content
+    assert 'border: 1px solid #475569 !important;' in css_content
+    assert 'color: #f8fafc !important;' in css_content
+    assert 'color: #94a3b8 !important;' in css_content
+
+
 
 
 

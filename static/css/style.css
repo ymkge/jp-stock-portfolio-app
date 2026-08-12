@@ -2583,3 +2583,84 @@ body.dark-mode .exhaustion-eval-card {
     line-height: 1.55;
     color: var(--text-muted, #475569);
 }
+
+/* ==========================================
+   Dark Mode Report & Filter Form Improvements (#255)
+   ========================================== */
+
+/* 1. 銘柄取得レポート帯 (.update-report) */
+[data-theme="dark"] .update-report,
+body.dark-mode .update-report,
+.dark-mode .update-report {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+    color: #e2e8f0 !important;
+}
+
+[data-theme="dark"] .update-report small,
+[data-theme="dark"] .update-report span,
+[data-theme="dark"] .update-report-time,
+body.dark-mode .update-report small,
+body.dark-mode .update-report span,
+body.dark-mode .update-report-time,
+.dark-mode .update-report small,
+.dark-mode .update-report span,
+.dark-mode .update-report-time {
+    color: #cbd5e1 !important;
+}
+
+/* 2. 検索ボックス・各種フィルタ・ドロップダウン (input / select / option) */
+[data-theme="dark"] input[type="text"],
+[data-theme="dark"] input[type="search"],
+[data-theme="dark"] select,
+[data-theme="dark"] option,
+[data-theme="dark"] .search-input,
+[data-theme="dark"] .filter-container select,
+[data-theme="dark"] .filter-group select,
+[data-theme="dark"] .main-filters input,
+[data-theme="dark"] .main-filters select,
+[data-theme="dark"] .analysis-filter-bar input,
+[data-theme="dark"] .analysis-filter-bar select,
+body.dark-mode input[type="text"],
+body.dark-mode input[type="search"],
+body.dark-mode select,
+body.dark-mode option,
+body.dark-mode .search-input,
+body.dark-mode .filter-container select,
+body.dark-mode .filter-group select,
+body.dark-mode .main-filters input,
+body.dark-mode .main-filters select,
+body.dark-mode .analysis-filter-bar input,
+body.dark-mode .analysis-filter-bar select,
+.dark-mode input[type="text"],
+.dark-mode input[type="search"],
+.dark-mode select,
+.dark-mode option,
+.dark-mode .search-input,
+.dark-mode .filter-container select,
+.dark-mode .filter-group select,
+.dark-mode .main-filters input,
+.dark-mode .main-filters select,
+.dark-mode .analysis-filter-bar input,
+.dark-mode .analysis-filter-bar select {
+    background-color: #1e293b !important;
+    border: 1px solid #475569 !important;
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] .search-input::placeholder,
+body.dark-mode input::placeholder,
+body.dark-mode .search-input::placeholder,
+.dark-mode input::placeholder,
+.dark-mode .search-input::placeholder {
+    color: #94a3b8 !important;
+    opacity: 1;
+}
+
+[data-theme="dark"] select option,
+body.dark-mode select option,
+.dark-mode select option {
+    background-color: #1e293b !important;
+    color: #f8fafc !important;
+}

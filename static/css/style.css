@@ -2670,3 +2670,54 @@ body.dark-mode select option,
     background-color: #1e293b !important;
     color: #f8fafc !important;
 }
+
+/* ==========================================
+   Personality Diagnosis Box & Searchable Select Improvements (#257)
+   ========================================== */
+
+/* 1. 性格診断ボックス (.personality-summary, .advice-box) */
+[data-theme="dark"] .personality-summary,
+body.dark-mode .personality-summary,
+.dark-mode .personality-summary {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+    color: #e2e8f0 !important;
+}
+
+[data-theme="dark"] .personality-summary strong,
+body.dark-mode .personality-summary strong,
+.dark-mode .personality-summary strong {
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] .advice-box,
+body.dark-mode .advice-box,
+.dark-mode .advice-box {
+    background-color: #0f172a !important;
+    border-left: 5px solid #38bdf8 !important;
+    color: #f8fafc !important;
+}
+
+/* 2. 業種検索付きドロップダウンラッパー (.searchable-select-wrapper) */
+[data-theme="dark"] .searchable-select-wrapper,
+body.dark-mode .searchable-select-wrapper,
+.dark-mode .searchable-select-wrapper {
+    background-color: #1e293b !important;
+    border: 1px solid #475569 !important;
+}
+
+[data-theme="dark"] .searchable-select-wrapper .select-search-input,
+[data-theme="dark"] .searchable-select-wrapper select,
+body.dark-mode .searchable-select-wrapper .select-search-input,
+body.dark-mode .searchable-select-wrapper select,
+.dark-mode .searchable-select-wrapper .select-search-input,
+.dark-mode .searchable-select-wrapper select {
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] .searchable-select-wrapper .select-search-input::placeholder,
+body.dark-mode .searchable-select-wrapper .select-search-input::placeholder,
+.dark-mode .searchable-select-wrapper .select-search-input::placeholder {
+    color: #94a3b8 !important;
+    opacity: 1;
+}

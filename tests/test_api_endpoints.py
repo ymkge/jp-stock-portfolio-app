@@ -297,6 +297,23 @@ def test_dark_mode_dna_diagnosis_box_issue254():
     assert 'color: #cbd5e1 !important;' in css_content
 
 
+def test_dark_mode_personality_and_searchable_select_issue_257():
+    """案件 #257: ポートフォリオ性格診断ボックス(.personality-summary, .advice-box)および業種検索ラッパー(.searchable-select-wrapper)のダークモード視認性・高コントラスト修復の検証"""
+    import os
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    # 1. personality-summary & advice-box のアサーション
+    assert '[data-theme="dark"] .personality-summary' in css_content
+    assert '[data-theme="dark"] .advice-box' in css_content
+    assert 'border-left: 5px solid #38bdf8 !important;' in css_content
+
+    # 2. searchable-select-wrapper のアサーション
+    assert '[data-theme="dark"] .searchable-select-wrapper' in css_content
+    assert 'border: 1px solid #475569 !important;' in css_content
+
+
 
 
 

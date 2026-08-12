@@ -708,6 +708,18 @@ AI診断レポートの情報量増加に伴い、モーダルが画面上下へ
   - インフォアイコン (`.dna-info-icon`) も `background: #334155 !important; color: #cbd5e1 !important;` で暗色調和を確保。
 - **目的**: ポートフォリオ診断コメントを視覚的に際立たせ、暗色画面での可読性とアクセシビリティを最大化する。
 
+### 2.50 ポートフォリオ性格診断ボックス白背景および業種検索ラッパー白塗り修復 (`style.css`) [バグ修正 #257]
+
+ポートフォリオ分析ページおよびメインページにおいて、ダークモード表示時に性格診断要約ボックス (`.personality-summary`, `.advice-box`) および業種検索親コンテナ (`.searchable-select-wrapper`) が白背景露出する不具合を根本修正した設計ロジック。
+
+- **性格診断ブロックの完全二重ダークスレート化**:
+  - `[data-theme="dark"] .personality-summary` に対し `background-color: #1e293b !important; border: 1px solid #334155 !important; color: #e2e8f0 !important;` を指定。
+  - 内部診断文章 `.advice-box` に対し `background-color: #0f172a !important; border-left: 5px solid #38bdf8 !important; color: #f8fafc !important;` を指定し、白浮きを100%解消。
+- **業種検索ドロップダウンラッパーの完全統一**:
+  - `.searchable-select-wrapper` および内部 `input` / `select` に対し `background-color: #1e293b !important; border: 1px solid #475569 !important; color: #f8fafc !important;` を一括適用。
+  - 白く四角く浮き出ていた業種検索フォームを他セレクト要素と完全にデザイン同期。
+- **目的**: 分析ページの全カード・全フィルター要素において最高品質のダークテーマ一貫性を提供する。
+
 ## 7. 自動テスト・運用基準 (Issue #1 導入) [新基準]
 
 本アプリの品質を維持するため、以下のテスト基準を遵守すること。

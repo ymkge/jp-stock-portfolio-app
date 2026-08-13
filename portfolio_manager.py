@@ -648,3 +648,107 @@ def create_analysis_csv_data(data: list[dict]) -> str:
         writer.writerow(row)
 
     return output.getvalue()
+
+
+def calculate_daily_change_rankings(
+    raw_holdings_list: List[Dict[str, Any]], 
+    exchange_rates: Dict[str, float]
+) -> Dict[str, Any]:
+    """
+    保有銘柄リストから、当日の資産変動額（前日比 * 数量 * 為替）が大きかった銘柄のTOP10（増加/減少）を算出する。
+    口座横断で銘柄コード(code)ごとに合算し、国内株・米国株・投資信託を正確に計算。
+    """
+    aggregated_map: Dict[str, Dict[str, Any]] = {}
+
+    for item in raw_holdings_list:
+        code = item.get("code")
+        if not code:
+            continue
+
+        # 前日比データの抽出
+        change_raw = item.get("change")
+        change_percent_raw = item.get("change_percent")
+        
+        # 数値パース
+        change_val = None
+        if isinstance(change_raw, (int, float)):
+            change_val = float(change_raw)
+        elif isinstance(change_raw, str):
+            c_str = change_raw.replace(',', '').replace('+', '').strip()
+            if c_str and c_str not in ['N/A', '---', '']:
+                try:
+                    change_val = float(c_str)
+                except ValueError:
+                    pass
+
+        change_percent_val = None
+        if isinstance(change_percent_raw, (int, float)):
+            change_percent_val = float(change_percent_raw)
+        elif isinstance(change_percent_raw, str):
+            cp_str = change_percent_raw.replace(',', '').replace('+', '').replace('%', '').strip()
+            if cp_str and cp_str not in ['N/A', '---', '']:
+                try:
+                    change_percent_val = float(cp_str)
+                except ValueError:
+                    pass
+
+        # 前日比データがない、または0の場合はスキップ
+        if change_val is None or change_val == 0:
+            continue
+
+        quantity = float(item.get("quantity") or 0)
+        if quantity <= 0:
+            continue
+
+        currency = item.get("currency", "JPY")
+        asset_type = item.get("asset_type", "jp_stock")
+        exchange_rate = exchange_rates.get(currency, 1.0)
+        market_value = float(item.get("market_value") or 0)
+        price_val = float(item.get("price") or 0)
+
+        # 投資信託の基準価額（通常10,000口表示）の調整
+        if asset_type == "investment_trust":
+            # 基準価額の前日比は10,000口あたりの変動額のため 10,000 で除算
+            change_per_unit_jpy = (change_val / 10000.0) * exchange_rate
+        else:
+            change_per_unit_jpy = change_val * exchange_rate
+
+        daily_change_jpy = change_per_unit_jpy * quantity
+
+        if code not in aggregated_map:
+            aggregated_map[code] = {
+                "code": code,
+                "name": item.get("name", code),
+                "asset_type": asset_type,
+                "currency": currency,
+                "total_quantity": 0.0,
+                "total_market_value": 0.0,
+                "daily_change_jpy": 0.0,
+                "price": price_val,
+                "change": change_val,
+                "change_percent": change_percent_val,
+            }
+
+        aggregated_map[code]["total_quantity"] += quantity
+        aggregated_map[code]["total_market_value"] += market_value
+        aggregated_map[code]["daily_change_jpy"] += daily_change_jpy
+
+    # ランキングソート
+    gainers = [v for v in aggregated_map.values() if v["daily_change_jpy"] > 0]
+    losers = [v for v in aggregated_map.values() if v["daily_change_jpy"] < 0]
+
+    # 増加TOP10 (降順: 大きい順)
+    gainers_sorted = sorted(gainers, key=lambda x: x["daily_change_jpy"], reverse=True)[:10]
+    # 減少TOP10 (昇順: マイナス幅が大きい順)
+    losers_sorted = sorted(losers, key=lambda x: x["daily_change_jpy"])[:10]
+
+    # 順位(rank)の付与
+    for i, g in enumerate(gainers_sorted, 1):
+        g["rank"] = i
+    for i, l in enumerate(losers_sorted, 1):
+        l["rank"] = i
+
+    return {
+        "day_gainers_top10": gainers_sorted,
+        "day_losers_top10": losers_sorted,
+    }

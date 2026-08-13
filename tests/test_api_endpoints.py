@@ -444,7 +444,7 @@ def test_daily_ranking_modal_ui_and_dark_mode_issue261():
     # 1. HTML起動ボタンおよびモーダル構造アサーション
     assert 'id="btn-open-daily-ranking-modal"' in html_content
     assert 'id="daily-ranking-modal"' in html_content
-    assert 'id="btn-close-daily-ranking-modal"' in html_content
+    assert 'id="btn-close-daily-ranking-modal"' not in html_content
     assert 'id="btn-close-daily-ranking-modal-footer"' in html_content
     assert 'id="tab-gainers-top10"' in html_content
     assert 'id="tab-losers-top10"' in html_content
@@ -471,6 +471,26 @@ def test_daily_ranking_modal_ui_and_dark_mode_issue261():
     assert 'btnCloseDailyRankingModalFooter' in js_content
     assert "e.key === 'Escape'" in js_content
     assert "e.target === dailyRankingModal" in js_content
+
+
+def test_daily_change_ranking_link_dark_mode_visibility_issue263():
+    """案件 #263: 当日資産変動ランキング (TOP10) モーダル内銘柄名リンクのダークモード視認性修復検証"""
+    import os
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    # 1. トリプルセレクタのアサーション
+    assert '[data-theme="dark"] .ranking-table a' in css_content
+    assert 'body.dark-mode .ranking-table a' in css_content
+    assert '.dark-mode .ranking-table a' in css_content
+    assert '[data-theme="dark"] .ranking-table .stock-code-link' in css_content
+
+    # 2. スタイルプロパティのアサーション
+    assert 'color: #38bdf8 !important;' in css_content
+    assert 'color: #7dd3fc !important;' in css_content
+    assert 'font-weight: 600;' in css_content
+    assert 'text-decoration: underline;' in css_content
 
 
 

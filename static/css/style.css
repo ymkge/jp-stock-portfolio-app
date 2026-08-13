@@ -3174,3 +3174,31 @@ body.dark-mode #btn-close-daily-ranking-modal-footer:hover,
     background-color: #475569 !important;
     color: #ffffff !important;
 }
+
+/* Issue #263: 当日資産変動ランキング (TOP10) モーダル内 銘柄名リンクのダークモード視認性修復 */
+[data-theme="dark"] .ranking-table a,
+[data-theme="dark"] .ranking-table .stock-code-link,
+[data-theme="dark"] .stock-code-link,
+body.dark-mode .ranking-table a,
+body.dark-mode .ranking-table .stock-code-link,
+body.dark-mode .stock-code-link,
+.dark-mode .ranking-table a,
+.dark-mode .ranking-table .stock-code-link,
+.dark-mode .stock-code-link {
+    color: #38bdf8 !important;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+[data-theme="dark"] .ranking-table a:hover,
+[data-theme="dark"] .ranking-table .stock-code-link:hover,
+[data-theme="dark"] .stock-code-link:hover,
+body.dark-mode .ranking-table a:hover,
+body.dark-mode .ranking-table .stock-code-link:hover,
+body.dark-mode .stock-code-link:hover,
+.dark-mode .ranking-table a:hover,
+.dark-mode .ranking-table .stock-code-link:hover,
+.dark-mode .stock-code-link:hover {
+    color: #7dd3fc !important;
+    text-decoration: underline;
+}

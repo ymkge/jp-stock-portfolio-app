@@ -54,9 +54,14 @@
             <div class="analysis-container">
                 <div class="analysis-left-column">
                     <section class="portfolio-summary card">
-                        <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                            <h3>サマリー</h3>
-                            <span id="compare-date-label" class="text-muted" style="font-size: 0.8rem; font-weight: normal;"></span>
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+                            <div style="display: flex; align-items: baseline; gap: 10px;">
+                                <h3>サマリー</h3>
+                                <span id="compare-date-label" class="text-muted" style="font-size: 0.8rem; font-weight: normal;"></span>
+                            </div>
+                            <button type="button" id="btn-open-daily-ranking-modal" class="btn-ranking-trigger" title="当日の評価額増減が大きい銘柄TOP10を別画面で表示します">
+                                🚀 当日増減ランキング TOP10
+                            </button>
                         </div>
                         <div id="summary-content">
                             <!-- サマリー情報はここに表示 -->
@@ -208,6 +213,28 @@
                             </table>
                         </div>
                     </section>
+                </div>
+            </div>
+
+            <!-- 当日資産変動ランキング モーダル (#261) -->
+            <div id="daily-ranking-modal" class="modal-overlay hidden">
+                <div class="modal-content large-modal" style="max-width: 750px; max-height: 85vh; display: flex; flex-direction: column;">
+                    <div class="modal-header">
+                        <h2>🚀 当日 資産変動ランキング (TOP10)</h2>
+                        <button type="button" id="btn-close-daily-ranking-modal" class="modal-close" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding: 20px 0; flex: 1; overflow-y: auto;">
+                        <div class="ranking-tab-buttons" style="margin-bottom: 15px;">
+                            <button type="button" id="tab-gainers-top10" class="ranking-tab-btn active gainer-tab">🟢 資産増加 TOP10</button>
+                            <button type="button" id="tab-losers-top10" class="ranking-tab-btn loser-tab">🔴 資産減少 TOP10</button>
+                        </div>
+                        <div id="daily-ranking-content">
+                            <!-- ランキングテーブルはここにJSで描画 -->
+                        </div>
+                    </div>
+                    <div class="modal-footer" style="padding-top: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end;">
+                        <button type="button" id="btn-close-daily-ranking-modal-footer" class="btn-outline">閉じる</button>
+                    </div>
                 </div>
             </div>
 

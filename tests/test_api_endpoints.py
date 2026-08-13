@@ -369,6 +369,111 @@ def test_dark_mode_split_alert_modal_issue_260():
     assert 'background-color: #0284c7 !important;' in css_content
 
 
+@patch("app._get_processed_asset_data")
+@patch("app.scraper.get_exchange_rate")
+def test_api_portfolio_analysis_daily_change_rankings(mock_get_rate, mock_get_assets):
+    """案件 #261: /api/portfolio/analysis で daily_change_rankings が正しく取得できることの検証"""
+    mock_get_rate.return_value = 150.0
+    mock_get_assets.return_value = (
+        [
+            {
+                "code": "7203",
+                "name": "トヨタ",
+                "asset_type": "jp_stock",
+                "holdings": [{"quantity": 100, "purchase_price": 2000, "account_type": "特定口座"}],
+                "price": 2500,
+                "change": 50,
+                "change_percent": 2.0,
+                "currency": "JPY"
+            }
+        ],
+        {"last_updated": "2026-08-13 12:00:00"}
+    )
+
+    response = client.get("/api/portfolio/analysis")
+    assert response.status_code == 200
+    data = response.json()
+    assert "daily_change_rankings" in data
+    rankings = data["daily_change_rankings"]
+    assert "day_gainers_top10" in rankings
+    assert "day_losers_top10" in rankings
+    assert len(rankings["day_gainers_top10"]) == 1
+    assert rankings["day_gainers_top10"][0]["code"] == "7203"
+    assert rankings["day_gainers_top10"][0]["daily_change_jpy"] == 5000.0
+
+
+def test_daily_change_ranking_css_dark_mode_selectors():
+    """案件 #261: 当日資産変動ランキングコンポーネントの CSS ダークモードトリプルセレクタの存在検証"""
+    import os
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    # 1. ranking-card-header のトリプルセレクタ
+    assert '[data-theme="dark"] .ranking-card-header' in css_content
+    assert 'body.dark-mode .ranking-card-header' in css_content
+    assert '.dark-mode .ranking-card-header' in css_content
+
+    # 2. ranking-tab-btn のトリプルセレクタ
+    assert '[data-theme="dark"] .ranking-tab-btn' in css_content
+    assert 'body.dark-mode .ranking-tab-btn' in css_content
+    assert '.dark-mode .ranking-tab-btn' in css_content
+
+    # 3. ranking-table の th/td/hover のトリプルセレクタ
+    assert '[data-theme="dark"] .ranking-table th' in css_content
+    assert 'body.dark-mode .ranking-table th' in css_content
+    assert '.dark-mode .ranking-table th' in css_content
+    assert '[data-theme="dark"] .ranking-table td' in css_content
+
+    # 4. gainer-badge / loser-badge のトリプルセレクタ
+    assert '[data-theme="dark"] .ranking-change-badge.gainer-badge' in css_content
+    assert 'body.dark-mode .ranking-change-badge.gainer-badge' in css_content
+    assert '.dark-mode .ranking-change-badge.gainer-badge' in css_content
+    assert '[data-theme="dark"] .ranking-change-badge.loser-badge' in css_content
+    assert 'body.dark-mode .ranking-change-badge.loser-badge' in css_content
+    assert '.dark-mode .ranking-change-badge.loser-badge' in css_content
+
+
+def test_daily_ranking_modal_ui_and_dark_mode_issue261():
+    """案件 #261: 当日資産変動ランキングモーダル(#daily-ranking-modal)の起動ボタン・モーダル構造・ダークモードトリプルセレクタ検証"""
+    import os
+    html_path = os.path.join(os.path.dirname(__file__), "..", "templates", "analysis.html")
+    with open(html_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
+
+    # 1. HTML起動ボタンおよびモーダル構造アサーション
+    assert 'id="btn-open-daily-ranking-modal"' in html_content
+    assert 'id="daily-ranking-modal"' in html_content
+    assert 'id="btn-close-daily-ranking-modal"' in html_content
+    assert 'id="btn-close-daily-ranking-modal-footer"' in html_content
+    assert 'id="tab-gainers-top10"' in html_content
+    assert 'id="tab-losers-top10"' in html_content
+    assert 'max-height: 85vh' in html_content
+    assert 'overflow-y: auto' in html_content
+
+    # 2. CSS モーダル親コンテナのダークモードトリプルセレクタ検証
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    assert '[data-theme="dark"] #daily-ranking-modal .modal-content' in css_content
+    assert 'body.dark-mode #daily-ranking-modal .modal-content' in css_content
+    assert '.dark-mode #daily-ranking-modal .modal-content' in css_content
+    assert '.btn-ranking-trigger' in css_content
+
+    # 3. static/js/analysis.js におけるモーダル制御 (Escキー、背景クリック、閉じるボタン等) の検証
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    assert 'btnOpenDailyRankingModal' in js_content
+    assert 'btnCloseDailyRankingModal' in js_content
+    assert 'btnCloseDailyRankingModalFooter' in js_content
+    assert "e.key === 'Escape'" in js_content
+    assert "e.target === dailyRankingModal" in js_content
+
+
+
 
 
 

@@ -68,6 +68,37 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- 当日資産変動ランキング モーダル開閉制御 (#261) ---
+    const btnOpenDailyRankingModal = document.getElementById('btn-open-daily-ranking-modal');
+    const dailyRankingModal = document.getElementById('daily-ranking-modal');
+    const btnCloseDailyRankingModal = document.getElementById('btn-close-daily-ranking-modal');
+    const btnCloseDailyRankingModalFooter = document.getElementById('btn-close-daily-ranking-modal-footer');
+
+    if (btnOpenDailyRankingModal && dailyRankingModal) {
+        btnOpenDailyRankingModal.addEventListener('click', () => {
+            dailyRankingModal.classList.remove('hidden');
+            dailyRankingModal.style.display = 'flex';
+        });
+
+        const closeRankingModal = () => {
+            dailyRankingModal.classList.add('hidden');
+            dailyRankingModal.style.display = 'none';
+        };
+
+        if (btnCloseDailyRankingModal) btnCloseDailyRankingModal.addEventListener('click', closeRankingModal);
+        if (btnCloseDailyRankingModalFooter) btnCloseDailyRankingModalFooter.addEventListener('click', closeRankingModal);
+
+        dailyRankingModal.addEventListener('click', (e) => {
+            if (e.target === dailyRankingModal) closeRankingModal();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !dailyRankingModal.classList.contains('hidden')) {
+                closeRankingModal();
+            }
+        });
+    }
+
     function getChartThemeColors() {
         const style = getComputedStyle(document.documentElement);
         return {
@@ -428,6 +459,9 @@ document.addEventListener('DOMContentLoaded', () => {
         renderAnalysisTable(filteredHoldingsData);
         renderSummary(filteredHoldingsData);
         renderCharts(filteredHoldingsData);
+        if (fullAnalysisData && fullAnalysisData.daily_change_rankings) {
+            renderDailyChangeRankings(fullAnalysisData.daily_change_rankings);
+        }
         updateSortHeaders();
     }
 
@@ -768,6 +802,134 @@ document.addEventListener('DOMContentLoaded', () => {
         return { cyclicality: { defensive: toPct(breakdown.cyclicality.defensive), cyclical: toPct(breakdown.cyclicality.cyclical), other: toPct(breakdown.cyclicality.other) }, style: { value: toPct(breakdown.style.value), growth: toPct(breakdown.style.growth), blend: toPct(breakdown.style.blend) }, marketCap: { large: toPct(breakdown.marketCap.large), midSmall: toPct(breakdown.marketCap.midSmall) }, safetyScore: safetyScore / totalMv };
     }
 
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    let currentRankingTab = 'gainers'; // 'gainers' or 'losers'
+
+    function renderDailyChangeRankings(rankingsData) {
+        const rankingContainer = document.getElementById('daily-ranking-content');
+        const tabGainersBtn = document.getElementById('tab-gainers-top10');
+        const tabLosersBtn = document.getElementById('tab-losers-top10');
+
+        if (!rankingContainer) return;
+
+        if (!rankingsData) {
+            rankingContainer.innerHTML = '<p class="text-muted" style="text-align: center; padding: 15px;">当日の資産変動データは取得中またはありません。</p>';
+            return;
+        }
+
+        const gainers = rankingsData.day_gainers_top10 || [];
+        const losers = rankingsData.day_losers_top10 || [];
+
+        if (tabGainersBtn && tabLosersBtn) {
+            tabGainersBtn.onclick = () => {
+                currentRankingTab = 'gainers';
+                tabGainersBtn.classList.add('active');
+                tabLosersBtn.classList.remove('active');
+                renderDailyChangeRankings(rankingsData);
+            };
+            tabLosersBtn.onclick = () => {
+                currentRankingTab = 'losers';
+                tabLosersBtn.classList.add('active');
+                tabGainersBtn.classList.remove('active');
+                renderDailyChangeRankings(rankingsData);
+            };
+        }
+
+        const currentList = currentRankingTab === 'gainers' ? gainers : losers;
+        const isGainer = currentRankingTab === 'gainers';
+
+        if (currentList.length === 0) {
+            const msg = isGainer ? '当日の資産増加銘柄はありません。' : '当日の資産減少銘柄はありません。';
+            rankingContainer.innerHTML = `<p class="text-muted" style="text-align: center; padding: 20px; font-size: 0.9rem;">${msg}</p>`;
+            return;
+        }
+
+        let tableHtml = `
+            <div class="table-responsive" style="overflow-x: auto;">
+                <table class="ranking-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 55px; text-align: center;">順位</th>
+                            <th>銘柄名 / コード</th>
+                            <th style="text-align: right;">株価前日比</th>
+                            <th style="text-align: right;">保有数</th>
+                            <th style="text-align: right;">当日 資産変動額</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        currentList.forEach(item => {
+            let rankIcon = `#${item.rank}`;
+            let rankClass = `rank-num rank-${item.rank}`;
+            if (item.rank === 1) rankIcon = '🥇';
+            else if (item.rank === 2) rankIcon = '🥈';
+            else if (item.rank === 3) rankIcon = '🥉';
+
+            const symbol = item.currency === 'USD' ? '$' : '円';
+            const changeSign = item.change > 0 ? '+' : '';
+            const changePercentSign = item.change_percent > 0 ? '+' : '';
+            const changeStr = (item.change !== null && item.change !== undefined) 
+                ? `${changeSign}${formatNumber(item.change, item.currency === 'USD' ? 2 : 0)}${symbol}`
+                : 'N/A';
+            const changePercentStr = (item.change_percent !== null && item.change_percent !== undefined)
+                ? `(${changePercentSign}${formatNumber(item.change_percent, 2)}%)`
+                : '';
+
+            const dailyChangeJpy = item.daily_change_jpy || 0;
+            const jpySign = dailyChangeJpy > 0 ? '+' : '';
+            
+            let formattedDailyChange = `${jpySign}${formatNumber(dailyChangeJpy, 0)}円`;
+            if (!isAmountVisible) {
+                formattedDailyChange = `${jpySign}***円`;
+            }
+
+            const badgeClass = dailyChangeJpy > 0 ? 'gainer-badge' : 'loser-badge';
+
+            tableHtml += `
+                <tr>
+                    <td style="text-align: center;"><span class="${rankClass}">${rankIcon}</span></td>
+                    <td>
+                        <a href="https://finance.yahoo.co.jp/quote/${item.code}" target="_blank" rel="noopener noreferrer" class="stock-code-link" style="font-weight: 600;">
+                            ${escapeHtml(item.name || item.code)}
+                        </a>
+                        <small class="text-muted" style="display: block; font-size: 0.75rem;">${item.code}</small>
+                    </td>
+                    <td style="text-align: right;">
+                        <span class="${item.change > 0 ? 'profit' : (item.change < 0 ? 'loss' : '')}" style="font-weight: 500;">
+                            ${changeStr} <small style="font-size: 0.8rem;">${changePercentStr}</small>
+                        </span>
+                    </td>
+                    <td style="text-align: right; font-size: 0.85rem;">
+                        ${formatNumber(item.total_quantity, 0)}株
+                    </td>
+                    <td style="text-align: right;">
+                        <span class="ranking-change-badge ${badgeClass}">
+                            ${formattedDailyChange}
+                        </span>
+                    </td>
+                </tr>
+            `;
+        });
+
+        tableHtml += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        rankingContainer.innerHTML = tableHtml;
+    }
+
     function renderDNAAndRisk(stats) {
         const dna = document.getElementById('dna-content'), risk = document.getElementById('risk-content'), personality = document.getElementById('personality-content');
         if (!stats) { [dna, risk, personality].forEach(el => { if (el) el.innerHTML = '<p>データなし</p>'; }); return; }
@@ -1067,7 +1229,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     [industryFilterSelect, accountTypeFilterSelect, securityCompanyFilterSelect, buySignalFilterSelect].forEach(s => s.addEventListener('change', filterAndRender));
     document.querySelector('#analysis-table thead').addEventListener('click', (e) => { const h = e.target.closest('.sortable'); if (!h) return; const k = h.dataset.key; if (currentSort.key === k) currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc'; else { currentSort.key = k; currentSort.order = 'asc'; } filterAndRender(); });
-    toggleVisibilityCheckbox.addEventListener('change', (e) => { isAmountVisible = !e.target.checked; renderAnalysisTable(filteredHoldingsData); renderSummary(filteredHoldingsData); renderCharts(filteredHoldingsData); fetchAndRenderHistoryData(); });
+    toggleVisibilityCheckbox.addEventListener('change', (e) => { isAmountVisible = !e.target.checked; renderAnalysisTable(filteredHoldingsData); renderSummary(filteredHoldingsData); renderCharts(filteredHoldingsData); fetchAndRenderHistoryData(); if (fullAnalysisData && fullAnalysisData.daily_change_rankings) { renderDailyChangeRankings(fullAnalysisData.daily_change_rankings); } });
     downloadAnalysisCsvButton.addEventListener('click', () => { window.location.href = '/api/portfolio/analysis/csv'; });
     chartToggleBtns.forEach(btn => btn.addEventListener('click', () => updateChart(btn.dataset.chartType)));
     window.addEventListener('pagehide', () => { if (fetchController) fetchController.abort(); });

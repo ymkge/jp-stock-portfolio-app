@@ -172,3 +172,9 @@ def test_banner_elements_in_html_and_polling_in_js():
     assert "setInterval(" in analysis_js
     assert "3000" in analysis_js
 
+    # 5. Issue #264: 同期中の旧レポート非表示化ロジック (updateReportContainer hidden & isSyncing ガード) の存在を検証
+    assert 'updateReportContainer.classList.add(\'hidden\')' in main_js or 'updateReportContainer.classList.add("hidden")' in main_js
+    assert 'updateReportContainer.classList.add(\'hidden\')' in analysis_js or 'updateReportContainer.classList.add("hidden")' in analysis_js
+    assert 'isSyncing' in main_js
+    assert 'isSyncing' in analysis_js
+

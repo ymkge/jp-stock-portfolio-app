@@ -270,8 +270,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    let isSyncing = false;
+
     function renderUpdateReport(metadata) {
         if (!updateReportContainer || !metadata) return;
+        if (isSyncing) {
+            updateReportContainer.classList.add('hidden');
+            return;
+        }
         const timeStr = new Date(metadata.fetched_at).toLocaleString();
         const successClass = metadata.fail_count > 0 ? 'loss' : 'profit';
         
@@ -1347,26 +1353,31 @@ document.addEventListener('DOMContentLoaded', () => {
             bannerEl.className = 'sync-status-banner';
 
             if (statusData.is_syncing && statusData.status === 'syncing') {
+                isSyncing = true;
+                if (updateReportContainer) updateReportContainer.classList.add('hidden');
                 bannerEl.classList.add('status-syncing');
                 const currName = statusData.current_name || statusData.current_code || '';
                 bannerEl.innerHTML = `
                     <span>🔄 前日・過去データを表示中（バックグラウンドで最新データを更新中: <strong>${statusData.completed_count} / ${statusData.total_count}</strong>件完了 | 現在: ${currName}）</span>
                     <small style="opacity: 0.8;">※画面操作はそのまま可能です</small>
                 `;
-            } else if (statusData.status === 'completed') {
-                bannerEl.classList.add('status-completed');
-                const lastTime = statusData.last_completed_at ? new Date(statusData.last_completed_at).toLocaleTimeString() : '';
-                bannerEl.innerHTML = `
-                    <span>✅ 最新データへの更新が完了しました (${lastTime})</span>
-                    <button type="button" onclick="location.reload()" class="btn-outline" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 10px;">画面を更新</button>
-                `;
-                if (syncIntervalId) { clearInterval(syncIntervalId); syncIntervalId = null; }
-            } else if (statusData.status === 'circuit_broken') {
-                bannerEl.classList.add('status-circuit-broken');
-                bannerEl.innerHTML = `
-                    <span>⚠️ ${statusData.error_message || 'アクセス制限を検知したため安全停止しました'}</span>
-                `;
-                if (syncIntervalId) { clearInterval(syncIntervalId); syncIntervalId = null; }
+            } else {
+                isSyncing = false;
+                if (statusData.status === 'completed') {
+                    bannerEl.classList.add('status-completed');
+                    const lastTime = statusData.last_completed_at ? new Date(statusData.last_completed_at).toLocaleTimeString() : '';
+                    bannerEl.innerHTML = `
+                        <span>✅ 最新データへの更新が完了しました (${lastTime})</span>
+                        <button type="button" onclick="location.reload()" class="btn-outline" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 10px;">画面を更新</button>
+                    `;
+                    if (syncIntervalId) { clearInterval(syncIntervalId); syncIntervalId = null; }
+                } else if (statusData.status === 'circuit_broken') {
+                    bannerEl.classList.add('status-circuit-broken');
+                    bannerEl.innerHTML = `
+                        <span>⚠️ ${statusData.error_message || 'アクセス制限を検知したため安全停止しました'}</span>
+                    `;
+                    if (syncIntervalId) { clearInterval(syncIntervalId); syncIntervalId = null; }
+                }
             }
         } catch (e) {
             console.error('Failed to check sync status:', e);

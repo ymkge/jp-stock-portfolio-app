@@ -3202,3 +3202,75 @@ body.dark-mode .stock-code-link:hover,
     color: #7dd3fc !important;
     text-decoration: underline;
 }
+
+/* ==========================================
+   Background Sync Status Banner Styles (#262)
+   ========================================== */
+.sync-status-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    margin-bottom: 1rem;
+    border-radius: 8px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.sync-status-banner.status-syncing {
+    background: #e0f2fe;
+    color: #0369a1;
+    border: 1px solid #7dd3fc;
+}
+
+.sync-status-banner.status-completed {
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #6ee7b7;
+}
+
+.sync-status-banner.status-circuit-broken {
+    background: #fffbebf5;
+    color: #b45309;
+    border: 1px solid #fcd34d;
+}
+
+.sync-status-banner.status-error {
+    background: #fff1f2;
+    color: #be123c;
+    border: 1px solid #fda4af;
+}
+
+/* ダークモード対応 (トリプルセレクタ) */
+[data-theme="dark"] .sync-status-banner.status-syncing,
+body.dark-mode .sync-status-banner.status-syncing,
+.dark-mode .sync-status-banner.status-syncing {
+    background: #075985 !important;
+    color: #e0f2fe !important;
+    border-color: #0284c7 !important;
+}
+
+[data-theme="dark"] .sync-status-banner.status-completed,
+body.dark-mode .sync-status-banner.status-completed,
+.dark-mode .sync-status-banner.status-completed {
+    background: #065f46 !important;
+    color: #ecfdf5 !important;
+    border-color: #059669 !important;
+}
+
+[data-theme="dark"] .sync-status-banner.status-circuit-broken,
+body.dark-mode .sync-status-banner.status-circuit-broken,
+.dark-mode .sync-status-banner.status-circuit-broken {
+    background: #78350f !important;
+    color: #fef3c7 !important;
+    border-color: #d97706 !important;
+}
+
+[data-theme="dark"] .sync-status-banner.status-error,
+body.dark-mode .sync-status-banner.status-error,
+.dark-mode .sync-status-banner.status-error {
+    background: #881337 !important;
+    color: #ffe4e6 !important;
+    border-color: #e11d48 !important;
+}

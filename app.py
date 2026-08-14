@@ -1,6 +1,7 @@
 from fastapi import Depends, FastAPI, Request, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 import io
+import random
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -1176,6 +1177,111 @@ async def _fetch_scraped_data_with_cache(code: str, asset_type: str, scraper_ins
 
     return result
 
+
+class BackgroundSyncManager:
+    _instance = None
+    _lock = None
+
+    def __init__(self):
+        self.is_syncing = False
+        self.status = "idle"  # idle, syncing, completed, circuit_broken, error
+        self.total_count = 0
+        self.completed_count = 0
+        self.current_code = ""
+        self.current_name = ""
+        self.last_completed_at = None
+        self.oldest_data_at = None
+        self.error_message = None
+
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def to_dict(self):
+        return {
+            "is_syncing": self.is_syncing,
+            "status": self.status,
+            "total_count": self.total_count,
+            "completed_count": self.completed_count,
+            "current_code": self.current_code,
+            "current_name": self.current_name,
+            "last_completed_at": self.last_completed_at,
+            "oldest_data_at": self.oldest_data_at,
+            "error_message": self.error_message,
+        }
+
+    async def start_sync_if_needed(self, stale_items, total_portfolio_count):
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+
+        async with self._lock:
+            if self.is_syncing:
+                return  # すでに実行中
+
+            if not stale_items:
+                return
+
+            self.is_syncing = True
+            self.status = "syncing"
+            self.total_count = len(stale_items)
+            self.completed_count = 0
+            self.error_message = None
+
+            asyncio.create_task(self._run_sync(stale_items))
+
+    async def _run_sync(self, stale_items):
+        concurrency_limit = get_config("system.scraping.concurrency_limit", 1)
+        delay_min = get_config("system.scraping.delay_min", 1.5)
+        delay_max = get_config("system.scraping.delay_max", 4.0)
+        failure_threshold = get_config("system.scraping.failure_threshold", 3)
+
+        consecutive_failures = 0
+
+        for item in stale_items:
+            code = item.get("code")
+            asset_type = item.get("asset_type", "jp_stock")
+            name = item.get("name", code)
+
+            self.current_code = code
+            self.current_name = name
+
+            try:
+                scraper_obj = scraper.get_scraper(asset_type)
+                wait_time = random.uniform(delay_min, delay_max)
+                await asyncio.sleep(wait_time)
+
+                result = await asyncio.to_thread(scraper_obj.fetch_data, code)
+
+                if result and "error" not in result:
+                    history_manager.save_daily_data(code, asset_type, result)
+                    consecutive_failures = 0
+                else:
+                    consecutive_failures += 1
+                    status_code = result.get("error_details", {}).get("status_code") if result else None
+                    if status_code == 403 or consecutive_failures >= failure_threshold:
+                        logger.error(f"Background Sync: サーキットブレーカー発動 ({code})")
+                        self.status = "circuit_broken"
+                        self.error_message = f"403 Forbidden / アクセス制限を検知したため安全停止しました ({code})"
+                        self.is_syncing = False
+                        return
+            except Exception as e:
+                logger.error(f"Background Sync Error for {code}: {e}")
+                consecutive_failures += 1
+
+            self.completed_count += 1
+
+        self.is_syncing = False
+        self.status = "completed"
+        self.last_completed_at = datetime.now(history_manager.JST).isoformat()
+        self.current_code = ""
+        self.current_name = ""
+
+
+sync_manager = BackgroundSyncManager.get_instance()
+
+
 async def _get_processed_asset_data(force: bool = False) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
     ポートフォリオ内の全資産のデータを並行して取得し、スコア計算などを行う。
@@ -1277,15 +1383,10 @@ async def _get_processed_asset_data(force: bool = False) -> Tuple[List[Dict[str,
                             db_data["payout_ratio_history"] = []
 
                     threshold_time = get_cache_threshold_time(asset_type, now_jst, market_times)
-                    updated_at_str = db_data.get("_db_updated_at_jst")
-                    if updated_at_str:
-                        try:
-                            updated_at = datetime.fromisoformat(updated_at_str).replace(tzinfo=history_manager.JST)
-                            if updated_at >= threshold_time or (now_jst - updated_at).total_seconds() < 3600:
-                                is_fresh = True
-                                cached_data = db_data
-                                source = "DB"
-                        except ValueError: pass
+                    # 案件 #262: force=False 時はDBデータが存在すれば経過時間に関わらず0秒即時返却
+                    cached_data = db_data
+                    source = "DB"
+                    is_fresh = True
 
         # 鮮度が高いキャッシュがあれば、セマフォを確保して即座に返す (待機なし)
         if is_fresh and cached_data:
@@ -1484,11 +1585,50 @@ async def _get_processed_asset_data(force: bool = False) -> Tuple[List[Dict[str,
         "circuit_breaker_triggered": is_throttled
     }
 
+    # 案件 #262: 未更新銘柄を抽出し、バックグラウンド取得を起動
+    if not force:
+        stale_items = []
+        for item in portfolio:
+            code = item.get("code")
+            if not code: continue
+            asset_type = item.get("asset_type", "jp_stock")
+            threshold_time = get_cache_threshold_time(asset_type, now_jst, market_times)
+            db_data = db_cache_map.get(code)
+            if not db_data:
+                stale_items.append(item)
+            else:
+                updated_at_str = db_data.get("_db_updated_at_jst")
+                if updated_at_str:
+                    try:
+                        updated_at = datetime.fromisoformat(updated_at_str).replace(tzinfo=history_manager.JST)
+                        if updated_at < threshold_time and (now_jst - updated_at).total_seconds() >= 3600:
+                            stale_items.append(item)
+                    except ValueError:
+                        stale_items.append(item)
+                else:
+                    stale_items.append(item)
+
+        if stale_items:
+            await sync_manager.start_sync_if_needed(stale_items, total_count)
+
     logger.info(f"[Summary] 銘柄情報の一括取得完了 | 所要時間: {duration:.2f}秒 | 対象: {total_count}件 (成功: {success_count}, 失敗: {fail_count}) | 内訳: 国内株 {jp_count}, 投信 {it_count}, 米国株 {us_count}")
 
     return processed_data, metadata
 
 # --- APIエンドポイント ---
+
+@app.get("/api/portfolio/sync_status")
+async def get_sync_status():
+    """バックグラウンドデータ同期の進捗状態を取得する (#262)"""
+    return JSONResponse(content=sync_manager.to_dict())
+
+@app.post("/api/portfolio/sync/start")
+async def trigger_sync():
+    """手動でバックグラウンドデータ同期を起動する (#262)"""
+    portfolio = portfolio_manager.load_portfolio()
+    stale_items = [item for item in portfolio if item.get("code")]
+    await sync_manager.start_sync_if_needed(stale_items, len(portfolio))
+    return JSONResponse(content=sync_manager.to_dict())
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):

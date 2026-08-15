@@ -178,3 +178,7 @@ def test_banner_elements_in_html_and_polling_in_js():
     assert 'isSyncing' in main_js
     assert 'isSyncing' in analysis_js
 
+    # 6. Issue #265: 更新完了時の表記が toLocaleString() (日時情報) でフォーマットされていることを検証
+    assert 'toLocaleString()' in main_js
+    assert 'toLocaleString()' in analysis_js
+

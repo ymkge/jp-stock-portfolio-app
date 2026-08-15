@@ -1365,7 +1365,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 isSyncing = false;
                 if (statusData.status === 'completed') {
                     bannerEl.classList.add('status-completed');
-                    const lastTime = statusData.last_completed_at ? new Date(statusData.last_completed_at).toLocaleTimeString() : '';
+                    const lastTime = statusData.last_completed_at ? new Date(statusData.last_completed_at).toLocaleString() : '';
                     bannerEl.innerHTML = `
                         <span>✅ 最新データへの更新が完了しました (${lastTime})</span>
                         <button type="button" onclick="location.reload()" class="btn-outline" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 10px;">画面を更新</button>

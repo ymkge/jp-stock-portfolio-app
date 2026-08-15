@@ -43,6 +43,26 @@ git push
 
 ---
 
+## 0.2 テスト実行時の本番DB保護およびモック化徹底規約 (Mandatory Test Isolation Policy) [最重要・絶対厳守]
+
+本プロジェクトにおける自動テストコード (`tests/test_*.py`) 作成・改修時およびテスト実行時のデータベース・ファイル保護規約。
+
+### 1. 本番DB・ファイルへの自動書き込み絶対禁止 [絶対厳守]
+- 自動テストコードを作成または改修する際は、テスト内で実際の銘柄コード（例: `7203`）を使用するか否かに関わらず、**本番DB (`portfolio_history.db`) およびマスター設定ファイル (`portfolio.json`) への物理書き込みを行う関数を必ず `unittest.mock.patch` 等でモック化する**こと。
+- 対象主要関数:
+  - `history_manager.save_daily_data`
+  - `history_manager.save_snapshot`
+  - `history_manager.add_split_alert`
+  - `portfolio_manager.save_portfolio`
+
+### 2. インメモリ / 一時ファイルテストの徹底
+- DB永続化・テーブル書き込みロジック自体の検証を行う場合は、`tempfile.NamedTemporaryFile` や SQLite インメモリ (`:memory:`) を使用し、本番の `portfolio_history.db` に対する書き込み・更新を一切行わないこと。
+
+### 3. テスト実行後の本番DB非汚染検証義務
+- テストコードの作成・修正完了後、`PYTHONPATH=. pytest` を実行した直後に、本番DB (`portfolio_history.db`) の更新時刻や最新レコードにテスト起因の汚染データ（ダミー株価やダミー銘柄等）が混入していないことを必ず確認すること。
+
+---
+
 ## 0.1 開発セキュリティ・個人情報保護規約 (Mandatory Security Policy) [最重要]
 
 本プロジェクト（Antigravity CLI / AIエージェント / 開発者全員適用）におけるシークレットおよび個人情報の取り扱い規約。

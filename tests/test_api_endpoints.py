@@ -493,6 +493,31 @@ def test_daily_change_ranking_link_dark_mode_visibility_issue263():
     assert 'text-decoration: underline;' in css_content
 
 
+def test_dividend_spec_note_style_consistency_issue266():
+    """案件 #266: dividend-spec-note のCSSスタイルが性格診断ボックスの配色仕様およびトリプルセレクタと一致していることを検証"""
+    import os
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # 1. ライトモード配色の検証
+    assert ".dividend-spec-note" in content
+    assert "#f0f7ff" in content  # アイスブルー背景
+    assert "#0284c7" in content  # シアンブルータイトル/強調
+    assert "#475569" in content  # スレートグレー注記
+
+    # 2. ダークモード配色の検証
+    assert "#1e293b" in content  # ダークスレート背景
+    assert "#38bdf8" in content  # スカイブルー左枠線/タイトル/強調
+    assert "#f8fafc" in content  # 本文文字色
+    assert "#cbd5e1" in content  # ライトスレート注記
+
+    # 3. トリプルセレクタの網羅性検証
+    assert '[data-theme="dark"] .dividend-spec-note' in content
+    assert 'body.dark-mode .dividend-spec-note' in content
+    assert '.dark-mode .dividend-spec-note' in content
+
+
 
 
 

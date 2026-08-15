@@ -1835,21 +1835,23 @@ body.dark-mode .dna-info-icon,
     margin-top: 5px;
 }
 
-/* --- Dividend Distribution Spec Note --- */
+/* --- Dividend Distribution Spec Note (性格診断デザイン統一 #266) --- */
 .dividend-spec-note {
-    background-color: var(--header-bg-color);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 0.8rem;
+    background-color: #f0f7ff;
+    border: 1px solid #bae6fd;
+    border-left: 4px solid var(--primary-color, #0284c7);
+    border-radius: 0 6px 6px 0;
+    padding: 0.9rem 1.1rem;
     margin-top: 1rem;
-    font-size: 0.85rem;
-    color: var(--text-color);
+    font-size: 0.88rem;
+    color: #333333;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
 .dividend-spec-note .note-title {
     font-weight: bold;
     margin-bottom: 0.5rem;
-    color: var(--text-color);
+    color: #0284c7;
 }
 
 .dividend-spec-note ul {
@@ -1860,13 +1862,52 @@ body.dark-mode .dna-info-icon,
 
 .dividend-spec-note li {
     padding: 0.2rem 0;
+    color: #333333;
+}
+
+.dividend-spec-note strong {
+    color: #0284c7;
 }
 
 .dividend-spec-note small {
     display: block;
-    color: var(--text-muted);
-    font-size: 0.75rem;
+    color: #475569;
+    font-size: 0.78rem;
     line-height: 1.4;
+}
+
+/* ダークモード対応 (トリプルセレクタによる完全網羅 #266) */
+[data-theme="dark"] .dividend-spec-note,
+body.dark-mode .dividend-spec-note,
+.dark-mode .dividend-spec-note {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+    border-left: 4px solid #38bdf8 !important;
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] .dividend-spec-note .note-title,
+body.dark-mode .dividend-spec-note .note-title,
+.dark-mode .dividend-spec-note .note-title {
+    color: #38bdf8 !important;
+}
+
+[data-theme="dark"] .dividend-spec-note li,
+body.dark-mode .dividend-spec-note li,
+.dark-mode .dividend-spec-note li {
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] .dividend-spec-note strong,
+body.dark-mode .dividend-spec-note strong,
+.dark-mode .dividend-spec-note strong {
+    color: #38bdf8 !important;
+}
+
+[data-theme="dark"] .dividend-spec-note small,
+body.dark-mode .dividend-spec-note small,
+.dark-mode .dividend-spec-note small {
+    color: #cbd5e1 !important;
 }
 
 /* --- 株式分割アラート関連スタイル (Issue #216) --- */

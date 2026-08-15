@@ -51,12 +51,12 @@ async def test_instant_response_when_db_cache_exists():
     検証事項1: force=False 時はDBキャッシュが存在すれば経過時間に関わらず0.1秒未満で即時返却されること
     """
     dummy_portfolio = [
-        {"code": "7203", "name": "トヨタ自動車", "asset_type": "jp_stock", "quantity": 100, "purchase_price": 2000}
+        {"code": "9999", "name": "ダミー企業", "asset_type": "jp_stock", "quantity": 100, "purchase_price": 2000}
     ]
     dummy_db_cache = {
-        "7203": {
-            "code": "7203",
-            "name": "トヨタ自動車",
+        "9999": {
+            "code": "9999",
+            "name": "ダミー企業",
             "price": 2500,
             "previous_close": 2480,
             "per": 10.5,
@@ -80,6 +80,7 @@ async def test_instant_response_when_db_cache_exists():
     with patch("app.portfolio_manager.load_portfolio", return_value=dummy_portfolio), \
          patch("app.history_manager.get_latest_daily_data_all", return_value=dummy_db_cache), \
          patch("app.history_manager.get_pending_split_alerts", return_value=[]), \
+         patch("app.history_manager.save_daily_data") as mock_save_daily, \
          patch("app.get_config", side_effect=mock_get_config_side_effect), \
          patch("app.scraper.get_scraper") as mock_get_scraper:
         
@@ -95,7 +96,7 @@ async def test_instant_response_when_db_cache_exists():
         # 0.1秒未満で返却されることを検証 (DBキャッシュ参照)
         assert elapsed < 0.1, f"Response time was {elapsed:.4f}s, expected < 0.1s"
         assert len(processed_data) == 1
-        assert processed_data[0]["code"] == "7203"
+        assert processed_data[0]["code"] == "9999"
         assert processed_data[0]["price"] == 2500
         # スクレイピングのネットワーク通信 (fetch_data) は実行されないこと
         mock_scraper_inst.fetch_data.assert_not_called()

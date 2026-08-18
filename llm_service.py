@@ -241,7 +241,60 @@ class LLMDiagnosisService:
                 dividend_yield = str(raw_yield)
         else:
             dividend_yield = "N/A"
-        
+
+        # 75日・200日移動平均線と乖離率の算定
+        price_num = 0.0
+        try:
+            p_str = str(price).replace(',', '')
+            price_num = float(p_str)
+        except (ValueError, TypeError): pass
+
+        ma75_val = stock_data.get("moving_average_75") or stock_data.get("ma75")
+        ma200_val = stock_data.get("moving_average_200") or stock_data.get("ma200")
+
+        ma75_info = "N/A"
+        dev75_val = None
+        if ma75_val not in [None, "N/A", "", "--"]:
+            try:
+                m75 = float(str(ma75_val).replace(',', ''))
+                dev75 = ((price_num - m75) / m75 * 100) if (price_num > 0 and m75 > 0) else 0.0
+                dev75_val = dev75
+                ma75_info = f"{m75:,.1f} 円 (乖離率: {dev75:+.1f}%)"
+            except (ValueError, TypeError):
+                ma75_info = str(ma75_val)
+
+        ma200_info = "N/A"
+        dev200_val = None
+        if ma200_val not in [None, "N/A", "", "--"]:
+            try:
+                m200 = float(str(ma200_val).replace(',', ''))
+                dev200 = ((price_num - m200) / m200 * 100) if (price_num > 0 and m200 > 0) else 0.0
+                dev200_val = dev200
+                ma200_info = f"{m200:,.1f} 円 (乖離率: {dev200:+.1f}%)"
+            except (ValueError, TypeError):
+                ma200_info = str(ma200_val)
+
+        # トレンド状態の判定ラベル
+        trend_info = "不明 (データ不足)"
+        if price_num > 0 and dev75_val is not None and dev200_val is not None:
+            m75_num = float(str(ma75_val).replace(',', ''))
+            m200_num = float(str(ma200_val).replace(',', ''))
+            if price_num > m75_num and m75_num > m200_num:
+                trend_info = "📈 上昇トレンド (パーフェクトオーダー・強気順張り)"
+            elif price_num < m75_num and price_num > m200_num:
+                trend_info = "⛅ 中期調整 (75日線下・200日線上: 絶好の押し目圏)"
+            elif price_num > m75_num and price_num < m200_num:
+                trend_info = "⚡ 戻り試す展開 (75日線上・200日線下)"
+            elif dev200_val <= -5.0:
+                trend_info = f"📉 長期下降トレンド (200日線乖離 {dev200_val:.1f}%: 底打ち未確認)"
+            else:
+                trend_info = "📉 長期調整中 (200日線割れ)"
+        elif dev75_val is not None:
+            if dev75_val < 0:
+                trend_info = "⛅ 75日線下割れ (長期調整中)"
+            else:
+                trend_info = "📈 75日線上推移 (良好)"
+
         prompt = f"""{policy_prompt}
 
 ---
@@ -259,24 +312,29 @@ class LLMDiagnosisService:
 - 予想配当利回り: {dividend_yield} %
 - BPS(1株純資産): {bps} 円
 - 配当性向: {payout_ratio} %
+- 75日移動平均線 (MA75): {ma75_info}
+- 200日移動平均線 (MA200): {ma200_info}
+- 移動平均トレンド状態: {trend_info}
 - テクニカル材料出尽くし検知: {exhaustion_info}
 
 ---
 
 ## あなたのタスク
 上記「ユーザーの基本投資方針」に照らし合わせ、対象銘柄({code} {name})の適合度を分析してください。
-直近の業績動向（EPSや収益性）、配当維持能力（還元の盾）、および【材料出尽くし感（好材料出尽くし下落リスク / 悪材料アク抜け大底判定）やマクロ地政学・災害・米国市況ショックの影響度】を踏まえて投資判断を行ってください。
+直近の業績動向（EPSや収益性）、配当維持能力（還元の盾）、および【75日・200日移動平均線との位置関係（上昇トレンド／押し目圏／長期下降トレンド）】と【材料出尽くし感（好材料出尽くし下落リスク / 悪材料アク抜け大底判定）やマクロ地政学・災害・米国市況ショックの影響度】を踏まえて投資判断を行ってください。
+※重要: トレンドが「上昇トレンド」や「絶好の押し目圏」にある場合は、順張り・格安エントリーの観点から分析の確信度 (confidence_score) を高め(85〜95点)に算出して後押しし、長期下降トレンド下では慎重な確信度・立ち回りを提示してください。
 必ず以下のJSONフォーマットのみを出力してください。Markdownや他の余計な文言は一切含めないでください。
 
 JSONフォーマットで回答を出力してください。キーは必ず以下の通りとすること:
 {{
   "fit_level": "fit" または "caution" または "unfit",
-  "confidence_score": この判定結果(コア/サテライト/Avoid)に対するAIアナリスト自身の【分析の確信度・自信度】(0〜100の数値)。※注意: 適合度の割合ではありません。例えば【見送り(Avoid)】とする判断に強い確信・自信がある場合は 90〜100 の高い数値を出力してください。,
+  "confidence_score": この判定結果(コア/サテライト/Avoid)に対するAIアナリスト自身の【分析の確信度・自信度】(0〜100の数値)。※注意: 適合度の割合ではありません。順張りや絶好の押し目圏にある買い候補の場合は 85〜95 の高い数値を出力してください。,
   "decision_label": "【判定ラベル】(例: 【強い買い（コア）】 / 【買い（サテライト）】 / 【中立・監視】 / 【見送り（Avoid）】)",
   "estimated_yield": "予想配当利回りの記載(例: 約4.4%)",
   "recommended_shares": "1回あたりの購入目安株数の記載(例: 約3株〜4株)",
   "shield_and_valuation": "「還元の盾」およびPBR/PER過熱感の評価詳細",
   "performance_summary": "直近のEPS・収益性・業績動向および配当原資創出力に関するAI評価解説",
+  "trend_analysis": "75日・200日移動平均線を踏まえた長中期トレンドの簡潔な評価解説（※1〜2文程度のコンパクトな文章とすること）",
   "material_exhaustion_eval": "材料出尽くし（好材料出尽くし下落リスク / 悪材料アク抜け大底判定）およびマクロショック影響度のAI評価解説",
   "business_10y_eval": "10年スパンでの事業評価（ポジティブ要因・ネガティブ要因）",
   "tactical_advice": "本システム/S株ナンピンにおける具体的な立ち回りアドバイス",
@@ -307,6 +365,7 @@ fit_levelの基準:
                 "recommended_shares": "要確認",
                 "shield_and_valuation": "レスポンスのパースに一部失敗しましたが、詳細テキストを以下に示します。",
                 "performance_summary": "業績データの詳細解析を実行中です。",
+                "trend_analysis": "75日・200日移動平均線を踏まえたトレンド分析を実行中です。",
                 "material_exhaustion_eval": "材料出尽くしおよび市場変動の解析を実行中です。",
                 "business_10y_eval": raw_text[:500],
                 "tactical_advice": "手動での最終確認を推奨します。",
@@ -334,6 +393,7 @@ fit_levelの基準:
             "recommended_shares": str(data.get("recommended_shares", "N/A")),
             "shield_and_valuation": str(data.get("shield_and_valuation", "データなし")),
             "performance_summary": str(data.get("performance_summary", "直近業績（EPS・収益性）データに基づき持続可能な配当維持力を検証済みです。")),
+            "trend_analysis": str(data.get("trend_analysis", "75日・200日移動平均線との位置関係およびトレンド状態を考慮した分析を実行済みです。")),
             "material_exhaustion_eval": str(data.get("material_exhaustion_eval", "テクニカル指標およびマクロ要因に基づく材料出尽くしリスクを分析済みです。")),
             "business_10y_eval": str(data.get("business_10y_eval", "データなし")),
             "tactical_advice": str(data.get("tactical_advice", "データなし")),

@@ -1658,6 +1658,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="llm-section-title">📉 材料出尽くし・反転シグナル分析</div>
                             <div class="llm-text-content">${data.material_exhaustion_eval || '定量的データおよびマクロ動向を分析済みです。'}</div>
                         </div>
+
+                        <div class="llm-section-block">
+                            <div class="llm-section-title">📈 トレンド評価 (75日・200日移動平均)</div>
+                            <div class="llm-text-content">${data.trend_analysis || '移動平均データおよびトレンド分析結果は正常に処理されました。'}</div>
+                        </div>
                     </div>
 
                     <div class="llm-column">

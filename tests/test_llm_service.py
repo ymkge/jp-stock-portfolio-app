@@ -345,5 +345,27 @@ def test_material_exhaustion_eval_prompt_and_parsing(policy_manager):
     assert parsed_missing["material_exhaustion_eval"] == "テクニカル指標およびマクロ要因に基づく材料出尽くしリスクを分析済みです。"
 
 
+def test_trend_analysis_prompt_and_parsing(policy_manager):
+    """Issue #268: 移動平均線(75日/200日)・乖離率・トレンド状態のプロンプト構築とtrend_analysisパースの検証"""
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+    stock_data = {
+        "code": "7203",
+        "name": "トヨタ自動車",
+        "price": 2950,
+        "moving_average_75": 3000,
+        "moving_average_200": 2920,
+    }
+    prompt = service._build_prompt(stock_data, None, "テスト方針")
+    assert "75日移動平均線 (MA75): 3,000.0 円 (乖離率: -1.7%)" in prompt
+    assert "200日移動平均線 (MA200): 2,920.0 円 (乖離率: +1.0%)" in prompt
+    assert "移動平均トレンド状態: ⛅ 中期調整 (75日線下・200日線上: 絶好の押し目圏)" in prompt
+    assert "trend_analysis" in prompt
+
+    # JSONパースの検証
+    raw_text = '{"fit_level": "fit", "trend_analysis": "75日線下の中期調整圏ですが200日線の上を維持しており押し目買いチャンスです。"}'
+    parsed = service._parse_llm_json(raw_text)
+    assert parsed["trend_analysis"] == "75日線下の中期調整圏ですが200日線の上を維持しており押し目買いチャンスです。"
+
+
 
 

@@ -478,7 +478,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if (selectedSignal === 'strict-dip') {
                 filteredAssets = filteredAssets.filter(asset => (asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true)) && asset.buy_signal && asset.buy_signal.level >= 1);
             } else if (selectedSignal === 'strict-low') {
-                filteredAssets = filteredAssets.filter(asset => (asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true)) && asset.sell_signal && asset.sell_signal.level === 3);
+                filteredAssets = filteredAssets.filter(asset => {
+                    const isDiamond = asset.is_diamond === true || (asset.buy_signal && asset.buy_signal.is_diamond === true);
+                    const ma75 = asset.moving_average_75 || asset.ma75;
+                    const isLongTermDiscount = asset.is_long_term_discount === true ||
+                                               (asset.raw_sell_signal && asset.raw_sell_signal.level === 3) ||
+                                               (asset.sell_signal && asset.sell_signal.level === 3) ||
+                                               (asset.price > 0 && ma75 && asset.price < ma75);
+                    const isFallingKnife = (asset.sell_signal && asset.sell_signal.level === 4) ||
+                                          (asset.raw_sell_signal && asset.raw_sell_signal.level === 4);
+                    return isDiamond && isLongTermDiscount && !isFallingKnife;
+                });
             } else if (selectedSignal === 'overheated') {
                 filteredAssets = filteredAssets.filter(asset => {
                     if (!asset.sell_signal) return false;

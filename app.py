@@ -765,8 +765,21 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
             merged_data["doe"] = "N/A"
 
         # シグナルの判定
+        raw_sell = calculate_sell_signal(merged_data)
+        merged_data["raw_sell_signal"] = raw_sell
+
+        # 75日線割れ (長期調整) フラグの付与
+        price_val_chk = merged_data.get("price")
+        ma75_val_chk = merged_data.get("moving_average_75") or merged_data.get("ma75")
+        try:
+            p_chk = float(str(price_val_chk).replace(',', '')) if price_val_chk is not None else 0.0
+            ma75_chk = float(ma75_val_chk) if ma75_val_chk is not None else 0.0
+            merged_data["is_long_term_discount"] = (p_chk > 0 and ma75_chk > 0 and p_chk < ma75_chk)
+        except (ValueError, TypeError):
+            merged_data["is_long_term_discount"] = False
+
         merged_data["buy_signal"] = calculate_buy_signal(merged_data)
-        merged_data["sell_signal"] = calculate_sell_signal(merged_data)
+        merged_data["sell_signal"] = raw_sell
         merged_data["exhaustion_signal"] = calculate_material_exhaustion_signal(merged_data)
 
         # 重複・相反シグナルの抑制 (モック等の2要素/3要素返却に安全対応)

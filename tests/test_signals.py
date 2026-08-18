@@ -284,4 +284,131 @@ def test_reconcile_signals_with_exhaustion():
     assert e_res3 == exh_rebound
 
 
+def test_enrich_stock_data_discount_flag_and_isolation():
+    """#265不具合修正: _enrich_stock_data で raw_sell_signal と is_long_term_discount が保持されることを検証"""
+    from unittest.mock import patch
+    from app import _enrich_stock_data
+
+    mock_data = {
+        "code": "9999",
+        "name": "ダミー銘柄",
+        "asset_type": "jp_stock",
+        "price": 2900,
+        "moving_average_25": 3000,
+        "moving_average_75": 3000,
+        "ma200": 2920,
+        "score_details": {
+            "per": 1, "pbr": 1, "roe": 1, "yield": 1, "consecutive_increase": 0,
+            "is_reliable": True, "total_stars": 4, "fundamentals_stars": 4
+        }
+    }
+
+    with patch("history_manager.get_historical_data_for_analysis", return_value=[]), \
+         patch("history_manager.save_daily_data", return_value=True):
+        res = _enrich_stock_data(mock_data)
+
+    # 1. 75日線割れ (2900 < 3000) なので is_long_term_discount が True であること
+    assert res.get("is_long_term_discount") is True
+
+    # 2. reconcile_signals により sell_signal は None に抑制されるが raw_sell_signal には level 3 が保持されること
+    assert res.get("sell_signal") is None
+    assert res.get("raw_sell_signal") is not None
+    assert res.get("raw_sell_signal", {}).get("level") == 3
+
+
+def test_enrich_stock_data_is_long_term_discount_edge_cases():
+    """is_long_term_discount の様々なデータ入力・エッジケース動作の確認"""
+    from unittest.mock import patch
+    from app import _enrich_stock_data
+
+    base_data = {
+        "code": "8888",
+        "name": "テスト銘柄",
+        "asset_type": "jp_stock",
+        "score_details": {"is_reliable": True}
+    }
+
+    with patch("history_manager.get_historical_data_for_analysis", return_value=[]), \
+         patch("history_manager.save_daily_data", return_value=True):
+        
+        # ケース1: 株価がカンマ区切りの文字列 "1,500" で MA75 が 1600 (株価 < MA75 -> True)
+        d1 = _enrich_stock_data({**base_data, "price": "1,500", "moving_average_75": 1600})
+        assert d1["is_long_term_discount"] is True
+
+        # ケース2: 株価 > MA75 (2000 > 1500 -> False)
+        d2 = _enrich_stock_data({**base_data, "price": 2000, "moving_average_75": 1500})
+        assert d2["is_long_term_discount"] is False
+
+        # ケース3: 株価 == MA75 (1500 == 1500 -> False)
+        d3 = _enrich_stock_data({**base_data, "price": 1500, "moving_average_75": 1500})
+        assert d3["is_long_term_discount"] is False
+
+        # ケース4: MA75 が None (-> False)
+        d4 = _enrich_stock_data({**base_data, "price": 1500, "moving_average_75": None, "ma75": None})
+        assert d4["is_long_term_discount"] is False
+
+        # ケース5: 不正な株価データ "invalid" (-> False)
+        d5 = _enrich_stock_data({**base_data, "price": "invalid", "moving_average_75": 1500})
+        assert d5["is_long_term_discount"] is False
+
+
+def test_frontend_filter_logic_simulation():
+    """static/js/main.js および static/js/analysis.js のフィルタロジックと同等のロジックをテスト"""
+    
+    def simulate_strict_low_filter(asset):
+        is_diamond = asset.get("is_diamond") is True or (
+            asset.get("buy_signal") is not None and asset.get("buy_signal", {}).get("is_diamond") is True
+        )
+        ma75 = asset.get("moving_average_75") or asset.get("ma75")
+        
+        # 判定順: is_long_term_discount -> raw_sell_signal(3) -> sell_signal(3) -> price < ma75
+        price_val = asset.get("price")
+        p_num = float(str(price_val).replace(',', '')) if price_val is not None and str(price_val).replace(',', '').replace('.', '', 1).isdigit() else 0
+        ma75_num = float(ma75) if ma75 is not None and str(ma75).replace('.', '', 1).isdigit() else 0
+
+        is_long_term_discount = (
+            asset.get("is_long_term_discount") is True or
+            (asset.get("raw_sell_signal") is not None and asset.get("raw_sell_signal", {}).get("level") == 3) or
+            (asset.get("sell_signal") is not None and asset.get("sell_signal", {}).get("level") == 3) or
+            (p_num > 0 and ma75_num > 0 and p_num < ma75_num)
+        )
+        is_falling_knife = (
+            (asset.get("sell_signal") is not None and asset.get("sell_signal", {}).get("level") == 4) or
+            (asset.get("raw_sell_signal") is not None and asset.get("raw_sell_signal", {}).get("level") == 4)
+        )
+        return bool(is_diamond and is_long_term_discount and not is_falling_knife)
+
+    # 1. reconcile_signals により sell_signal が None に消去されたが is_diamond=True, is_long_term_discount=True
+    # (従来0件不具合が発生していた代表的パターン)
+    asset_reconciled = {
+        "is_diamond": True,
+        "is_long_term_discount": True,
+        "raw_sell_signal": {"level": 3, "label": "調整局面"},
+        "sell_signal": None,
+        "buy_signal": {"level": 1, "is_diamond": True}
+    }
+    assert simulate_strict_low_filter(asset_reconciled) is True
+
+    # 2. 落ちるナイフ (level 4) の場合 -> 除外 (False)
+    asset_falling_knife = {
+        "is_diamond": True,
+        "is_long_term_discount": True,
+        "raw_sell_signal": {"level": 4, "label": "落ちるナイフ"},
+        "sell_signal": {"level": 4, "label": "落ちるナイフ"},
+        "buy_signal": None
+    }
+    assert simulate_strict_low_filter(asset_falling_knife) is False
+
+    # 3. ダイヤモンド銘柄でない場合 (is_diamond=False) -> 除外 (False)
+    asset_non_diamond = {
+        "is_diamond": False,
+        "is_long_term_discount": True,
+        "raw_sell_signal": {"level": 3, "label": "調整局面"},
+        "sell_signal": {"level": 3, "label": "調整局面"},
+        "buy_signal": None
+    }
+    assert simulate_strict_low_filter(asset_non_diamond) is False
+
+
+
 

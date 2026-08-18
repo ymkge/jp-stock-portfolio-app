@@ -451,9 +451,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const matchesAccountType = !selectedAccountType || item.account_type === selectedAccountType;
             const matchesSecurityCompany = !selectedSecurityCompany || (item.security_company || '-') === selectedSecurityCompany;
             const isDiamond = item.is_diamond === true || (item.buy_signal && item.buy_signal.is_diamond === true);
+            const ma75 = item.moving_average_75 || item.ma75;
+            const isLongTermDiscount = item.is_long_term_discount === true ||
+                                       (item.raw_sell_signal && item.raw_sell_signal.level === 3) ||
+                                       (item.sell_signal && item.sell_signal.level === 3) ||
+                                       (item.price > 0 && ma75 && item.price < ma75);
+            const isFallingKnife = (item.sell_signal && item.sell_signal.level === 4) ||
+                                  (item.raw_sell_signal && item.raw_sell_signal.level === 4);
             const matchesBuySignal = !selectedBuySignal || (
                 (selectedBuySignal === 'strict-dip' && isDiamond && item.buy_signal && item.buy_signal.level >= 1) ||
-                (selectedBuySignal === 'strict-low' && isDiamond && item.sell_signal && item.sell_signal.level === 3) ||
+                (selectedBuySignal === 'strict-low' && isDiamond && isLongTermDiscount && !isFallingKnife) ||
                 (selectedBuySignal === 'overheated' && (
                     (item.sell_signal && (item.sell_signal.level === 1 || item.sell_signal.level === 2 || item.sell_signal.level === 4)) ||
                     (item.sell_signal && item.sell_signal.level === 3 && !isDiamond)

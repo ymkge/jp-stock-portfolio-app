@@ -377,7 +377,7 @@ def test_api_portfolio_analysis_daily_change_rankings(mock_get_rate, mock_get_as
     mock_get_assets.return_value = (
         [
             {
-                "code": "7203",
+                "code": "9999",
                 "name": "トヨタ",
                 "asset_type": "jp_stock",
                 "holdings": [{"quantity": 100, "purchase_price": 2000, "account_type": "特定口座"}],
@@ -398,7 +398,7 @@ def test_api_portfolio_analysis_daily_change_rankings(mock_get_rate, mock_get_as
     assert "day_gainers_top10" in rankings
     assert "day_losers_top10" in rankings
     assert len(rankings["day_gainers_top10"]) == 1
-    assert rankings["day_gainers_top10"][0]["code"] == "7203"
+    assert rankings["day_gainers_top10"][0]["code"] == "9999"
     assert rankings["day_gainers_top10"][0]["daily_change_jpy"] == 5000.0
 
 

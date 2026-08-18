@@ -47,7 +47,7 @@ def test_jp_stock_payout_ratio_history_scraping():
 def test_doe_calculation_in_enrich():
     # Test for JP Stock DOE calculation: annual_dividend / BPS * 100
     merged_data = {
-        "code": "7203",
+        "code": "9999",
         "asset_type": "jp_stock",
         "annual_dividend": 90.0,
         "bps": "3000.00"

@@ -37,7 +37,7 @@ def test_background_sync_manager_singleton():
 def test_sync_start_api(mock_load_portfolio):
     """POST /api/portfolio/sync/start の手動トリガー起動テスト"""
     mock_load_portfolio.return_value = [
-        {"code": "7203", "name": "トヨタ", "asset_type": "jp_stock"}
+        {"code": "9999", "name": "トヨタ", "asset_type": "jp_stock"}
     ]
     response = client.post("/api/portfolio/sync/start")
     assert response.status_code == 200
@@ -114,7 +114,7 @@ async def test_background_sync_manager_concurrency_and_circuit_breaker():
     # 1. 二重起動防止テスト
     manager.is_syncing = True
     manager.status = "syncing"
-    stale_items = [{"code": "7203", "asset_type": "jp_stock", "name": "トヨタ"}]
+    stale_items = [{"code": "9999", "asset_type": "jp_stock", "name": "トヨタ"}]
     
     # 既に is_syncing=True の状態なので start_sync_if_needed はスキップされるべき
     await manager.start_sync_if_needed(stale_items, 1)
@@ -131,7 +131,7 @@ async def test_background_sync_manager_concurrency_and_circuit_breaker():
         
         mock_scraper = MagicMock()
         mock_scraper.fetch_data.return_value = {
-            "code": "7203",
+            "code": "9999",
             "error": "Access Denied",
             "error_details": {"status_code": 403}
         }

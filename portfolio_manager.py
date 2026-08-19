@@ -821,15 +821,10 @@ def calculate_monthly_change_rankings(
             ratio = applied_splits[code]
             if ratio > 1.0:
                 qty_ratio = curr_qty / prev_qty
-                prev_unit_price = prev_mv / prev_qty
-                curr_unit_price = curr_mv / curr_qty if curr_qty > 0 else 0
-                
-                # 条件A: 現在株数/先月末株数が分割比率の概ね0.7〜1.3倍の範囲内
-                # 条件B: 先月末想定単価と現在単価が同水準（過渡期に分割後新株価でスナップショット記録された）
+                # 株数が過去スナップショットから現在にかけて実際に分割比率倍(0.7〜1.3*ratio)増えている過渡期データのみ補正
                 is_transitional_qty = (0.7 * ratio <= qty_ratio <= 1.3 * ratio)
-                is_transitional_price = (curr_unit_price > 0 and 0.5 <= (curr_unit_price / prev_unit_price) <= 1.5)
                 
-                if is_transitional_qty or is_transitional_price:
+                if is_transitional_qty:
                     adjusted_prev_mv = prev_mv * ratio
                     logger.info(f"Self-Healing Split Correction applied for {code}: prev_mv {prev_mv} -> {adjusted_prev_mv} (ratio={ratio})")
 

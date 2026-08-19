@@ -373,3 +373,36 @@ def test_calculate_monthly_change_rankings_with_transitional_stock_split():
         assert round(g["monthly_change_percent"], 1) == 2.1
 
 
+def test_calculate_monthly_change_rankings_already_split_no_overcorrection():
+    """既適用分割銘柄 (8053 住友商事等) が誤って二重補正されないことの検証テスト"""
+    from portfolio_manager import calculate_monthly_change_rankings
+    from unittest.mock import patch
+
+    # 先月末スナップショット（既に120株、200,400円で保存済み）
+    mock_last_month_map = {
+        "8053": {"code": "8053", "name": "住友商事", "market_value": 200400.0, "quantity": 120.0, "asset_type": "jp_stock"}
+    }
+    # 現在の保有（120株, 201,360円）
+    raw_holdings = [
+        {"code": "8053", "name": "住友商事", "asset_type": "jp_stock", "market_value": 201360.0, "quantity": 120.0}
+    ]
+    mock_applied_splits = [
+        {"code": "8053", "ratio": 4.0, "status": "applied"}
+    ]
+
+    with patch("history_manager.get_last_month_end_holdings_snapshot", return_value=("2026-07", mock_last_month_map)), \
+         patch("history_manager.get_applied_split_alerts", return_value=mock_applied_splits):
+        res = calculate_monthly_change_rankings(raw_holdings, {"JPY": 1.0})
+
+        gainers = res["month_gainers_top10"]
+        losers = res["month_losers_top10"]
+        
+        # 誤って 801,600円 に膨らみ巨額マイナス（減少TOP10）にならないこと
+        assert len(losers) == 0
+        assert len(gainers) == 1
+        g = gainers[0]
+        assert g["code"] == "8053"
+        assert g["last_month_market_value"] == 200400.0
+        assert g["monthly_change_jpy"] == 960.0
+
+

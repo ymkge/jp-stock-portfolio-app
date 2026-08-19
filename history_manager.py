@@ -518,6 +518,64 @@ def get_previous_summary(exclude_month: str) -> Optional[Dict[str, Any]]:
     except ValueError:
         return None
 
+def get_last_month_end_holdings_snapshot() -> Tuple[Optional[str], Dict[str, Dict[str, Any]]]:
+    """
+    先月末の最大 snapshot_date における銘柄ごとの合計評価額および情報を取得する。
+    
+    Returns:
+        Tuple[last_month_str, holdings_map]:
+            last_month_str: "YYYY-MM" (データがない場合は None)
+            holdings_map: { code: {"code": str, "name": str, "market_value": float, "quantity": float, "asset_type": str} }
+    """
+    now_jst = get_now_jst()
+    first_day_of_this_month = now_jst.replace(day=1)
+    last_month_date = first_day_of_this_month - timedelta(days=1)
+    last_month_str = last_month_date.strftime("%Y-%m")
+
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT MAX(snapshot_date) as max_date 
+                FROM portfolio_history 
+                WHERE snapshot_month = ?
+            """, (last_month_str,))
+            row = cursor.fetchone()
+            if not row or not row["max_date"]:
+                return None, {}
+            
+            max_date = row["max_date"]
+            
+            cursor.execute("""
+                SELECT 
+                    code,
+                    MAX(name) as name,
+                    MAX(asset_type) as asset_type,
+                    SUM(market_value) as total_market_value,
+                    SUM(quantity) as total_quantity
+                FROM portfolio_history
+                WHERE snapshot_month = ? AND snapshot_date = ?
+                GROUP BY code
+            """, (last_month_str, max_date))
+            
+            rows = cursor.fetchall()
+            snapshot_map = {}
+            for r in rows:
+                code = r["code"]
+                snapshot_map[code] = {
+                    "code": code,
+                    "name": r["name"] or code,
+                    "asset_type": r["asset_type"] or "jp_stock",
+                    "market_value": float(r["total_market_value"] or 0),
+                    "quantity": float(r["total_quantity"] or 0),
+                }
+            return last_month_str, snapshot_map
+    except Exception as e:
+        logger.error(f"Error fetching last month end holdings snapshot: {e}")
+        return None, {}
+
 def get_monthly_summary():
     """月ごとのサマリーを取得する（各月の最新日のデータを集計）"""
     try:

@@ -1965,8 +1965,9 @@ async def get_portfolio_analysis(force: bool = False, cooldown_check: None = Dep
     # 評価額順にソート
     industry_summary = sorted(industry_summary, key=lambda x: x["market_value"], reverse=True)
 
-    # --- 当日資産変動ランキング (TOP10) を計算 (#261) ---
+    # --- 資産変動ランキング (TOP10) を計算 (#261, #270) ---
     daily_change_rankings = portfolio_manager.calculate_daily_change_rankings(raw_holdings_list, exchange_rates)
+    monthly_change_rankings = portfolio_manager.calculate_monthly_change_rankings(raw_holdings_list, exchange_rates)
     # --------------------------------------------------
 
     last_full_update_time = datetime.now()
@@ -1980,6 +1981,7 @@ async def get_portfolio_analysis(force: bool = False, cooldown_check: None = Dep
         "total_annual_dividend_after_tax": total_annual_dividend_after_tax,
         "summary_stats": summary_stats,
         "daily_change_rankings": daily_change_rankings, # 追加 (#261)
+        "monthly_change_rankings": monthly_change_rankings, # 追加 (#270)
         "metadata": metadata,
         "previous_summary": previous_summary, # 過去サマリーを追加
     }

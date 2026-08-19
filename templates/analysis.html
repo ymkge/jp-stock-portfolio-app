@@ -62,8 +62,8 @@
                                 <h3>サマリー</h3>
                                 <span id="compare-date-label" class="text-muted" style="font-size: 0.8rem; font-weight: normal;"></span>
                             </div>
-                            <button type="button" id="btn-open-daily-ranking-modal" class="btn-ranking-trigger" title="当日の評価額増減が大きい銘柄TOP10を別画面で表示します">
-                                🚀 当日増減ランキング TOP10
+                            <button type="button" id="btn-open-daily-ranking-modal" class="btn-ranking-trigger" title="銘柄ごとの資産変動ランキング（当日比・先月比 TOP10）を別画面で表示します">
+                                🚀 資産変動ランキング TOP10
                             </button>
                         </div>
                         <div id="summary-content">
@@ -219,13 +219,19 @@
                 </div>
             </div>
 
-            <!-- 当日資産変動ランキング モーダル (#261) -->
+            <!-- 資産変動ランキング モーダル (#261, #270) -->
             <div id="daily-ranking-modal" class="modal-overlay hidden">
                 <div class="modal-content large-modal" style="max-width: 750px; max-height: 85vh; display: flex; flex-direction: column;">
                     <div class="modal-header">
-                        <h2>🚀 当日 資産変動ランキング (TOP10)</h2>
+                        <h2 id="modal-ranking-title">🚀 資産変動ランキング (TOP10)</h2>
                     </div>
-                    <div class="modal-body" style="padding: 20px 0; flex: 1; overflow-y: auto;">
+                    <div class="modal-body" style="padding: 15px 0; flex: 1; overflow-y: auto;">
+                        <!-- 期間切替 メインタブ (#270) -->
+                        <div class="ranking-period-tabs" style="margin-bottom: 12px; display: flex; gap: 8px;">
+                            <button type="button" id="tab-period-daily" class="period-tab-btn active">⚡ 当日比 (前日比)</button>
+                            <button type="button" id="tab-period-monthly" class="period-tab-btn">📅 先月比 (<span id="ranking-month-label">先月末比</span>)</button>
+                        </div>
+                        <!-- 増減切替 サブタブ -->
                         <div class="ranking-tab-buttons" style="margin-bottom: 15px;">
                             <button type="button" id="tab-gainers-top10" class="ranking-tab-btn active gainer-tab">🟢 資産増加 TOP10</button>
                             <button type="button" id="tab-losers-top10" class="ranking-tab-btn loser-tab">🔴 資産減少 TOP10</button>
@@ -234,7 +240,7 @@
                             <!-- ランキングテーブルはここにJSで描画 -->
                         </div>
                     </div>
-                    <div class="modal-footer" style="padding-top: 15px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end;">
+                    <div class="modal-footer" style="padding-top: 15px; border-top: 1px solid var(--border-color, #e2e8f0); display: flex; justify-content: flex-end;">
                         <button type="button" id="btn-close-daily-ranking-modal-footer" class="btn-outline">閉じる</button>
                     </div>
                 </div>

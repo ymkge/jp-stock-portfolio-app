@@ -472,8 +472,8 @@ document.addEventListener('DOMContentLoaded', () => {
         renderAnalysisTable(filteredHoldingsData);
         renderSummary(filteredHoldingsData);
         renderCharts(filteredHoldingsData);
-        if (fullAnalysisData && fullAnalysisData.daily_change_rankings) {
-            renderDailyChangeRankings(fullAnalysisData.daily_change_rankings);
+        if (fullAnalysisData && (fullAnalysisData.daily_change_rankings || fullAnalysisData.monthly_change_rankings)) {
+            renderRankingModalContent();
         }
         updateSortHeaders();
     }
@@ -825,13 +825,69 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/'/g, '&#039;');
     }
 
+    let currentRankingPeriod = 'daily'; // 'daily' or 'monthly'
     let currentRankingTab = 'gainers'; // 'gainers' or 'losers'
+
+    function renderRankingModalContent() {
+        const rankingContainer = document.getElementById('daily-ranking-content');
+        const tabPeriodDailyBtn = document.getElementById('tab-period-daily');
+        const tabPeriodMonthlyBtn = document.getElementById('tab-period-monthly');
+        const tabGainersBtn = document.getElementById('tab-gainers-top10');
+        const tabLosersBtn = document.getElementById('tab-losers-top10');
+        const monthLabelSpan = document.getElementById('ranking-month-label');
+        const modalTitle = document.getElementById('modal-ranking-title');
+
+        if (!rankingContainer || !fullAnalysisData) return;
+
+        const dailyRankings = fullAnalysisData.daily_change_rankings;
+        const monthlyRankings = fullAnalysisData.monthly_change_rankings;
+
+        if (monthlyRankings && monthlyRankings.month_label && monthLabelSpan) {
+            monthLabelSpan.textContent = monthlyRankings.month_label;
+        }
+
+        if (tabPeriodDailyBtn && tabPeriodMonthlyBtn) {
+            tabPeriodDailyBtn.onclick = () => {
+                currentRankingPeriod = 'daily';
+                tabPeriodDailyBtn.classList.add('active');
+                tabPeriodMonthlyBtn.classList.remove('active');
+                if (modalTitle) modalTitle.textContent = '🚀 当日 資産変動ランキング (TOP10)';
+                renderRankingModalContent();
+            };
+            tabPeriodMonthlyBtn.onclick = () => {
+                currentRankingPeriod = 'monthly';
+                tabPeriodMonthlyBtn.classList.add('active');
+                tabPeriodDailyBtn.classList.remove('active');
+                const mLabel = (monthlyRankings && monthlyRankings.month_label) ? monthlyRankings.month_label : '先月末比';
+                if (modalTitle) modalTitle.textContent = `🚀 先月比 資産変動ランキング (${mLabel} TOP10)`;
+                renderRankingModalContent();
+            };
+        }
+
+        if (tabGainersBtn && tabLosersBtn) {
+            tabGainersBtn.onclick = () => {
+                currentRankingTab = 'gainers';
+                tabGainersBtn.classList.add('active');
+                tabLosersBtn.classList.remove('active');
+                renderRankingModalContent();
+            };
+            tabLosersBtn.onclick = () => {
+                currentRankingTab = 'losers';
+                tabLosersBtn.classList.add('active');
+                tabGainersBtn.classList.remove('active');
+                renderRankingModalContent();
+            };
+        }
+
+        if (currentRankingPeriod === 'daily') {
+            renderDailyChangeRankings(dailyRankings);
+        } else {
+            renderMonthlyChangeRankings(monthlyRankings);
+        }
+    }
 
     function renderDailyChangeRankings(rankingsData) {
         const rankingContainer = document.getElementById('daily-ranking-content');
-        const tabGainersBtn = document.getElementById('tab-gainers-top10');
-        const tabLosersBtn = document.getElementById('tab-losers-top10');
-
         if (!rankingContainer) return;
 
         if (!rankingsData) {
@@ -841,21 +897,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const gainers = rankingsData.day_gainers_top10 || [];
         const losers = rankingsData.day_losers_top10 || [];
-
-        if (tabGainersBtn && tabLosersBtn) {
-            tabGainersBtn.onclick = () => {
-                currentRankingTab = 'gainers';
-                tabGainersBtn.classList.add('active');
-                tabLosersBtn.classList.remove('active');
-                renderDailyChangeRankings(rankingsData);
-            };
-            tabLosersBtn.onclick = () => {
-                currentRankingTab = 'losers';
-                tabLosersBtn.classList.add('active');
-                tabGainersBtn.classList.remove('active');
-                renderDailyChangeRankings(rankingsData);
-            };
-        }
 
         const currentList = currentRankingTab === 'gainers' ? gainers : losers;
         const isGainer = currentRankingTab === 'gainers';
@@ -939,7 +980,101 @@ document.addEventListener('DOMContentLoaded', () => {
                 </table>
             </div>
         `;
+        rankingContainer.innerHTML = tableHtml;
+    }
 
+    function renderMonthlyChangeRankings(rankingsData) {
+        const rankingContainer = document.getElementById('daily-ranking-content');
+        if (!rankingContainer) return;
+
+        if (!rankingsData || !rankingsData.has_last_month_data) {
+            rankingContainer.innerHTML = '<p class="text-muted" style="text-align: center; padding: 25px; font-size: 0.9rem;">先月末のスナップショットデータがありません。<br>翌月になると先月末比のランキングが表示されます。</p>';
+            return;
+        }
+
+        const gainers = rankingsData.month_gainers_top10 || [];
+        const losers = rankingsData.month_losers_top10 || [];
+        const currentList = currentRankingTab === 'gainers' ? gainers : losers;
+        const isGainer = currentRankingTab === 'gainers';
+
+        if (currentList.length === 0) {
+            const msg = isGainer ? '先月比の資産増加銘柄はありません。' : '先月比の資産減少銘柄はありません。';
+            rankingContainer.innerHTML = `<p class="text-muted" style="text-align: center; padding: 20px; font-size: 0.9rem;">${msg}</p>`;
+            return;
+        }
+
+        let tableHtml = `
+            <div class="table-responsive" style="overflow-x: auto;">
+                <table class="ranking-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 55px; text-align: center;">順位</th>
+                            <th>銘柄名 / コード</th>
+                            <th style="text-align: right;">先月末 評価額</th>
+                            <th style="text-align: right;">現在 評価額</th>
+                            <th style="text-align: right;">先月比 資産増減額</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        currentList.forEach(item => {
+            let rankIcon = `#${item.rank}`;
+            let rankClass = `rank-num rank-${item.rank}`;
+            if (item.rank === 1) rankIcon = '🥇';
+            else if (item.rank === 2) rankIcon = '🥈';
+            else if (item.rank === 3) rankIcon = '🥉';
+
+            const monthlyChangeJpy = item.monthly_change_jpy || 0;
+            const jpySign = monthlyChangeJpy > 0 ? '+' : '';
+            const pctSign = item.monthly_change_percent > 0 ? '+' : '';
+            const pctStr = item.monthly_change_percent !== undefined ? `(${pctSign}${formatNumber(item.monthly_change_percent, 1)}%)` : '';
+
+            let formattedPrevMv = `${formatNumber(item.last_month_market_value || 0, 0)}円`;
+            let formattedCurrMv = `${formatNumber(item.current_market_value || 0, 0)}円`;
+            let formattedMonthlyChange = `${jpySign}${formatNumber(monthlyChangeJpy, 0)}円`;
+
+            if (!isAmountVisible) {
+                formattedPrevMv = '***円';
+                formattedCurrMv = '***円';
+                formattedMonthlyChange = `${jpySign}***円`;
+            }
+
+            const badgeClass = monthlyChangeJpy > 0 ? 'gainer-badge' : 'loser-badge';
+            
+            let statusBadge = '';
+            if (item.is_newly_added) {
+                statusBadge = ' <span class="badge" style="background-color: #0284c7; color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: normal;">新規</span>';
+            } else if (item.is_sold_out) {
+                statusBadge = ' <span class="badge" style="background-color: #64748b; color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: normal;">売却済</span>';
+            }
+
+            tableHtml += `
+                <tr>
+                    <td style="text-align: center;"><span class="${rankClass}">${rankIcon}</span></td>
+                    <td>
+                        <a href="https://finance.yahoo.co.jp/quote/${item.code}" target="_blank" rel="noopener noreferrer" class="stock-code-link" style="font-weight: 600;">
+                            ${escapeHtml(item.name || item.code)}
+                        </a>
+                        <small class="text-muted" style="display: inline-block; font-size: 0.75rem; margin-left: 4px;">(${escapeHtml(item.code)})</small>
+                        ${statusBadge}
+                    </td>
+                    <td style="text-align: right;" class="text-muted">${formattedPrevMv}</td>
+                    <td style="text-align: right;">${formattedCurrMv}</td>
+                    <td style="text-align: right;">
+                        <span class="ranking-change-badge ${badgeClass}">
+                            ${formattedMonthlyChange} <span style="font-size: 0.75rem; font-weight: normal;">${pctStr}</span>
+                        </span>
+                    </td>
+                </tr>
+            `;
+        });
+
+        tableHtml += `
+                    </tbody>
+                </table>
+            </div>
+        `;
         rankingContainer.innerHTML = tableHtml;
     }
 
@@ -1242,7 +1377,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     [industryFilterSelect, accountTypeFilterSelect, securityCompanyFilterSelect, buySignalFilterSelect].forEach(s => s.addEventListener('change', filterAndRender));
     document.querySelector('#analysis-table thead').addEventListener('click', (e) => { const h = e.target.closest('.sortable'); if (!h) return; const k = h.dataset.key; if (currentSort.key === k) currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc'; else { currentSort.key = k; currentSort.order = 'asc'; } filterAndRender(); });
-    toggleVisibilityCheckbox.addEventListener('change', (e) => { isAmountVisible = !e.target.checked; renderAnalysisTable(filteredHoldingsData); renderSummary(filteredHoldingsData); renderCharts(filteredHoldingsData); fetchAndRenderHistoryData(); if (fullAnalysisData && fullAnalysisData.daily_change_rankings) { renderDailyChangeRankings(fullAnalysisData.daily_change_rankings); } });
+    toggleVisibilityCheckbox.addEventListener('change', (e) => { isAmountVisible = !e.target.checked; renderAnalysisTable(filteredHoldingsData); renderSummary(filteredHoldingsData); renderCharts(filteredHoldingsData); fetchAndRenderHistoryData(); if (fullAnalysisData && (fullAnalysisData.daily_change_rankings || fullAnalysisData.monthly_change_rankings)) { renderRankingModalContent(); } });
     downloadAnalysisCsvButton.addEventListener('click', () => { window.location.href = '/api/portfolio/analysis/csv'; });
     chartToggleBtns.forEach(btn => btn.addEventListener('click', () => updateChart(btn.dataset.chartType)));
     window.addEventListener('pagehide', () => { if (fetchController) fetchController.abort(); });

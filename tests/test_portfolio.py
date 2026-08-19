@@ -168,6 +168,7 @@ def test_calculate_daily_change_rankings_string_formats_and_top10_limit():
     assert len(gainers) == 10
     assert len(losers) == 10
 
+
     # 増加1位はSTOCK_15 (15 * 100 = 1500円増)
     assert gainers[0]["code"] == "STOCK_15"
     assert gainers[0]["daily_change_jpy"] == 1500.0
@@ -177,4 +178,167 @@ def test_calculate_daily_change_rankings_string_formats_and_top10_limit():
     assert losers[0]["code"] == "LOSS_12"
     assert losers[0]["daily_change_jpy"] == -1200.0
     assert losers[0]["rank"] == 1
+
+
+def test_calculate_monthly_change_rankings_normal():
+    from portfolio_manager import calculate_monthly_change_rankings
+    from unittest.mock import patch
+
+    mock_last_month_map = {
+        "9991": {"code": "9991", "name": "銘柄A", "market_value": 100000.0, "quantity": 100, "asset_type": "jp_stock"},
+        "9992": {"code": "9992", "name": "銘柄B", "market_value": 200000.0, "quantity": 100, "asset_type": "jp_stock"},
+        "9993": {"code": "9993", "name": "売却済銘柄", "market_value": 50000.0, "quantity": 50, "asset_type": "jp_stock"},
+    }
+
+    raw_holdings = [
+        {"code": "9991", "name": "銘柄A", "asset_type": "jp_stock", "market_value": 150000.0, "quantity": 100}, # +50,000円
+        {"code": "9992", "name": "銘柄B", "asset_type": "jp_stock", "market_value": 180000.0, "quantity": 100}, # -20,000円
+        {"code": "9994", "name": "新規購入銘柄", "asset_type": "jp_stock", "market_value": 30000.0, "quantity": 30}, # +30,000円 (新規)
+    ]
+
+    with patch("history_manager.get_last_month_end_holdings_snapshot", return_value=("2026-07", mock_last_month_map)):
+        res = calculate_monthly_change_rankings(raw_holdings, {"JPY": 1.0})
+
+        assert res["has_last_month_data"] is True
+        assert res["month_label"] == "2026年7月末比"
+
+        gainers = res["month_gainers_top10"]
+        losers = res["month_losers_top10"]
+
+        assert len(gainers) == 2
+        assert gainers[0]["code"] == "9991"
+        assert gainers[0]["monthly_change_jpy"] == 50000.0
+        assert gainers[1]["code"] == "9994"
+        assert gainers[1]["is_newly_added"] is True
+
+        assert len(losers) == 2
+        assert losers[0]["code"] == "9993"  # 売却済 (-50,000円)
+        assert losers[0]["is_sold_out"] is True
+        assert losers[1]["code"] == "9992"  # -20,000円
+
+
+def test_calculate_monthly_change_rankings_no_data():
+    from portfolio_manager import calculate_monthly_change_rankings
+    from unittest.mock import patch
+
+    with patch("history_manager.get_last_month_end_holdings_snapshot", return_value=(None, {})):
+        res = calculate_monthly_change_rankings([], {"JPY": 1.0})
+        assert res["has_last_month_data"] is False
+        assert len(res["month_gainers_top10"]) == 0
+        assert len(res["month_losers_top10"]) == 0
+
+
+def test_get_last_month_end_holdings_snapshot_db_query(tmp_path, monkeypatch):
+    """history_manager.get_last_month_end_holdings_snapshot が前月MAX(snapshot_date)の複数口座データを横断集計する動作テスト"""
+    import sqlite3
+    from datetime import datetime
+    import history_manager
+
+    db_file = str(tmp_path / "test_portfolio.db")
+    monkeypatch.setattr(history_manager, "DB_FILE", db_file)
+
+    now_jst = history_manager.get_now_jst()
+    first_day = now_jst.replace(day=1)
+    last_month_date = first_day - timedelta(days=1) if 'timedelta' in globals() else first_day.replace(day=1)
+    from datetime import timedelta
+    last_month_end = first_day - timedelta(days=1)
+    last_month_str = last_month_end.strftime("%Y-%m")
+    max_date_str = last_month_end.strftime("%Y-%m-%d")
+    earlier_date_str = (last_month_end - timedelta(days=5)).strftime("%Y-%m-%d")
+
+    with sqlite3.connect(db_file) as conn:
+        conn.execute("""
+            CREATE TABLE portfolio_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                snapshot_date TEXT NOT NULL,
+                snapshot_month TEXT NOT NULL,
+                account_id TEXT,
+                code TEXT NOT NULL,
+                name TEXT,
+                asset_type TEXT,
+                market_value REAL,
+                quantity REAL
+            )
+        """)
+        # 古い日付（同じ先月だが最新日ではない）
+        conn.execute("""
+            INSERT INTO portfolio_history (snapshot_date, snapshot_month, account_id, code, name, asset_type, market_value, quantity)
+            VALUES (?, ?, 'acc1', '7203', 'トヨタ', 'jp_stock', 100000, 100)
+        """, (earlier_date_str, last_month_str))
+        
+        # 最新日（MAX(snapshot_date)）: 口座1 と 口座2 で7203を分散保有 ➔ 横断集計されるべき
+        conn.execute("""
+            INSERT INTO portfolio_history (snapshot_date, snapshot_month, account_id, code, name, asset_type, market_value, quantity)
+            VALUES (?, ?, 'acc1', '7203', 'トヨタ', 'jp_stock', 200000, 100)
+        """, (max_date_str, last_month_str))
+        conn.execute("""
+            INSERT INTO portfolio_history (snapshot_date, snapshot_month, account_id, code, name, asset_type, market_value, quantity)
+            VALUES (?, ?, 'acc2', '7203', 'トヨタ', 'jp_stock', 300000, 150)
+        """, (max_date_str, last_month_str))
+        # 最新日の別銘柄
+        conn.execute("""
+            INSERT INTO portfolio_history (snapshot_date, snapshot_month, account_id, code, name, asset_type, market_value, quantity)
+            VALUES (?, ?, 'acc1', '9432', 'NTT', 'jp_stock', 50000, 300)
+        """, (max_date_str, last_month_str))
+
+    ret_month, holdings_map = history_manager.get_last_month_end_holdings_snapshot()
+
+    assert ret_month == last_month_str
+    assert "7203" in holdings_map
+    assert holdings_map["7203"]["market_value"] == 500000.0  # 200,000 + 300,000
+    assert holdings_map["7203"]["quantity"] == 250.0       # 100 + 150
+    assert "9432" in holdings_map
+    assert holdings_map["9432"]["market_value"] == 50000.0
+
+
+def test_calculate_monthly_change_rankings_edge_cases_and_top10_limit():
+    """案件 #270: 10件切り捨て制限・変動画0除外・新規/売却バッジ判定の追加検証"""
+    from portfolio_manager import calculate_monthly_change_rankings
+    from unittest.mock import patch
+
+    mock_last_month_map = {}
+    # 12銘柄の先月末データを作成
+    for i in range(1, 13):
+        code = f"STOCK_{i:02d}"
+        mock_last_month_map[code] = {
+            "code": code,
+            "name": f"銘柄{i}",
+            "market_value": 100000.0,
+            "quantity": 100,
+            "asset_type": "jp_stock"
+        }
+
+    raw_holdings = []
+    # 12銘柄中、11銘柄を増額、1銘柄を変動なし(0円増減)
+    for i in range(1, 12):
+        code = f"STOCK_{i:02d}"
+        raw_holdings.append({
+            "code": code,
+            "name": f"銘柄{i}",
+            "asset_type": "jp_stock",
+            "market_value": 100000.0 + (i * 10000.0), # +1万〜+11万
+            "quantity": 100
+        })
+    # 変動なし
+    raw_holdings.append({
+        "code": "STOCK_12",
+        "name": "銘柄12",
+        "asset_type": "jp_stock",
+        "market_value": 100000.0,
+        "quantity": 100
+    })
+
+    with patch("history_manager.get_last_month_end_holdings_snapshot", return_value=("2026-07", mock_last_month_map)):
+        res = calculate_monthly_change_rankings(raw_holdings, {"JPY": 1.0})
+
+        gainers = res["month_gainers_top10"]
+        # 11件の増加銘柄のうちTOP10のみ抽出されていること
+        assert len(gainers) == 10
+        assert gainers[0]["code"] == "STOCK_11"
+        assert gainers[0]["monthly_change_jpy"] == 110000.0
+        assert gainers[0]["rank"] == 1
+        # 変動なし(STOCK_12)は除外されていること
+        gainer_codes = [g["code"] for g in gainers]
+        assert "STOCK_12" not in gainer_codes
+
 

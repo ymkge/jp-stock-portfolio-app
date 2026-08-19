@@ -394,6 +394,7 @@ def test_api_portfolio_analysis_daily_change_rankings(mock_get_rate, mock_get_as
     assert response.status_code == 200
     data = response.json()
     assert "daily_change_rankings" in data
+    assert "monthly_change_rankings" in data
     rankings = data["daily_change_rankings"]
     assert "day_gainers_top10" in rankings
     assert "day_losers_top10" in rankings
@@ -516,6 +517,35 @@ def test_dividend_spec_note_style_consistency_issue266():
     assert '[data-theme="dark"] .dividend-spec-note' in content
     assert 'body.dark-mode .dividend-spec-note' in content
     assert '.dark-mode .dividend-spec-note' in content
+
+
+def test_monthly_ranking_modal_ui_issue270():
+    """案件 #270: 期間切替メインタブ(⚡ 当日比 / 📅 先月比)およびJSレンダリング・金額非表示マスク連携の検証"""
+    import os
+    html_path = os.path.join(os.path.dirname(__file__), "..", "templates", "analysis.html")
+    with open(html_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
+
+    # 1. HTML内メインタブおよびラジオ/ボタン要素の検証
+    assert 'class="ranking-period-tabs"' in html_content
+    assert 'id="tab-period-daily"' in html_content
+    assert 'id="tab-period-monthly"' in html_content
+    assert 'id="ranking-month-label"' in html_content
+
+    # 2. static/js/analysis.js における期間切替タブ・月次ランキング描画・金額非表示マスク処理の検証
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    assert 'renderMonthlyChangeRankings' in js_content
+    assert 'month_gainers_top10' in js_content
+    assert 'month_losers_top10' in js_content
+    assert 'tab-period-daily' in js_content
+    assert 'tab-period-monthly' in js_content
+    assert 'is_newly_added' in js_content
+    assert 'is_sold_out' in js_content
+    assert '***円' in js_content
+
 
 
 

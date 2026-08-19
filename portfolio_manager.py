@@ -752,3 +752,96 @@ def calculate_daily_change_rankings(
         "day_gainers_top10": gainers_sorted,
         "day_losers_top10": losers_sorted,
     }
+
+
+def calculate_monthly_change_rankings(
+    raw_holdings_list: List[Dict[str, Any]], 
+    exchange_rates: Dict[str, float]
+) -> Dict[str, Any]:
+    """
+    先月末スナップショットと当日の評価額を照合し、先月比での資産増減ランキング TOP10（増加/減少）を算出する。
+    """
+    import history_manager
+    last_month_str, last_month_map = history_manager.get_last_month_end_holdings_snapshot()
+    
+    if not last_month_str or not last_month_map:
+        return {
+            "has_last_month_data": False,
+            "month_label": "先月末データなし",
+            "month_gainers_top10": [],
+            "month_losers_top10": [],
+        }
+
+    y, m = last_month_str.split("-")
+    month_label = f"{y}年{int(m)}月末比"
+
+    current_map: Dict[str, Dict[str, Any]] = {}
+    for item in raw_holdings_list:
+        code = item.get("code")
+        if not code: continue
+        mv = float(item.get("market_value") or 0)
+        qty = float(item.get("quantity") or 0)
+        
+        if code not in current_map:
+            current_map[code] = {
+                "code": code,
+                "name": item.get("name", code),
+                "asset_type": item.get("asset_type", "jp_stock"),
+                "total_market_value": 0.0,
+                "total_quantity": 0.0
+            }
+        current_map[code]["total_market_value"] += mv
+        current_map[code]["total_quantity"] += qty
+
+    all_codes = set(current_map.keys()) | set(last_month_map.keys())
+    aggregated_results = []
+
+    for code in all_codes:
+        curr = current_map.get(code, {})
+        prev = last_month_map.get(code, {})
+
+        curr_mv = curr.get("total_market_value", 0.0)
+        prev_mv = prev.get("market_value", 0.0)
+        
+        name = curr.get("name") or prev.get("name") or code
+        asset_type = curr.get("asset_type") or prev.get("asset_type") or "jp_stock"
+
+        change_jpy = curr_mv - prev_mv
+        
+        if prev_mv > 0:
+            change_percent = (change_jpy / prev_mv) * 100.0
+        elif curr_mv > 0 and prev_mv == 0:
+            change_percent = 100.0
+        else:
+            change_percent = 0.0
+
+        if change_jpy == 0:
+            continue
+
+        aggregated_results.append({
+            "code": code,
+            "name": name,
+            "asset_type": asset_type,
+            "current_market_value": curr_mv,
+            "last_month_market_value": prev_mv,
+            "monthly_change_jpy": change_jpy,
+            "monthly_change_percent": change_percent,
+            "is_newly_added": (prev_mv == 0),
+            "is_sold_out": (curr_mv == 0)
+        })
+
+    gainers = [r for r in aggregated_results if r["monthly_change_jpy"] > 0]
+    losers = [r for r in aggregated_results if r["monthly_change_jpy"] < 0]
+
+    gainers_sorted = sorted(gainers, key=lambda x: x["monthly_change_jpy"], reverse=True)[:10]
+    losers_sorted = sorted(losers, key=lambda x: x["monthly_change_jpy"])[:10]
+
+    for i, g in enumerate(gainers_sorted, 1): g["rank"] = i
+    for i, l in enumerate(losers_sorted, 1): l["rank"] = i
+
+    return {
+        "has_last_month_data": True,
+        "month_label": month_label,
+        "month_gainers_top10": gainers_sorted,
+        "month_losers_top10": losers_sorted,
+    }

@@ -3012,6 +3012,29 @@ body.dark-mode .btn-apply-split:hover,
     gap: 8px;
 }
 
+.period-tab-btn {
+    border: 1px solid #cbd5e1;
+    background: #f1f5f9;
+    color: #475569;
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.period-tab-btn:hover {
+    background: #e2e8f0;
+}
+
+.period-tab-btn.active {
+    background: #0284c7 !important;
+    border-color: #0369a1 !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 4px rgba(2, 132, 199, 0.25);
+}
+
 .ranking-tab-btn {
     border: 1px solid #cbd5e1;
     background: #f8fafc;
@@ -3106,7 +3129,10 @@ body.dark-mode .ranking-card-header,
 
 [data-theme="dark"] .ranking-tab-btn,
 body.dark-mode .ranking-tab-btn,
-.dark-mode .ranking-tab-btn {
+.dark-mode .ranking-tab-btn,
+[data-theme="dark"] .period-tab-btn,
+body.dark-mode .period-tab-btn,
+.dark-mode .period-tab-btn {
     background: #1e293b !important;
     border-color: #475569 !important;
     color: #cbd5e1 !important;
@@ -3114,7 +3140,10 @@ body.dark-mode .ranking-tab-btn,
 
 [data-theme="dark"] .ranking-tab-btn:hover,
 body.dark-mode .ranking-tab-btn:hover,
-.dark-mode .ranking-tab-btn:hover {
+.dark-mode .ranking-tab-btn:hover,
+[data-theme="dark"] .period-tab-btn:hover,
+body.dark-mode .period-tab-btn:hover,
+.dark-mode .period-tab-btn:hover {
     background: #334155 !important;
     color: #f8fafc !important;
 }

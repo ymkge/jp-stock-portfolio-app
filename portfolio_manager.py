@@ -5,8 +5,11 @@ import io
 import uuid
 import threading
 import fcntl
+import logging
 from contextlib import contextmanager
 from typing import List, Dict, Any, Optional
+
+logger = logging.getLogger(__name__)
 
 PORTFOLIO_FILE = "portfolio.json"
 PORTFOLIO_LOCK_FILE = "portfolio.json.lock"
@@ -793,6 +796,9 @@ def calculate_monthly_change_rankings(
         current_map[code]["total_market_value"] += mv
         current_map[code]["total_quantity"] += qty
 
+    # 適用済みの株式分割マップ (code -> ratio)
+    applied_splits = {s["code"]: float(s["ratio"]) for s in history_manager.get_applied_split_alerts()}
+
     all_codes = set(current_map.keys()) | set(last_month_map.keys())
     aggregated_results = []
 
@@ -803,14 +809,35 @@ def calculate_monthly_change_rankings(
         curr_mv = curr.get("total_market_value", 0.0)
         prev_mv = prev.get("market_value", 0.0)
         
+        curr_qty = curr.get("total_quantity", 0.0)
+        prev_qty = prev.get("quantity", 0.0)
+        
         name = curr.get("name") or prev.get("name") or code
         asset_type = curr.get("asset_type") or prev.get("asset_type") or "jp_stock"
 
-        change_jpy = curr_mv - prev_mv
+        # --- 株式分割過渡期スナップショットの自動補正 (Self-Healing Split Correction) ---
+        adjusted_prev_mv = prev_mv
+        if code in applied_splits and prev_qty > 0 and curr_qty > 0 and prev_mv > 0:
+            ratio = applied_splits[code]
+            if ratio > 1.0:
+                qty_ratio = curr_qty / prev_qty
+                prev_unit_price = prev_mv / prev_qty
+                curr_unit_price = curr_mv / curr_qty if curr_qty > 0 else 0
+                
+                # 条件A: 現在株数/先月末株数が分割比率の概ね0.7〜1.3倍の範囲内
+                # 条件B: 先月末想定単価と現在単価が同水準（過渡期に分割後新株価でスナップショット記録された）
+                is_transitional_qty = (0.7 * ratio <= qty_ratio <= 1.3 * ratio)
+                is_transitional_price = (curr_unit_price > 0 and 0.5 <= (curr_unit_price / prev_unit_price) <= 1.5)
+                
+                if is_transitional_qty or is_transitional_price:
+                    adjusted_prev_mv = prev_mv * ratio
+                    logger.info(f"Self-Healing Split Correction applied for {code}: prev_mv {prev_mv} -> {adjusted_prev_mv} (ratio={ratio})")
+
+        change_jpy = curr_mv - adjusted_prev_mv
         
-        if prev_mv > 0:
-            change_percent = (change_jpy / prev_mv) * 100.0
-        elif curr_mv > 0 and prev_mv == 0:
+        if adjusted_prev_mv > 0:
+            change_percent = (change_jpy / adjusted_prev_mv) * 100.0
+        elif curr_mv > 0 and adjusted_prev_mv == 0:
             change_percent = 100.0
         else:
             change_percent = 0.0
@@ -823,7 +850,7 @@ def calculate_monthly_change_rankings(
             "name": name,
             "asset_type": asset_type,
             "current_market_value": curr_mv,
-            "last_month_market_value": prev_mv,
+            "last_month_market_value": adjusted_prev_mv,
             "monthly_change_jpy": change_jpy,
             "monthly_change_percent": change_percent,
             "is_newly_added": (prev_mv == 0),

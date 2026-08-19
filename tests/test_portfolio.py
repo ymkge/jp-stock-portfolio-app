@@ -342,3 +342,34 @@ def test_calculate_monthly_change_rankings_edge_cases_and_top10_limit():
         assert "STOCK_12" not in gainer_codes
 
 
+def test_calculate_monthly_change_rankings_with_transitional_stock_split():
+    """Issue #271: 株式分割過渡期スナップショット（8309 1:4分割等）における評価額自己修復補正の検証テスト"""
+    from portfolio_manager import calculate_monthly_change_rankings
+    from unittest.mock import patch
+
+    # 先月末スナップショット（40株, 旧株数 * 分割後株価 = 66,160円）
+    mock_last_month_map = {
+        "8309": {"code": "8309", "name": "三井住友トラスト", "market_value": 66160.0, "quantity": 40.0, "asset_type": "jp_stock"}
+    }
+    # 現在の保有（分割適用後: 160株, 270,160円）
+    raw_holdings = [
+        {"code": "8309", "name": "三井住友トラスト", "asset_type": "jp_stock", "market_value": 270160.0, "quantity": 160.0}
+    ]
+    mock_applied_splits = [
+        {"code": "8309", "ratio": 4.0, "status": "applied"}
+    ]
+
+    with patch("history_manager.get_last_month_end_holdings_snapshot", return_value=("2026-07", mock_last_month_map)), \
+         patch("history_manager.get_applied_split_alerts", return_value=mock_applied_splits):
+        res = calculate_monthly_change_rankings(raw_holdings, {"JPY": 1.0})
+
+        gainers = res["month_gainers_top10"]
+        assert len(gainers) == 1
+        g = gainers[0]
+        assert g["code"] == "8309"
+        # 66,160 * 4 = 264,640円 へ補正され、増減額が +5,520円 となること
+        assert g["last_month_market_value"] == 264640.0
+        assert g["monthly_change_jpy"] == 5520.0
+        assert round(g["monthly_change_percent"], 1) == 2.1
+
+

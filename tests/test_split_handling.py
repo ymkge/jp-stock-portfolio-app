@@ -236,6 +236,11 @@ def test_get_all_split_alerts():
     assert code1 in codes
     assert code2 in codes
 
+    # get_applied_split_alerts には status='applied' の code1 のみ含まれること (#271)
+    applied_alerts = history_manager.get_applied_split_alerts()
+    assert len(applied_alerts) == 1
+    assert applied_alerts[0]["code"] == code1
+
 def test_api_get_split_history():
     from fastapi.testclient import TestClient
     from app import app

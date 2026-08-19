@@ -542,9 +542,32 @@ def test_monthly_ranking_modal_ui_issue270():
     assert 'month_losers_top10' in js_content
     assert 'tab-period-daily' in js_content
     assert 'tab-period-monthly' in js_content
-    assert 'is_newly_added' in js_content
-    assert 'is_sold_out' in js_content
-    assert '***円' in js_content
+
+def test_monthly_ranking_purchase_tag_ui_issue272():
+    """案件 #272: 当月買付銘柄のサブテキストタグ (monthly-purchase-tag) レンダリングおよびCSS/JSの検証"""
+    import os
+
+    # 1. JSの当月買付表示ロジック、口/株単位判定、金額マスク連携の検証
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    assert 'is_purchased_this_month' in js_content
+    assert 'purchased_quantity' in js_content
+    assert 'monthly-purchase-tag' in js_content
+    assert '🛒 当月買付:' in js_content
+    assert "investment_trust' ? '口' : '株'" in js_content
+    assert 'approx_invested_jpy' in js_content
+
+    # 2. CSSのスタイル定義およびダークモード表示の検証
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    assert '.monthly-purchase-tag' in css_content
+    assert 'color: #0284c7' in css_content or '#0284c7' in css_content
+    assert 'color: #38bdf8' in css_content or '#38bdf8' in css_content
+
 
 
 

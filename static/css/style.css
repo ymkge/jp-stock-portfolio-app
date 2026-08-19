@@ -3035,6 +3035,19 @@ body.dark-mode .btn-apply-split:hover,
     box-shadow: 0 2px 4px rgba(2, 132, 199, 0.25);
 }
 
+.monthly-purchase-tag {
+    font-size: 0.72rem;
+    color: #0284c7;
+    font-weight: 500;
+    margin-top: 3px;
+}
+
+[data-theme="dark"] .monthly-purchase-tag,
+body.dark-mode .monthly-purchase-tag,
+.dark-mode .monthly-purchase-tag {
+    color: #38bdf8 !important;
+}
+
 .ranking-tab-btn {
     border: 1px solid #cbd5e1;
     background: #f8fafc;

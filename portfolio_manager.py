@@ -817,6 +817,7 @@ def calculate_monthly_change_rankings(
 
         # --- 株式分割過渡期スナップショットの自動補正 (Self-Healing Split Correction) ---
         adjusted_prev_mv = prev_mv
+        effective_prev_qty = prev_qty
         if code in applied_splits and prev_qty > 0 and curr_qty > 0 and prev_mv > 0:
             ratio = applied_splits[code]
             if ratio > 1.0:
@@ -826,7 +827,15 @@ def calculate_monthly_change_rankings(
                 
                 if is_transitional_qty:
                     adjusted_prev_mv = prev_mv * ratio
+                    effective_prev_qty = prev_qty * ratio
                     logger.info(f"Self-Healing Split Correction applied for {code}: prev_mv {prev_mv} -> {adjusted_prev_mv} (ratio={ratio})")
+
+        # --- 当月追加買付株数と概算投資額の算定 (#272) ---
+        purchased_qty = max(0.0, curr_qty - effective_prev_qty)
+        approx_invested_jpy = 0.0
+        if purchased_qty > 0 and curr_qty > 0:
+            unit_price_jpy = curr_mv / curr_qty
+            approx_invested_jpy = purchased_qty * unit_price_jpy
 
         change_jpy = curr_mv - adjusted_prev_mv
         
@@ -848,6 +857,9 @@ def calculate_monthly_change_rankings(
             "last_month_market_value": adjusted_prev_mv,
             "monthly_change_jpy": change_jpy,
             "monthly_change_percent": change_percent,
+            "purchased_quantity": purchased_qty,
+            "approx_invested_jpy": approx_invested_jpy,
+            "is_purchased_this_month": (purchased_qty > 0),
             "is_newly_added": (prev_mv == 0),
             "is_sold_out": (curr_mv == 0)
         })

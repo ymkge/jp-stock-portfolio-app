@@ -1049,6 +1049,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 statusBadge = ' <span class="badge" style="background-color: #64748b; color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: normal;">売却済</span>';
             }
 
+            let monthlyPurchaseHtml = '';
+            if (item.is_purchased_this_month && item.purchased_quantity > 0) {
+                const unitStr = item.asset_type === 'investment_trust' ? '口' : '株';
+                const qtyFormatted = formatNumber(item.purchased_quantity, item.purchased_quantity % 1 === 0 ? 0 : 2);
+                let investedFormatted = `${formatNumber(item.approx_invested_jpy || 0, 0)}円`;
+                if (!isAmountVisible) {
+                    investedFormatted = '***円';
+                }
+                monthlyPurchaseHtml = `<div class="monthly-purchase-tag" style="font-size: 0.72rem; color: #0284c7; font-weight: 500; margin-top: 3px; display: flex; align-items: center; gap: 3px;">🛒 当月買付: +${qtyFormatted}${unitStr} (約${investedFormatted})</div>`;
+            }
+
             tableHtml += `
                 <tr>
                     <td style="text-align: center;"><span class="${rankClass}">${rankIcon}</span></td>
@@ -1058,6 +1069,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </a>
                         <small class="text-muted" style="display: inline-block; font-size: 0.75rem; margin-left: 4px;">(${escapeHtml(item.code)})</small>
                         ${statusBadge}
+                        ${monthlyPurchaseHtml}
                     </td>
                     <td style="text-align: right;" class="text-muted">${formattedPrevMv}</td>
                     <td style="text-align: right;">${formattedCurrMv}</td>

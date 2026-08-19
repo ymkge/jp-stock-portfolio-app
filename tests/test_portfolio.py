@@ -406,3 +406,63 @@ def test_calculate_monthly_change_rankings_already_split_no_overcorrection():
         assert g["monthly_change_jpy"] == 960.0
 
 
+def test_calculate_monthly_change_rankings_with_purchased_quantity():
+    """Issue #272: 当月追加購入株数 (purchased_quantity) および概算投資額 (approx_invested_jpy) の算出テスト"""
+    from portfolio_manager import calculate_monthly_change_rankings
+    from unittest.mock import patch
+
+    # 先月末スナップショット: STOCK_A(100株, 100,000円)
+    mock_last_month_map = {
+        "STOCK_A": {"code": "STOCK_A", "name": "銘柄A", "market_value": 100000.0, "quantity": 100.0, "asset_type": "jp_stock"}
+    }
+    # 当日の保有: STOCK_A(130株, 143,000円 ➔ 買い増し+30株, 単価1,100円 ➔ 概算投資額 33,000円)
+    raw_holdings = [
+        {"code": "STOCK_A", "name": "銘柄A", "asset_type": "jp_stock", "market_value": 143000.0, "quantity": 130.0}
+    ]
+
+    with patch("history_manager.get_last_month_end_holdings_snapshot", return_value=("2026-07", mock_last_month_map)), \
+         patch("history_manager.get_applied_split_alerts", return_value=[]):
+        res = calculate_monthly_change_rankings(raw_holdings, {"JPY": 1.0})
+
+        gainers = res["month_gainers_top10"]
+        assert len(gainers) == 1
+        g = gainers[0]
+        assert g["code"] == "STOCK_A"
+        assert g["purchased_quantity"] == 30.0
+        assert g["approx_invested_jpy"] == 33000.0
+        assert g["is_purchased_this_month"] is True
+
+
+def test_calculate_monthly_change_rankings_purchased_quantity_with_split():
+    """株式分割がある場合における当月買付株数の補正計算テスト"""
+    from portfolio_manager import calculate_monthly_change_rankings
+    from unittest.mock import patch
+
+    # 先月末スナップショット（40株, 66,160円）
+    mock_last_month_map = {
+        "8309": {"code": "8309", "name": "三井住友トラスト", "market_value": 66160.0, "quantity": 40.0, "asset_type": "jp_stock"}
+    }
+    # 現在の保有（1:4分割適用で旧40株->160株 + 20株追加買い増し = 計180株, 306,000円 (単価1700円)）
+    raw_holdings = [
+        {"code": "8309", "name": "三井住友トラスト", "asset_type": "jp_stock", "market_value": 306000.0, "quantity": 180.0}
+    ]
+    mock_applied_splits = [
+        {"code": "8309", "ratio": 4.0, "status": "applied"}
+    ]
+
+    with patch("history_manager.get_last_month_end_holdings_snapshot", return_value=("2026-07", mock_last_month_map)), \
+         patch("history_manager.get_applied_split_alerts", return_value=mock_applied_splits):
+        res = calculate_monthly_change_rankings(raw_holdings, {"JPY": 1.0})
+
+        gainers = res["month_gainers_top10"]
+        assert len(gainers) == 1
+        g = gainers[0]
+        assert g["code"] == "8309"
+        # 40 * 4 = 160株が基準となり、180 - 160 = 20株買付
+        assert g["purchased_quantity"] == 20.0
+        # 概算投資額: 20株 * (306000/180 = 1700円) = 34,000円
+        assert g["approx_invested_jpy"] == 34000.0
+        assert g["is_purchased_this_month"] is True
+
+
+

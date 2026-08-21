@@ -62,25 +62,17 @@
                                 <h3>サマリー</h3>
                                 <span id="compare-date-label" class="text-muted" style="font-size: 0.8rem; font-weight: normal;"></span>
                             </div>
-                            <button type="button" id="btn-open-daily-ranking-modal" class="btn-ranking-trigger" title="銘柄ごとの資産変動ランキング（当日比・先月比 TOP10）を別画面で表示します">
-                                🚀 資産変動ランキング TOP10
-                            </button>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button type="button" id="btn-open-profit-taking-modal" class="btn-ranking-trigger btn-profit-taking-trigger" style="border-color: #eab308; color: #ca8a04;" title="配当10年分以上の含み益がある銘柄の利確・銘柄入替検討リストを別画面で表示します">
+                                    💰 利確・銘柄入替検討リスト
+                                </button>
+                                <button type="button" id="btn-open-daily-ranking-modal" class="btn-ranking-trigger" title="銘柄ごとの資産変動ランキング（当日比・先月比 TOP10）を別画面で表示します">
+                                    🚀 資産変動ランキング TOP10
+                                </button>
+                            </div>
                         </div>
                         <div id="summary-content">
                             <!-- サマリー情報はここに表示 -->
-                        </div>
-                    </section>
-
-                    <section class="profit-taking-section card" style="border-top: 4px solid #eab308;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
-                            <h3 style="margin: 0; display: flex; align-items: center; gap: 6px;">
-                                <span>💰 利確・銘柄入替検討リスト</span>
-                                <span class="badge bg-warning text-dark" style="font-size: 0.75rem;">配当10年分以上達成</span>
-                            </h3>
-                            <span class="text-muted" style="font-size: 0.8rem;">含み益が将来の年間予定配当の何年分に到達しているかを可視化</span>
-                        </div>
-                        <div id="profit-taking-content">
-                            <!-- 利確検討リストはここにJavaScriptでレンダリングされます -->
                         </div>
                     </section>
 
@@ -255,6 +247,29 @@
                     </div>
                     <div class="modal-footer" style="padding-top: 15px; border-top: 1px solid var(--border-color, #e2e8f0); display: flex; justify-content: flex-end;">
                         <button type="button" id="btn-close-daily-ranking-modal-footer" class="btn-outline">閉じる</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 利確・銘柄入替検討リストモーダル (#275) -->
+            <div id="profit-taking-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-profit-taking-title">
+                <div class="modal-content large-modal" style="max-width: 800px; max-height: 85vh; display: flex; flex-direction: column;">
+                    <div class="modal-header">
+                        <h2 id="modal-profit-taking-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                            <span>💰 利確・銘柄入替検討リスト</span>
+                            <span class="badge bg-warning text-dark" style="font-size: 0.75rem;">配当10年分以上達成</span>
+                        </h2>
+                    </div>
+                    <div class="modal-body" style="padding: 15px 0; flex: 1; overflow-y: auto;">
+                        <p class="text-muted" style="font-size: 0.85rem; margin-bottom: 12px; padding: 0 5px;">
+                            含み益が将来の年間予定配当の何年分に到達しているかを可視化し、利確や銘柄入替の判断材料を提供します。
+                        </p>
+                        <div id="profit-taking-content">
+                            <!-- テーブルまたは空表示メッセージはJSで描画 -->
+                        </div>
+                    </div>
+                    <div class="modal-footer" style="padding-top: 15px; border-top: 1px solid var(--border-color, #e2e8f0); display: flex; justify-content: flex-end;">
+                        <button type="button" id="btn-close-profit-taking-modal-footer" class="btn-outline">閉じる</button>
                     </div>
                 </div>
             </div>

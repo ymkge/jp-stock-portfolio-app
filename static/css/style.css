@@ -3357,3 +3357,28 @@ body.dark-mode .sync-status-banner.status-error,
     color: #ffe4e6 !important;
     border-color: #e11d48 !important;
 }
+
+/* 利確・銘柄入替検討リストモーダル (#profit-taking-modal) ダークモード対応 (#275) */
+[data-theme="dark"] #profit-taking-modal .modal-content,
+body.dark-mode #profit-taking-modal .modal-content,
+.dark-mode #profit-taking-modal .modal-content {
+    background-color: var(--card-bg-dark, #1e293b) !important;
+    color: var(--text-color-dark, #f8fafc) !important;
+}
+
+[data-theme="dark"] #profit-taking-modal .modal-header,
+body.dark-mode #profit-taking-modal .modal-header,
+.dark-mode #profit-taking-modal .modal-header,
+[data-theme="dark"] #profit-taking-modal .modal-footer,
+body.dark-mode #profit-taking-modal .modal-footer,
+.dark-mode #profit-taking-modal .modal-footer {
+    border-color: var(--border-color-dark, #334155) !important;
+}
+
+[data-theme="dark"] #btn-close-profit-taking-modal-footer,
+body.dark-mode #btn-close-profit-taking-modal-footer,
+.dark-mode #btn-close-profit-taking-modal-footer {
+    color: #cbd5e1 !important;
+    border-color: #475569 !important;
+    background-color: #1e293b !important;
+}

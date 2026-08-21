@@ -99,6 +99,35 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- 利確・銘柄入替検討リスト モーダル開閉制御 (#275) ---
+    const btnOpenProfitTakingModal = document.getElementById('btn-open-profit-taking-modal');
+    const profitTakingModal = document.getElementById('profit-taking-modal');
+    const btnCloseProfitTakingModalFooter = document.getElementById('btn-close-profit-taking-modal-footer');
+
+    if (btnOpenProfitTakingModal && profitTakingModal) {
+        btnOpenProfitTakingModal.addEventListener('click', () => {
+            profitTakingModal.classList.remove('hidden');
+            profitTakingModal.style.display = 'flex';
+        });
+
+        const closeProfitTakingModal = () => {
+            profitTakingModal.classList.add('hidden');
+            profitTakingModal.style.display = 'none';
+        };
+
+        if (btnCloseProfitTakingModalFooter) btnCloseProfitTakingModalFooter.addEventListener('click', closeProfitTakingModal);
+
+        profitTakingModal.addEventListener('click', (e) => {
+            if (e.target === profitTakingModal) closeProfitTakingModal();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !profitTakingModal.classList.contains('hidden')) {
+                closeProfitTakingModal();
+            }
+        });
+    }
+
     function getChartThemeColors() {
         const style = getComputedStyle(document.documentElement);
         return {

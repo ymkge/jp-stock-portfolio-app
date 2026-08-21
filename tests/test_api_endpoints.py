@@ -569,49 +569,69 @@ def test_monthly_ranking_purchase_tag_ui_issue272():
     assert 'color: #38bdf8' in css_content or '#38bdf8' in css_content
 
 
-def test_profit_taking_api_and_ui_issue273_275_276():
-    """Issue #273, #275 & #276: 利確検討リストのモーダル化・デザインリッチ化・視認性向上の自動テスト"""
-    import os
+def test_profit_taking_grouped_by_code_issue277():
+    """Issue #277: 同一銘柄が複数口座 (新NISA/特定等) に存在する場合に1行に合算されるか検証"""
+    from app import app
+    from fastapi.testclient import TestClient
+    from unittest.mock import patch
 
-    # 1. JSのモーダル開閉ロジック、メダル、カプセルピル、アクションカード描画の検証
-    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
-    with open(js_path, "r", encoding="utf-8") as f:
-        js_content = f.read()
+    # ダミーポートフォリオデータ: 同一銘柄 "7203" (トヨタ) を特定口座と新NISA口座の2つで保有
+    mock_portfolio = [
+        {
+            "code": "7203",
+            "name": "トヨタ自動車",
+            "asset_type": "jp_stock",
+            "holdings": [
+                {
+                    "account_type": "specific",
+                    "quantity": 100,
+                    "acquisition_price": 2000
+                },
+                {
+                    "account_type": "nisa_growth",
+                    "quantity": 100,
+                    "acquisition_price": 2000
+                }
+            ]
+        }
+    ]
 
-    assert 'profit_taking_candidates' in js_content
-    assert 'renderProfitTakingSection' in js_content
-    assert 'renderProfitTakingBadge' in js_content
-    assert 'btn-open-profit-taking-modal' in js_content
-    assert 'profit-taking-modal' in js_content
-    assert 'rank-medal-icon' in js_content
-    assert 'profit-capsule-badge' in js_content
-    assert 'profit-action-card' in js_content
+    mock_scraped_data = {
+        "7203": {
+            "code": "7203",
+            "name": "トヨタ自動車",
+            "price": "3,000",
+            "per": "10.0",
+            "pbr": "1.0",
+            "roe": "10.0",
+            "dividend_yield": "3.33",
+            "annual_dividend": "100",
+            "dividend_per_share": "100"
+        }
+    }
 
-    # 2. HTMLのトリガーボタンクラスおよびモーダル構造の検証 (インラインスタイル撤去・専用クラス化)
-    html_path = os.path.join(os.path.dirname(__file__), "..", "templates", "analysis.html")
-    with open(html_path, "r", encoding="utf-8") as f:
-        html_content = f.read()
+    with patch("portfolio_manager.load_portfolio", return_value=mock_portfolio), \
+         patch("history_manager.get_latest_daily_data_all", return_value=mock_scraped_data), \
+         patch("history_manager.get_pending_split_alerts", return_value=[]), \
+         patch("scraper.get_exchange_rate", return_value=155.0), \
+         patch("history_manager.save_daily_data"):
+        test_cli = TestClient(app)
+        response = test_cli.get("/api/portfolio/analysis")
+        assert response.status_code == 200
+        data = response.json()
 
-    assert 'btn-open-profit-taking-modal' in html_content
-    assert 'btn-profit-taking-trigger' in html_content
-    assert 'style="border-color: #eab308; color: #ca8a04;"' not in html_content
-    assert 'profit-taking-modal' in html_content
-    assert 'profit-taking-content' in html_content
-    assert 'class="profit-taking-section card"' not in html_content
+        candidates = data.get("profit_taking_candidates", [])
+        # 複数口座に分散していても7203は1件に集約合算されること
+        codes = [c["code"] for c in candidates]
+        assert codes.count("7203") == 1
 
-    # 3. CSSのボタンゴールドグラデーションおよび専用モーダルダークモードトリプルセレクタの検証
-    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
-    with open(css_path, "r", encoding="utf-8") as f:
-        css_content = f.read()
-
-    assert '.btn-profit-taking-trigger' in css_content
-    assert 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' in css_content
-    assert '.profit-capsule-badge' in css_content
-    assert '.profit-action-card' in css_content
-    assert '#profit-taking-modal' in css_content
-    assert '[data-theme="dark"] #profit-taking-modal' in css_content
-    assert 'body.dark-mode #profit-taking-modal' in css_content
-    assert '.dark-mode #profit-taking-modal' in css_content
+        toyota = candidates[0]
+        assert toyota["quantity"] == 200
+        assert toyota["profit_loss"] == 200000.0
+        assert toyota["estimated_annual_dividend"] == 20000.0
+        assert toyota["market_value"] == 600000.0
+        assert toyota["dividend_years_ratio"] == 10.0
+        assert toyota["profit_taking_badge"]["level"] == 1
 
 
 

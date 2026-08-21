@@ -1970,26 +1970,39 @@ async def get_portfolio_analysis(force: bool = False, cooldown_check: None = Dep
     monthly_change_rankings = portfolio_manager.calculate_monthly_change_rankings(raw_holdings_list, exchange_rates)
     # --------------------------------------------------
 
-    # --- 利確・銘柄入替検討リスト (profit_taking_candidates) の抽出 (#273) ---
-    profit_taking_candidates = []
+    # --- 利確・銘柄入替検討リスト (profit_taking_candidates) の抽出 ✕ 口座横断合算 (#273 #277) ---
+    profit_taking_grouped = {}
     for item in raw_holdings_list:
-        pl = item.get("profit_loss")
-        div = item.get("estimated_annual_dividend")
+        code = item.get("code")
+        if not code:
+            continue
+        if code not in profit_taking_grouped:
+            profit_taking_grouped[code] = {
+                "code": code,
+                "name": item.get("name"),
+                "asset_type": item.get("asset_type", "jp_stock"),
+                "quantity": 0,
+                "market_value": 0.0,
+                "profit_loss": 0.0,
+                "estimated_annual_dividend": 0.0,
+            }
+        
+        g = profit_taking_grouped[code]
+        g["quantity"] += item.get("quantity", 0) or 0
+        g["market_value"] += item.get("market_value", 0.0) or 0.0
+        g["profit_loss"] += item.get("profit_loss", 0.0) or 0.0
+        g["estimated_annual_dividend"] += item.get("estimated_annual_dividend", 0.0) or 0.0
+
+    profit_taking_candidates = []
+    for code, g in profit_taking_grouped.items():
+        pl = g["profit_loss"]
+        div = g["estimated_annual_dividend"]
         if isinstance(pl, (int, float)) and isinstance(div, (int, float)) and pl > 0 and div > 0:
             pt_signal = portfolio_manager.calculate_profit_taking_signal(pl, div)
             if pt_signal and pt_signal.get("level", 0) >= 1:
-                candidate = {
-                    "code": item.get("code"),
-                    "name": item.get("name"),
-                    "asset_type": item.get("asset_type", "jp_stock"),
-                    "quantity": item.get("quantity", 0),
-                    "market_value": item.get("market_value", 0),
-                    "profit_loss": pl,
-                    "estimated_annual_dividend": div,
-                    "dividend_years_ratio": pt_signal["dividend_years_ratio"],
-                    "profit_taking_badge": pt_signal
-                }
-                profit_taking_candidates.append(candidate)
+                g["dividend_years_ratio"] = pt_signal["dividend_years_ratio"]
+                g["profit_taking_badge"] = pt_signal
+                profit_taking_candidates.append(g)
 
     profit_taking_candidates = sorted(profit_taking_candidates, key=lambda x: x["dividend_years_ratio"], reverse=True)
     for i, candidate in enumerate(profit_taking_candidates, 1):

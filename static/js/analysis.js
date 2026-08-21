@@ -1527,8 +1527,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <th class="text-end">現在評価額</th>
                             <th class="text-end">含み益</th>
                             <th class="text-end">年間予定配当</th>
-                            <th class="text-center" style="width: 170px;">到達レベル</th>
-                            <th>推薦アクション</th>
+                            <th class="text-center" style="width: 210px;">到達レベル (推薦アクション)</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1551,6 +1550,8 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (badge.level === 3) capsuleClass = 'profit-capsule-level-3';
             else if (badge.level === 2) capsuleClass = 'profit-capsule-level-2';
 
+            const tooltipText = `【到達レベル】${badge.full_label || badge.label || ''} (配当${item.dividend_years_ratio}年分)\n💡 【推薦アクション】${badge.recommended_action || ''}`;
+
             tableHtml += `
                 <tr>
                     <td class="text-center">${rankBadgeHtml}</td>
@@ -1564,16 +1565,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     </td>
                     <td class="text-end numeric">${divStr}</td>
                     <td class="text-center">
-                        <span class="profit-capsule-badge ${capsuleClass}" title="配当${item.dividend_years_ratio}年分到達">
+                        <span class="profit-capsule-badge ${capsuleClass}" title="${tooltipText}" style="cursor: help;">
                             <span>${badge.icon || ''}</span>
                             <span>${badge.label || ''} (${item.dividend_years_ratio}年分)</span>
                         </span>
-                    </td>
-                    <td>
-                        <div class="action-cell-box profit-action-card">
-                            <span class="action-icon" style="font-size: 0.85rem; margin-top: 1px;">💡</span>
-                            <span class="action-text">${badge.recommended_action || ''}</span>
-                        </div>
                     </td>
                 </tr>
             `;

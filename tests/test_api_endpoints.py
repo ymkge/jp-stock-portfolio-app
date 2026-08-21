@@ -447,8 +447,8 @@ def test_daily_ranking_modal_ui_and_dark_mode_issue261():
     assert 'id="daily-ranking-modal"' in html_content
     assert 'id="btn-close-daily-ranking-modal"' not in html_content
     assert 'id="btn-close-daily-ranking-modal-footer"' in html_content
-    assert 'id="tab-gainers-top10"' in html_content
-    assert 'id="tab-losers-top10"' in html_content
+    assert 'id="tab-gainers-top20"' in html_content
+    assert 'id="tab-losers-top20"' in html_content
     assert 'max-height: 85vh' in html_content
     assert 'overflow-y: auto' in html_content
 
@@ -585,11 +585,13 @@ def test_profit_taking_grouped_by_code_issue277():
                 {
                     "account_type": "specific",
                     "quantity": 100,
+                    "purchase_price": 2000,
                     "acquisition_price": 2000
                 },
                 {
                     "account_type": "nisa_growth",
                     "quantity": 100,
+                    "purchase_price": 2000,
                     "acquisition_price": 2000
                 }
             ]
@@ -610,11 +612,12 @@ def test_profit_taking_grouped_by_code_issue277():
         }
     }
 
-    with patch("portfolio_manager.load_portfolio", return_value=mock_portfolio), \
-         patch("history_manager.get_latest_daily_data_all", return_value=mock_scraped_data), \
-         patch("history_manager.get_pending_split_alerts", return_value=[]), \
-         patch("scraper.get_exchange_rate", return_value=155.0), \
-         patch("history_manager.save_daily_data"):
+    with patch("app.portfolio_manager.load_portfolio", return_value=mock_portfolio), \
+         patch("app.history_manager.get_latest_daily_data_all", return_value=mock_scraped_data), \
+         patch("app.history_manager.get_pending_split_alerts", return_value=[]), \
+         patch("app.history_manager.save_snapshot"), \
+         patch("app.history_manager.save_daily_data"), \
+         patch("app.scraper.get_exchange_rate", return_value=155.0):
         test_cli = TestClient(app)
         response = test_cli.get("/api/portfolio/analysis")
         assert response.status_code == 200
@@ -632,6 +635,40 @@ def test_profit_taking_grouped_by_code_issue277():
         assert toyota["market_value"] == 600000.0
         assert toyota["dividend_years_ratio"] == 10.0
         assert toyota["profit_taking_badge"]["level"] == 1
+
+
+def test_profit_taking_masked_amount_issue278():
+    """Issue #278: isAmountVisible=false 時における配当年数の伏字マスク化 (***年分) の自動テスト"""
+    import os
+
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    assert '***年分' in js_content
+    assert 'renderProfitTakingSection(fullAnalysisData.profit_taking_candidates' in js_content
+
+
+def test_rankings_top20_html_and_js_issue274():
+    """Issue #274: HTMLテンプレートおよびJSスクリプト内の TOP20 表記およびDOM要素のアサーション"""
+    import os
+
+    html_path = os.path.join(os.path.dirname(__file__), "..", "templates", "analysis.html")
+    with open(html_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
+
+    assert '🚀 資産変動ランキング TOP20' in html_content
+    assert '🚀 資産変動ランキング (TOP20)' in html_content
+    assert 'tab-gainers-top20' in html_content
+    assert 'tab-losers-top20' in html_content
+
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    assert 'day_gainers_top20' in js_content
+    assert 'month_gainers_top20' in js_content
+    assert 'tab-gainers-top20' in js_content
 
 
 

@@ -134,8 +134,8 @@ def test_calculate_daily_change_rankings_string_formats_and_top10_limit():
     from portfolio_manager import calculate_daily_change_rankings
 
     raw_holdings = []
-    # 15銘柄の増加データを作成 (前日比 +1円 〜 +15円, 100株)
-    for i in range(1, 16):
+    # 25銘柄の増加データを作成 (前日比 +1円 〜 +25円, 100株)
+    for i in range(1, 26):
         raw_holdings.append({
             "code": f"STOCK_{i:02d}",
             "name": f"銘柄{i}",
@@ -146,8 +146,8 @@ def test_calculate_daily_change_rankings_string_formats_and_top10_limit():
             "change_percent": f"+{i * 0.1}%",
             "market_value": 10000 * i
         })
-    # 12銘柄の減少データを作成 (前日比 -1円 〜 -12円, 100株)
-    for i in range(1, 13):
+    # 22銘柄の減少データを作成 (前日比 -1円 〜 -22円, 100株)
+    for i in range(1, 23):
         raw_holdings.append({
             "code": f"LOSS_{i:02d}",
             "name": f"損失銘柄{i}",
@@ -161,22 +161,22 @@ def test_calculate_daily_change_rankings_string_formats_and_top10_limit():
 
     res = calculate_daily_change_rankings(raw_holdings, {"JPY": 1.0})
 
-    gainers = res["day_gainers_top10"]
-    losers = res["day_losers_top10"]
+    gainers = res["day_gainers_top20"]
+    losers = res["day_losers_top20"]
 
-    # 10件に制限されていること
-    assert len(gainers) == 10
-    assert len(losers) == 10
+    # 20件に制限されていること
+    assert len(gainers) == 20
+    assert len(losers) == 20
 
 
-    # 増加1位はSTOCK_15 (15 * 100 = 1500円増)
-    assert gainers[0]["code"] == "STOCK_15"
-    assert gainers[0]["daily_change_jpy"] == 1500.0
+    # 増加1位はSTOCK_25 (25 * 100 = 2500円増)
+    assert gainers[0]["code"] == "STOCK_25"
+    assert gainers[0]["daily_change_jpy"] == 2500.0
     assert gainers[0]["rank"] == 1
 
-    # 減少1位はLOSS_12 (-12 * 100 = -1200円)
-    assert losers[0]["code"] == "LOSS_12"
-    assert losers[0]["daily_change_jpy"] == -1200.0
+    # 減少1位はLOSS_22 (-22 * 100 = -2200円)
+    assert losers[0]["code"] == "LOSS_22"
+    assert losers[0]["daily_change_jpy"] == -2200.0
     assert losers[0]["rank"] == 1
 
 
@@ -297,8 +297,8 @@ def test_calculate_monthly_change_rankings_edge_cases_and_top10_limit():
     from unittest.mock import patch
 
     mock_last_month_map = {}
-    # 12銘柄の先月末データを作成
-    for i in range(1, 13):
+    # 22銘柄の先月末データを作成
+    for i in range(1, 23):
         code = f"STOCK_{i:02d}"
         mock_last_month_map[code] = {
             "code": code,
@@ -309,37 +309,38 @@ def test_calculate_monthly_change_rankings_edge_cases_and_top10_limit():
         }
 
     raw_holdings = []
-    # 12銘柄中、11銘柄を増額、1銘柄を変動なし(0円増減)
-    for i in range(1, 12):
+    # 22銘柄中、21銘柄を増額、1銘柄を変動なし(0円増減)
+    for i in range(1, 22):
         code = f"STOCK_{i:02d}"
         raw_holdings.append({
             "code": code,
             "name": f"銘柄{i}",
             "asset_type": "jp_stock",
-            "market_value": 100000.0 + (i * 10000.0), # +1万〜+11万
+            "market_value": 100000.0 + (i * 10000.0), # +1万〜+21万
             "quantity": 100
         })
     # 変動なし
     raw_holdings.append({
-        "code": "STOCK_12",
-        "name": "銘柄12",
+        "code": "STOCK_22",
+        "name": "銘柄22",
         "asset_type": "jp_stock",
         "market_value": 100000.0,
         "quantity": 100
     })
 
-    with patch("history_manager.get_last_month_end_holdings_snapshot", return_value=("2026-07", mock_last_month_map)):
+    with patch("history_manager.get_last_month_end_holdings_snapshot", return_value=("2026-07", mock_last_month_map)), \
+         patch("history_manager.get_applied_split_alerts", return_value=[]):
         res = calculate_monthly_change_rankings(raw_holdings, {"JPY": 1.0})
 
-        gainers = res["month_gainers_top10"]
-        # 11件の増加銘柄のうちTOP10のみ抽出されていること
-        assert len(gainers) == 10
-        assert gainers[0]["code"] == "STOCK_11"
-        assert gainers[0]["monthly_change_jpy"] == 110000.0
+        gainers = res["month_gainers_top20"]
+        # 21件の増加銘柄のうちTOP20のみ抽出されていること
+        assert len(gainers) == 20
+        assert gainers[0]["code"] == "STOCK_21"
+        assert gainers[0]["monthly_change_jpy"] == 210000.0
         assert gainers[0]["rank"] == 1
-        # 変動なし(STOCK_12)は除外されていること
+        # 変動なし(STOCK_22)は除外されていること
         gainer_codes = [g["code"] for g in gainers]
-        assert "STOCK_12" not in gainer_codes
+        assert "STOCK_22" not in gainer_codes
 
 
 def test_calculate_monthly_change_rankings_with_transitional_stock_split():
@@ -504,6 +505,45 @@ def test_calculate_profit_taking_signal_issue273():
     assert res30["level"] == 4
     assert res30["label"] == "30年分"
     assert res30["dividend_years_ratio"] == 35.0
+
+
+def test_calculate_rankings_top20_issue274():
+    """Issue #274: ランキング抽出枠が TOP20 へ拡大され、キーおよび最大20件が安全に取得できることを検証"""
+    from portfolio_manager import calculate_daily_change_rankings, calculate_monthly_change_rankings
+    from unittest.mock import patch
+
+    # 25件のダミー保有銘柄
+    raw_holdings = []
+    for i in range(1, 26):
+        raw_holdings.append({
+            "code": f"CODE_{i}",
+            "name": f"銘柄_{i}",
+            "asset_type": "jp_stock",
+            "quantity": 100.0,
+            "change": float(i),
+            "market_value": 100000.0 + i * 1000
+        })
+
+    daily_res = calculate_daily_change_rankings(raw_holdings, {"JPY": 1.0})
+    assert "day_gainers_top20" in daily_res
+    assert len(daily_res["day_gainers_top20"]) == 20
+    assert daily_res["day_gainers_top20"][0]["code"] == "CODE_25"
+    assert daily_res["day_gainers_top20"][0]["rank"] == 1
+    assert daily_res["day_gainers_top20"][19]["rank"] == 20
+
+    # 先月末スナップショット
+    mock_snapshot = {
+        f"CODE_{i}": {"code": f"CODE_{i}", "name": f"銘柄_{i}", "market_value": 100000.0, "quantity": 100.0, "asset_type": "jp_stock"}
+        for i in range(1, 26)
+    }
+
+    with patch("history_manager.get_last_month_end_holdings_snapshot", return_value=("2026-07", mock_snapshot)), \
+         patch("history_manager.get_applied_split_alerts", return_value=[]):
+        monthly_res = calculate_monthly_change_rankings(raw_holdings, {"JPY": 1.0})
+        assert "month_gainers_top20" in monthly_res
+        assert len(monthly_res["month_gainers_top20"]) == 20
+        assert monthly_res["month_gainers_top20"][0]["rank"] == 1
+        assert monthly_res["month_gainers_top20"][19]["rank"] == 20
 
 
 

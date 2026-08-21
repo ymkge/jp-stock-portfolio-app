@@ -66,8 +66,8 @@
                                 <button type="button" id="btn-open-profit-taking-modal" class="btn-ranking-trigger btn-profit-taking-trigger" title="配当10年分以上の含み益がある銘柄の利確・銘柄入替検討リストを別画面で表示します">
                                     💰 利確・銘柄入替検討リスト
                                 </button>
-                                <button type="button" id="btn-open-daily-ranking-modal" class="btn-ranking-trigger" title="銘柄ごとの資産変動ランキング（当日比・先月比 TOP10）を別画面で表示します">
-                                    🚀 資産変動ランキング TOP10
+                                <button type="button" id="btn-open-daily-ranking-modal" class="btn-ranking-trigger" title="銘柄ごとの資産変動ランキング（当日比・先月比 TOP20）を別画面で表示します">
+                                    🚀 資産変動ランキング TOP20
                                 </button>
                             </div>
                         </div>
@@ -228,7 +228,7 @@
             <div id="daily-ranking-modal" class="modal-overlay hidden">
                 <div class="modal-content large-modal" style="max-width: 750px; max-height: 85vh; display: flex; flex-direction: column;">
                     <div class="modal-header">
-                        <h2 id="modal-ranking-title">🚀 資産変動ランキング (TOP10)</h2>
+                        <h2 id="modal-ranking-title">🚀 資産変動ランキング (TOP20)</h2>
                     </div>
                     <div class="modal-body" style="padding: 15px 0; flex: 1; overflow-y: auto;">
                         <!-- 期間切替 メインタブ (#270) -->
@@ -238,8 +238,8 @@
                         </div>
                         <!-- 増減切替 サブタブ -->
                         <div class="ranking-tab-buttons" style="margin-bottom: 15px;">
-                            <button type="button" id="tab-gainers-top10" class="ranking-tab-btn active gainer-tab">🟢 資産増加 TOP10</button>
-                            <button type="button" id="tab-losers-top10" class="ranking-tab-btn loser-tab">🔴 資産減少 TOP10</button>
+                            <button type="button" id="tab-gainers-top20" class="ranking-tab-btn active gainer-tab">🟢 資産増加 TOP20</button>
+                            <button type="button" id="tab-losers-top20" class="ranking-tab-btn loser-tab">🔴 資産減少 TOP20</button>
                         </div>
                         <div id="daily-ranking-content">
                             <!-- ランキングテーブルはここにJSで描画 -->

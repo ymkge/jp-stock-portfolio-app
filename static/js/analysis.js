@@ -866,8 +866,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const rankingContainer = document.getElementById('daily-ranking-content');
         const tabPeriodDailyBtn = document.getElementById('tab-period-daily');
         const tabPeriodMonthlyBtn = document.getElementById('tab-period-monthly');
-        const tabGainersBtn = document.getElementById('tab-gainers-top10');
-        const tabLosersBtn = document.getElementById('tab-losers-top10');
+        const tabGainersBtn = document.getElementById('tab-gainers-top20') || document.getElementById('tab-gainers-top10');
+        const tabLosersBtn = document.getElementById('tab-losers-top20') || document.getElementById('tab-losers-top10');
         const monthLabelSpan = document.getElementById('ranking-month-label');
         const modalTitle = document.getElementById('modal-ranking-title');
 
@@ -885,7 +885,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentRankingPeriod = 'daily';
                 tabPeriodDailyBtn.classList.add('active');
                 tabPeriodMonthlyBtn.classList.remove('active');
-                if (modalTitle) modalTitle.textContent = '🚀 当日 資産変動ランキング (TOP10)';
+                if (modalTitle) modalTitle.textContent = '🚀 当日 資産変動ランキング (TOP20)';
                 renderRankingModalContent();
             };
             tabPeriodMonthlyBtn.onclick = () => {
@@ -893,7 +893,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 tabPeriodMonthlyBtn.classList.add('active');
                 tabPeriodDailyBtn.classList.remove('active');
                 const mLabel = (monthlyRankings && monthlyRankings.month_label) ? monthlyRankings.month_label : '先月末比';
-                if (modalTitle) modalTitle.textContent = `🚀 先月比 資産変動ランキング (${mLabel} TOP10)`;
+                if (modalTitle) modalTitle.textContent = `🚀 先月比 資産変動ランキング (${mLabel} TOP20)`;
                 renderRankingModalContent();
             };
         }
@@ -929,8 +929,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const gainers = rankingsData.day_gainers_top10 || [];
-        const losers = rankingsData.day_losers_top10 || [];
+        const gainers = rankingsData.day_gainers_top20 || rankingsData.day_gainers_top10 || [];
+        const losers = rankingsData.day_losers_top20 || rankingsData.day_losers_top10 || [];
 
         const currentList = currentRankingTab === 'gainers' ? gainers : losers;
         const isGainer = currentRankingTab === 'gainers';
@@ -1026,8 +1026,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const gainers = rankingsData.month_gainers_top10 || [];
-        const losers = rankingsData.month_losers_top10 || [];
+        const gainers = rankingsData.month_gainers_top20 || rankingsData.month_gainers_top10 || [];
+        const losers = rankingsData.month_losers_top20 || rankingsData.month_losers_top10 || [];
         const currentList = currentRankingTab === 'gainers' ? gainers : losers;
         const isGainer = currentRankingTab === 'gainers';
 
@@ -1423,7 +1423,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     [industryFilterSelect, accountTypeFilterSelect, securityCompanyFilterSelect, buySignalFilterSelect].forEach(s => s.addEventListener('change', filterAndRender));
     document.querySelector('#analysis-table thead').addEventListener('click', (e) => { const h = e.target.closest('.sortable'); if (!h) return; const k = h.dataset.key; if (currentSort.key === k) currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc'; else { currentSort.key = k; currentSort.order = 'asc'; } filterAndRender(); });
-    toggleVisibilityCheckbox.addEventListener('change', (e) => { isAmountVisible = !e.target.checked; renderAnalysisTable(filteredHoldingsData); renderSummary(filteredHoldingsData); renderCharts(filteredHoldingsData); fetchAndRenderHistoryData(); if (fullAnalysisData && (fullAnalysisData.daily_change_rankings || fullAnalysisData.monthly_change_rankings)) { renderRankingModalContent(); } });
+    toggleVisibilityCheckbox.addEventListener('change', (e) => { 
+        isAmountVisible = !e.target.checked; 
+        renderAnalysisTable(filteredHoldingsData); 
+        renderSummary(filteredHoldingsData); 
+        renderCharts(filteredHoldingsData); 
+        fetchAndRenderHistoryData(); 
+        if (fullAnalysisData) {
+            if (fullAnalysisData.profit_taking_candidates) {
+                renderProfitTakingSection(fullAnalysisData.profit_taking_candidates, isAmountVisible);
+            }
+            if (fullAnalysisData.daily_change_rankings || fullAnalysisData.monthly_change_rankings) { 
+                renderRankingModalContent(); 
+            }
+        } 
+    });
     downloadAnalysisCsvButton.addEventListener('click', () => { window.location.href = '/api/portfolio/analysis/csv'; });
     chartToggleBtns.forEach(btn => btn.addEventListener('click', () => updateChart(btn.dataset.chartType)));
     window.addEventListener('pagehide', () => { if (fetchController) fetchController.abort(); });
@@ -1498,7 +1512,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!ptSignal || !ptSignal.level) return '';
 
         const badgeStyle = `background-color: ${ptSignal.color || '#eab308'}; color: #ffffff; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; box-shadow: 0 1px 2px rgba(0,0,0,0.15);`;
-        const ratioStr = ptSignal.dividend_years_ratio !== undefined ? `（配当${ptSignal.dividend_years_ratio}年分）` : '';
+        const ratioText = (typeof isAmountVisible !== 'undefined' && !isAmountVisible) ? '***年分' : (ptSignal.dividend_years_ratio !== undefined ? `${ptSignal.dividend_years_ratio}年分` : '');
+        const ratioStr = ratioText ? `（配当${ratioText}）` : '';
         const titleText = `【売り時・利確検討】\n${ptSignal.full_label || ptSignal.label} ${ratioStr}\n${ptSignal.recommended_action || ''}`;
         
         return `<span class="badge profit-taking-badge" style="${badgeStyle}" title="${titleText}">${ptSignal.full_label || ptSignal.label}</span>`;
@@ -1543,6 +1558,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const mvStr = isAmountVisible ? formatNumber(item.market_value, 0) + '円' : '***円';
             const plStr = isAmountVisible ? '+' + formatNumber(item.profit_loss, 0) + '円' : '***円';
             const divStr = isAmountVisible ? formatNumber(item.estimated_annual_dividend, 0) + '円' : '***円';
+            const ratioText = isAmountVisible ? (item.dividend_years_ratio !== undefined ? item.dividend_years_ratio + '年分' : '') : '***年分';
             const badge = item.profit_taking_badge || {};
 
             let capsuleClass = 'profit-capsule-level-1';
@@ -1550,7 +1566,7 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (badge.level === 3) capsuleClass = 'profit-capsule-level-3';
             else if (badge.level === 2) capsuleClass = 'profit-capsule-level-2';
 
-            const tooltipText = `【到達レベル】${badge.full_label || badge.label || ''} (配当${item.dividend_years_ratio}年分)\n💡 【推薦アクション】${badge.recommended_action || ''}`;
+            const tooltipText = `【到達レベル】${badge.full_label || badge.label || ''} (配当${ratioText})\n💡 【推薦アクション】${badge.recommended_action || ''}`;
 
             tableHtml += `
                 <tr>
@@ -1567,7 +1583,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td class="text-center">
                         <span class="profit-capsule-badge ${capsuleClass}" title="${tooltipText}" style="cursor: help;">
                             <span>${badge.icon || ''}</span>
-                            <span>${badge.label || ''} (${item.dividend_years_ratio}年分)</span>
+                            <span>${badge.label || ''} (${ratioText})</span>
                         </span>
                     </td>
                 </tr>

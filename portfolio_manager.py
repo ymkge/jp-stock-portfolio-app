@@ -716,7 +716,8 @@ def create_analysis_csv_data(data: list[dict]) -> str:
 
 def calculate_daily_change_rankings(
     raw_holdings_list: List[Dict[str, Any]], 
-    exchange_rates: Dict[str, float]
+    exchange_rates: Dict[str, float],
+    top_n: int = 20
 ) -> Dict[str, Any]:
     """
     保有銘柄リストから、当日の資産変動額（前日比 * 数量 * 為替）が大きかった銘柄のTOP10（増加/減少）を算出する。
@@ -801,10 +802,10 @@ def calculate_daily_change_rankings(
     gainers = [v for v in aggregated_map.values() if v["daily_change_jpy"] > 0]
     losers = [v for v in aggregated_map.values() if v["daily_change_jpy"] < 0]
 
-    # 増加TOP10 (降順: 大きい順)
-    gainers_sorted = sorted(gainers, key=lambda x: x["daily_change_jpy"], reverse=True)[:10]
-    # 減少TOP10 (昇順: マイナス幅が大きい順)
-    losers_sorted = sorted(losers, key=lambda x: x["daily_change_jpy"])[:10]
+    # 増加TOP20 (降順: 大きい順)
+    gainers_sorted = sorted(gainers, key=lambda x: x["daily_change_jpy"], reverse=True)[:top_n]
+    # 減少TOP20 (昇順: マイナス幅が大きい順)
+    losers_sorted = sorted(losers, key=lambda x: x["daily_change_jpy"])[:top_n]
 
     # 順位(rank)の付与
     for i, g in enumerate(gainers_sorted, 1):
@@ -813,6 +814,8 @@ def calculate_daily_change_rankings(
         l["rank"] = i
 
     return {
+        "day_gainers_top20": gainers_sorted,
+        "day_losers_top20": losers_sorted,
         "day_gainers_top10": gainers_sorted,
         "day_losers_top10": losers_sorted,
     }
@@ -820,10 +823,11 @@ def calculate_daily_change_rankings(
 
 def calculate_monthly_change_rankings(
     raw_holdings_list: List[Dict[str, Any]], 
-    exchange_rates: Dict[str, float]
+    exchange_rates: Dict[str, float],
+    top_n: int = 20
 ) -> Dict[str, Any]:
     """
-    先月末スナップショットと当日の評価額を照合し、先月比での資産増減ランキング TOP10（増加/減少）を算出する。
+    先月末スナップショットと当日の評価額を照合し、先月比での資産増減ランキング TOP20（増加/減少）を算出する。
     """
     import history_manager
     last_month_str, last_month_map = history_manager.get_last_month_end_holdings_snapshot()
@@ -832,6 +836,8 @@ def calculate_monthly_change_rankings(
         return {
             "has_last_month_data": False,
             "month_label": "先月末データなし",
+            "month_gainers_top20": [],
+            "month_losers_top20": [],
             "month_gainers_top10": [],
             "month_losers_top10": [],
         }
@@ -928,8 +934,8 @@ def calculate_monthly_change_rankings(
     gainers = [r for r in aggregated_results if r["monthly_change_jpy"] > 0]
     losers = [r for r in aggregated_results if r["monthly_change_jpy"] < 0]
 
-    gainers_sorted = sorted(gainers, key=lambda x: x["monthly_change_jpy"], reverse=True)[:10]
-    losers_sorted = sorted(losers, key=lambda x: x["monthly_change_jpy"])[:10]
+    gainers_sorted = sorted(gainers, key=lambda x: x["monthly_change_jpy"], reverse=True)[:top_n]
+    losers_sorted = sorted(losers, key=lambda x: x["monthly_change_jpy"])[:top_n]
 
     for i, g in enumerate(gainers_sorted, 1): g["rank"] = i
     for i, l in enumerate(losers_sorted, 1): l["rank"] = i
@@ -937,6 +943,8 @@ def calculate_monthly_change_rankings(
     return {
         "has_last_month_data": True,
         "month_label": month_label,
+        "month_gainers_top20": gainers_sorted,
+        "month_losers_top20": losers_sorted,
         "month_gainers_top10": gainers_sorted,
         "month_losers_top10": losers_sorted,
     }

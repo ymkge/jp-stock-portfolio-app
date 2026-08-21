@@ -869,7 +869,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!ptSignal || !ptSignal.level) return '';
 
         const badgeStyle = `background-color: ${ptSignal.color || '#eab308'}; color: #ffffff; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; box-shadow: 0 1px 2px rgba(0,0,0,0.15);`;
-        const ratioStr = ptSignal.dividend_years_ratio !== undefined ? `（配当${ptSignal.dividend_years_ratio}年分）` : '';
+        const ratioText = (typeof isAmountVisible !== 'undefined' && !isAmountVisible) ? '***年分' : (ptSignal.dividend_years_ratio !== undefined ? `${ptSignal.dividend_years_ratio}年分` : '');
+        const ratioStr = ratioText ? `（配当${ratioText}）` : '';
         const titleText = `【売り時・利確検討】\n${ptSignal.full_label || ptSignal.label} ${ratioStr}\n${ptSignal.recommended_action || ''}`;
         
         return `<span class="badge profit-taking-badge" style="${badgeStyle}" title="${titleText}">${ptSignal.full_label || ptSignal.label}</span>`;

@@ -569,11 +569,11 @@ def test_monthly_ranking_purchase_tag_ui_issue272():
     assert 'color: #38bdf8' in css_content or '#38bdf8' in css_content
 
 
-def test_profit_taking_api_and_ui_issue273_and_275():
-    """Issue #273 & #275: 利確検討リスト (profit_taking_candidates) の専用モーダル化およびAPI・UI連動の自動テスト"""
+def test_profit_taking_api_and_ui_issue273_275_276():
+    """Issue #273, #275 & #276: 利確検討リストのモーダル化・デザインリッチ化・視認性向上の自動テスト"""
     import os
 
-    # 1. JSのモーダル開閉ロジックおよび描画関数の検証
+    # 1. JSのモーダル開閉ロジック、メダル、カプセルピル、アクションカード描画の検証
     js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
     with open(js_path, "r", encoding="utf-8") as f:
         js_content = f.read()
@@ -583,23 +583,31 @@ def test_profit_taking_api_and_ui_issue273_and_275():
     assert 'renderProfitTakingBadge' in js_content
     assert 'btn-open-profit-taking-modal' in js_content
     assert 'profit-taking-modal' in js_content
+    assert 'rank-medal-icon' in js_content
+    assert 'profit-capsule-badge' in js_content
+    assert 'profit-action-card' in js_content
 
-    # 2. HTMLのトリガーボタンおよびモーダル構造の検証 (旧カード非存在の検証)
+    # 2. HTMLのトリガーボタンクラスおよびモーダル構造の検証 (インラインスタイル撤去・専用クラス化)
     html_path = os.path.join(os.path.dirname(__file__), "..", "templates", "analysis.html")
     with open(html_path, "r", encoding="utf-8") as f:
         html_content = f.read()
 
     assert 'btn-open-profit-taking-modal' in html_content
+    assert 'btn-profit-taking-trigger' in html_content
+    assert 'style="border-color: #eab308; color: #ca8a04;"' not in html_content
     assert 'profit-taking-modal' in html_content
     assert 'profit-taking-content' in html_content
-    # 常時表示カード (.profit-taking-section) は分析ページ本体から削除されていること
     assert 'class="profit-taking-section card"' not in html_content
 
-    # 3. CSSの専用モーダルダークモードトリプルセレクタの検証
+    # 3. CSSのボタンゴールドグラデーションおよび専用モーダルダークモードトリプルセレクタの検証
     css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
     with open(css_path, "r", encoding="utf-8") as f:
         css_content = f.read()
 
+    assert '.btn-profit-taking-trigger' in css_content
+    assert 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' in css_content
+    assert '.profit-capsule-badge' in css_content
+    assert '.profit-action-card' in css_content
     assert '#profit-taking-modal' in css_content
     assert '[data-theme="dark"] #profit-taking-modal' in css_content
     assert 'body.dark-mode #profit-taking-modal' in css_content

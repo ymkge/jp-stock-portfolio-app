@@ -1510,8 +1510,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!candidates || candidates.length === 0) {
             container.innerHTML = `
-                <div class="empty-profit-taking text-center text-muted py-3" style="font-size: 0.9rem;">
-                    <i class="fas fa-info-circle me-1"></i> 現在、含み益が年間予定配当の10年分以上に達している銘柄はありません。
+                <div class="empty-profit-taking text-center text-muted py-4" style="font-size: 0.9rem;">
+                    <i class="fas fa-info-circle me-1" style="color: #3b82f6;"></i> 現在、含み益が年間予定配当の10年分以上に達している銘柄はありません。
                 </div>
             `;
             return;
@@ -1521,42 +1521,59 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0" style="font-size: 0.88rem;">
                     <thead>
-                        <tr class="table-light">
-                            <th style="width: 55px;" class="text-center">順位</th>
+                        <tr class="table-dark" style="background: linear-gradient(to right, #0f172a, #1e293b);">
+                            <th style="width: 60px;" class="text-center">順位</th>
                             <th>銘柄名 (コード)</th>
                             <th class="text-end">現在評価額</th>
                             <th class="text-end">含み益</th>
                             <th class="text-end">年間予定配当</th>
-                            <th class="text-center">到達レベル</th>
+                            <th class="text-center" style="width: 170px;">到達レベル</th>
                             <th>推薦アクション</th>
                         </tr>
                     </thead>
                     <tbody>
         `;
 
-        candidates.forEach(item => {
+        candidates.forEach((item, index) => {
+            const rankNum = item.rank || (index + 1);
+            let rankBadgeHtml = `<span class="rank-badge-number">${rankNum}</span>`;
+            if (rankNum === 1) rankBadgeHtml = `<span class="rank-medal-icon" title="第1位">🥇</span>`;
+            else if (rankNum === 2) rankBadgeHtml = `<span class="rank-medal-icon" title="第2位">🥈</span>`;
+            else if (rankNum === 3) rankBadgeHtml = `<span class="rank-medal-icon" title="第3位">🥉</span>`;
+
             const mvStr = isAmountVisible ? formatNumber(item.market_value, 0) + '円' : '***円';
             const plStr = isAmountVisible ? '+' + formatNumber(item.profit_loss, 0) + '円' : '***円';
             const divStr = isAmountVisible ? formatNumber(item.estimated_annual_dividend, 0) + '円' : '***円';
             const badge = item.profit_taking_badge || {};
 
+            let capsuleClass = 'profit-capsule-level-1';
+            if (badge.level === 4) capsuleClass = 'profit-capsule-level-4';
+            else if (badge.level === 3) capsuleClass = 'profit-capsule-level-3';
+            else if (badge.level === 2) capsuleClass = 'profit-capsule-level-2';
+
             tableHtml += `
                 <tr>
-                    <td class="text-center fw-bold text-muted">${item.rank || '-'}</td>
+                    <td class="text-center">${rankBadgeHtml}</td>
                     <td>
                         <span class="fw-bold">${item.name || ''}</span>
                         <small class="text-muted ms-1">(${item.code})</small>
                     </td>
                     <td class="text-end numeric">${mvStr}</td>
-                    <td class="text-end numeric profit fw-bold">${plStr}</td>
+                    <td class="text-end numeric">
+                        <span class="profit-pill-highlight">${plStr}</span>
+                    </td>
                     <td class="text-end numeric">${divStr}</td>
                     <td class="text-center">
-                        <span class="badge" style="background-color: ${badge.color || '#eab308'}; color: #fff; font-size: 0.75rem; padding: 4px 8px;">
-                            ${badge.full_label || badge.label || ''} (${item.dividend_years_ratio}年分)
+                        <span class="profit-capsule-badge ${capsuleClass}" title="配当${item.dividend_years_ratio}年分到達">
+                            <span>${badge.icon || ''}</span>
+                            <span>${badge.label || ''} (${item.dividend_years_ratio}年分)</span>
                         </span>
                     </td>
-                    <td style="font-size: 0.82rem; color: var(--text-muted, #64748b);">
-                        ${badge.recommended_action || ''}
+                    <td>
+                        <div class="action-cell-box profit-action-card">
+                            <span class="action-icon" style="font-size: 0.85rem; margin-top: 1px;">💡</span>
+                            <span class="action-text">${badge.recommended_action || ''}</span>
+                        </div>
                     </td>
                 </tr>
             `;

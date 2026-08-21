@@ -324,6 +324,10 @@ def calculate_holding_values(
     except (ValueError, TypeError, KeyError, ZeroDivisionError):
         pass
 
+    pt_signal = None
+    if profit_loss is not None and total_annual_dividend is not None:
+        pt_signal = calculate_profit_taking_signal(profit_loss, total_annual_dividend)
+
     return {
         "holding_id": holding.get("id"),
         "account_type": holding.get("account_type"),
@@ -337,6 +341,9 @@ def calculate_holding_values(
         "profit_loss_rate": profit_loss_rate,
         "estimated_annual_dividend": total_annual_dividend,
         "estimated_annual_dividend_after_tax": total_annual_dividend_after_tax,
+        "profit_taking_signal": pt_signal,
+        "dividend_years_ratio": pt_signal["dividend_years_ratio"] if pt_signal else None,
+        "profit_taking_badge": pt_signal,
     }
 
 def calculate_portfolio_stats(holdings_list: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -499,6 +506,60 @@ def calculate_style_breakdown(holdings: List[Dict[str, Any]], total_mv: float) -
         "market_cap": {k: (v / total_mv) * 100 for k, v in breakdown["market_cap"].items()}
     }
     return result
+
+
+def calculate_profit_taking_signal(
+    unrealized_gain_jpy: float,
+    annual_dividend_jpy: float
+) -> Optional[Dict[str, Any]]:
+    """
+    含み益と年間予定配当金（円換算）から、売り時・利確検討レベル（10年/15年/20年/30年分達成）を判定する。 (#273)
+    """
+    if unrealized_gain_jpy <= 0 or annual_dividend_jpy <= 0:
+        return None
+
+    ratio = round(unrealized_gain_jpy / annual_dividend_jpy, 1)
+    if ratio < 10.0:
+        return None
+
+    level = 1
+    icon = "💰"
+    label = "10年分"
+    full_label = "💰 配当10年分達成"
+    color = "#eab308"
+    action = "配当10年分の含み益に到達。一部利確・銘柄入れ替えの検討ラインです。"
+
+    if ratio >= 30.0:
+        level = 4
+        icon = "💎"
+        label = "30年分"
+        full_label = "💎 配当30年分達成"
+        color = "#06b6d4"
+        action = "配当30年分の超高騰。絶好の利確・元本回収（恩株化）の最強ラインです。"
+    elif ratio >= 20.0:
+        level = 3
+        icon = "🔥"
+        label = "20年分"
+        full_label = "🔥 配当20年分達成"
+        color = "#ef4444"
+        action = "配当20年分の含み益に到達。利確推奨・資金回収を前向きに検討すべき段階です。"
+    elif ratio >= 15.0:
+        level = 2
+        icon = "🧡"
+        label = "15年分"
+        full_label = "🧡 配当15年分達成"
+        color = "#f97316"
+        action = "配当15年分の含み益に到達。利確や高利回り銘柄への乗り換え好機です。"
+
+    return {
+        "dividend_years_ratio": ratio,
+        "level": level,
+        "icon": icon,
+        "label": label,
+        "full_label": full_label,
+        "color": color,
+        "recommended_action": action
+    }
 
 def create_csv_data(data: list[dict]) -> str:
     """

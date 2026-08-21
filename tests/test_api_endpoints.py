@@ -569,6 +569,26 @@ def test_monthly_ranking_purchase_tag_ui_issue272():
     assert 'color: #38bdf8' in css_content or '#38bdf8' in css_content
 
 
+def test_profit_taking_api_and_ui_issue273():
+    """Issue #273: 利確検討リスト (profit_taking_candidates) API・UI連動の自動テスト"""
+    import os
+
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    assert 'profit_taking_candidates' in js_content
+    assert 'renderProfitTakingSection' in js_content
+    assert 'renderProfitTakingBadge' in js_content
+
+    html_path = os.path.join(os.path.dirname(__file__), "..", "templates", "analysis.html")
+    with open(html_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
+
+    assert 'profit-taking-section' in html_content
+    assert 'profit-taking-content' in html_content
+
+
 
 
 

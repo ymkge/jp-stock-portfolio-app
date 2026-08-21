@@ -465,4 +465,45 @@ def test_calculate_monthly_change_rankings_purchased_quantity_with_split():
         assert g["is_purchased_this_month"] is True
 
 
+def test_calculate_profit_taking_signal_issue273():
+    """Issue #273: 配当年数倍率 (10年/15年/20年/30年分達成) の売り時・利確判定単体テスト"""
+    from portfolio_manager import calculate_profit_taking_signal
+
+    # 無配・含み損・ゼロ配当 ➔ None
+    assert calculate_profit_taking_signal(-10000, 5000) is None
+    assert calculate_profit_taking_signal(100000, 0) is None
+    assert calculate_profit_taking_signal(0, 10000) is None
+
+    # 10年分未満 (9.9年分) ➔ None
+    assert calculate_profit_taking_signal(99000, 10000) is None
+
+    # 10年分達成 (10.0〜14.9年分) ➔ Level 1 (💰 10年分)
+    res10 = calculate_profit_taking_signal(100000, 10000)
+    assert res10 is not None
+    assert res10["level"] == 1
+    assert res10["label"] == "10年分"
+    assert res10["dividend_years_ratio"] == 10.0
+
+    # 15年分達成 (15.0〜19.9年分) ➔ Level 2 (🧡 15年分)
+    res15 = calculate_profit_taking_signal(154000, 10000)
+    assert res15 is not None
+    assert res15["level"] == 2
+    assert res15["label"] == "15年分"
+    assert res15["dividend_years_ratio"] == 15.4
+
+    # 20年分達成 (20.0〜29.9年分) ➔ Level 3 (🔥 20年分)
+    res20 = calculate_profit_taking_signal(220000, 10000)
+    assert res20 is not None
+    assert res20["level"] == 3
+    assert res20["label"] == "20年分"
+    assert res20["dividend_years_ratio"] == 22.0
+
+    # 30年分達成 (30.0年分以上) ➔ Level 4 (💎 30年分)
+    res30 = calculate_profit_taking_signal(350000, 10000)
+    assert res30 is not None
+    assert res30["level"] == 4
+    assert res30["label"] == "30年分"
+    assert res30["dividend_years_ratio"] == 35.0
+
+
 

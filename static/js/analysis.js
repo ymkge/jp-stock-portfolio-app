@@ -417,6 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
         isAmountVisible = !toggleVisibilityCheckbox.checked;
         populateFilters();
         filterAndRender();
+        renderProfitTakingSection(fullAnalysisData.profit_taking_candidates || [], isAmountVisible);
     }
 
     function filterAndRender() {
@@ -472,6 +473,9 @@ document.addEventListener('DOMContentLoaded', () => {
         renderAnalysisTable(filteredHoldingsData);
         renderSummary(filteredHoldingsData);
         renderCharts(filteredHoldingsData);
+        if (fullAnalysisData && fullAnalysisData.profit_taking_candidates) {
+            renderProfitTakingSection(fullAnalysisData.profit_taking_candidates, isAmountVisible);
+        }
         if (fullAnalysisData && (fullAnalysisData.daily_change_rankings || fullAnalysisData.monthly_change_rankings)) {
             renderRankingModalContent();
         }
@@ -524,6 +528,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (item.buy_signal) nameHtml += renderBuySignalBadge(item.buy_signal, isDiamond);
             if (item.sell_signal) nameHtml += renderSellSignalBadge(item.sell_signal, isDiamond);
             if (item.exhaustion_signal) nameHtml += renderExhaustionSignalBadge(item.exhaustion_signal);
+            if (item.profit_taking_badge || item.profit_taking_signal) nameHtml += renderProfitTakingBadge(item);
             createCell(nameHtml);
             createCell(item.industry || 'N/A');
             createCell(item.asset_type === 'jp_stock' ? '国内株式' : (item.asset_type === 'investment_trust' ? '投資信託' : (item.asset_type === 'us_stock' ? '米国株式' : 'N/A')));
@@ -1448,6 +1453,93 @@ document.addEventListener('DOMContentLoaded', () => {
         let themeClass = signal.type === 'sell_the_fact' ? 'theme-exhaustion-warn' : 'theme-exhaustion-rebound';
         const title = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${signal.reasons.join('\n')}`;
         return `<span class="signal-badge-base ${themeClass}" title="${title}"><span class="signal-badge-text"><span class="buy-signal-icon-inner">${signal.icon}</span>${signal.label}</span></span>`;
+    }
+
+    function renderProfitTakingBadge(item) {
+        let ptSignal = item.profit_taking_badge || item.profit_taking_signal;
+        if (!ptSignal && item.holdings && item.holdings.length > 0) {
+            for (const h of item.holdings) {
+                if (h.profit_taking_badge) {
+                    if (!ptSignal || h.profit_taking_badge.level > ptSignal.level) {
+                        ptSignal = h.profit_taking_badge;
+                    }
+                }
+            }
+        }
+        if (!ptSignal || !ptSignal.level) return '';
+
+        const badgeStyle = `background-color: ${ptSignal.color || '#eab308'}; color: #ffffff; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; box-shadow: 0 1px 2px rgba(0,0,0,0.15);`;
+        const ratioStr = ptSignal.dividend_years_ratio !== undefined ? `（配当${ptSignal.dividend_years_ratio}年分）` : '';
+        const titleText = `【売り時・利確検討】\n${ptSignal.full_label || ptSignal.label} ${ratioStr}\n${ptSignal.recommended_action || ''}`;
+        
+        return `<span class="badge profit-taking-badge" style="${badgeStyle}" title="${titleText}">${ptSignal.full_label || ptSignal.label}</span>`;
+    }
+
+    function renderProfitTakingSection(candidates, isAmountVisible) {
+        const container = document.getElementById('profit-taking-content');
+        if (!container) return;
+
+        if (!candidates || candidates.length === 0) {
+            container.innerHTML = `
+                <div class="empty-profit-taking text-center text-muted py-3" style="font-size: 0.9rem;">
+                    <i class="fas fa-info-circle me-1"></i> 現在、含み益が年間予定配当の10年分以上に達している銘柄はありません。
+                </div>
+            `;
+            return;
+        }
+
+        let tableHtml = `
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" style="font-size: 0.88rem;">
+                    <thead>
+                        <tr class="table-light">
+                            <th style="width: 55px;" class="text-center">順位</th>
+                            <th>銘柄名 (コード)</th>
+                            <th class="text-end">現在評価額</th>
+                            <th class="text-end">含み益</th>
+                            <th class="text-end">年間予定配当</th>
+                            <th class="text-center">到達レベル</th>
+                            <th>推薦アクション</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        candidates.forEach(item => {
+            const mvStr = isAmountVisible ? formatNumber(item.market_value, 0) + '円' : '***円';
+            const plStr = isAmountVisible ? '+' + formatNumber(item.profit_loss, 0) + '円' : '***円';
+            const divStr = isAmountVisible ? formatNumber(item.estimated_annual_dividend, 0) + '円' : '***円';
+            const badge = item.profit_taking_badge || {};
+
+            tableHtml += `
+                <tr>
+                    <td class="text-center fw-bold text-muted">${item.rank || '-'}</td>
+                    <td>
+                        <span class="fw-bold">${item.name || ''}</span>
+                        <small class="text-muted ms-1">(${item.code})</small>
+                    </td>
+                    <td class="text-end numeric">${mvStr}</td>
+                    <td class="text-end numeric profit fw-bold">${plStr}</td>
+                    <td class="text-end numeric">${divStr}</td>
+                    <td class="text-center">
+                        <span class="badge" style="background-color: ${badge.color || '#eab308'}; color: #fff; font-size: 0.75rem; padding: 4px 8px;">
+                            ${badge.full_label || badge.label || ''} (${item.dividend_years_ratio}年分)
+                        </span>
+                    </td>
+                    <td style="font-size: 0.82rem; color: var(--text-muted, #64748b);">
+                        ${badge.recommended_action || ''}
+                    </td>
+                </tr>
+            `;
+        });
+
+        tableHtml += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        container.innerHTML = tableHtml;
     }
 
     function getHighlightClass(key, value, assetType) {

@@ -108,6 +108,39 @@
       }
     }
   },
+  "profit_taking": {
+    "years_thresholds": [10.0, 15.0, 20.0, 30.0],
+    "display": {
+      "level_1": {
+        "icon": "💰",
+        "label": "10年分",
+        "full_label": "💰 配当10年分達成",
+        "badge_color": "#eab308",
+        "recommended_action": "配当10年分の含み益に到達。一部利確・銘柄入れ替えの検討ラインです。"
+      },
+      "level_2": {
+        "icon": "🧡",
+        "label": "15年分",
+        "full_label": "🧡 配当15年分達成",
+        "badge_color": "#f97316",
+        "recommended_action": "配当15年分の含み益に到達。利確や高利回り銘柄への乗り換え好機です。"
+      },
+      "level_3": {
+        "icon": "🔥",
+        "label": "20年分",
+        "full_label": "🔥 配当20年分達成",
+        "badge_color": "#ef4444",
+        "recommended_action": "配当20年分の含み益に到達。利確推奨・資金回収を前向きに検討すべき段階です。"
+      },
+      "level_4": {
+        "icon": "💎",
+        "label": "30年分",
+        "full_label": "💎 配当30年分達成",
+        "badge_color": "#06b6d4",
+        "recommended_action": "配当30年分の超高騰。絶好の利確・元本回収（恩株化）の最強ラインです。"
+      }
+    }
+  },
   "system": {
       "market_times": {
           "jp_stock": {

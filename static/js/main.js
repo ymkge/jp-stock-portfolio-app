@@ -577,6 +577,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (jpStock.buy_signal) nameHtml += renderBuySignalBadge(jpStock.buy_signal, isDiamond);
             if (jpStock.sell_signal) nameHtml += renderSellSignalBadge(jpStock.sell_signal, isDiamond);
             if (jpStock.exhaustion_signal) nameHtml += renderExhaustionSignalBadge(jpStock.exhaustion_signal);
+            if (jpStock.profit_taking_badge || jpStock.profit_taking_signal) nameHtml += renderProfitTakingBadge(jpStock);
             nameHtml += `<button class="btn-llm-diagnose" data-code="${jpStock.code}" data-asset-type="${jpStock.asset_type || 'jp_stock'}" title="${jpStock.name} (${jpStock.code}) の投資方針適合度をAI診断">🤖 AI診断</button>`;
             createCell(nameHtml + `</div>`);
             createCell(jpStock.industry || 'N/A');
@@ -852,6 +853,26 @@ document.addEventListener('DOMContentLoaded', () => {
         let themeClass = signal.type === 'sell_the_fact' ? 'theme-exhaustion-warn' : 'theme-exhaustion-rebound';
         const title = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${signal.reasons.join('\n')}`;
         return `<span class="signal-badge-base ${themeClass}" title="${title}"><span class="signal-badge-text"><span class="buy-signal-icon-inner">${signal.icon}</span>${signal.label}</span></span>`;
+    }
+
+    function renderProfitTakingBadge(item) {
+        let ptSignal = item.profit_taking_badge || item.profit_taking_signal;
+        if (!ptSignal && item.holdings && item.holdings.length > 0) {
+            for (const h of item.holdings) {
+                if (h.profit_taking_badge) {
+                    if (!ptSignal || h.profit_taking_badge.level > ptSignal.level) {
+                        ptSignal = h.profit_taking_badge;
+                    }
+                }
+            }
+        }
+        if (!ptSignal || !ptSignal.level) return '';
+
+        const badgeStyle = `background-color: ${ptSignal.color || '#eab308'}; color: #ffffff; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; box-shadow: 0 1px 2px rgba(0,0,0,0.15);`;
+        const ratioStr = ptSignal.dividend_years_ratio !== undefined ? `（配当${ptSignal.dividend_years_ratio}年分）` : '';
+        const titleText = `【売り時・利確検討】\n${ptSignal.full_label || ptSignal.label} ${ratioStr}\n${ptSignal.recommended_action || ''}`;
+        
+        return `<span class="badge profit-taking-badge" style="${badgeStyle}" title="${titleText}">${ptSignal.full_label || ptSignal.label}</span>`;
     }
 
     function renderScoreAsStars(score, details, assetType) {

@@ -1970,6 +1970,32 @@ async def get_portfolio_analysis(force: bool = False, cooldown_check: None = Dep
     monthly_change_rankings = portfolio_manager.calculate_monthly_change_rankings(raw_holdings_list, exchange_rates)
     # --------------------------------------------------
 
+    # --- 利確・銘柄入替検討リスト (profit_taking_candidates) の抽出 (#273) ---
+    profit_taking_candidates = []
+    for item in raw_holdings_list:
+        pl = item.get("profit_loss")
+        div = item.get("estimated_annual_dividend")
+        if isinstance(pl, (int, float)) and isinstance(div, (int, float)) and pl > 0 and div > 0:
+            pt_signal = portfolio_manager.calculate_profit_taking_signal(pl, div)
+            if pt_signal and pt_signal.get("level", 0) >= 1:
+                candidate = {
+                    "code": item.get("code"),
+                    "name": item.get("name"),
+                    "asset_type": item.get("asset_type", "jp_stock"),
+                    "quantity": item.get("quantity", 0),
+                    "market_value": item.get("market_value", 0),
+                    "profit_loss": pl,
+                    "estimated_annual_dividend": div,
+                    "dividend_years_ratio": pt_signal["dividend_years_ratio"],
+                    "profit_taking_badge": pt_signal
+                }
+                profit_taking_candidates.append(candidate)
+
+    profit_taking_candidates = sorted(profit_taking_candidates, key=lambda x: x["dividend_years_ratio"], reverse=True)
+    for i, candidate in enumerate(profit_taking_candidates, 1):
+        candidate["rank"] = i
+    # -------------------------------------------------------------------------
+
     last_full_update_time = datetime.now()
     return {
         "holdings_list": holdings_list,
@@ -1982,6 +2008,7 @@ async def get_portfolio_analysis(force: bool = False, cooldown_check: None = Dep
         "summary_stats": summary_stats,
         "daily_change_rankings": daily_change_rankings, # 追加 (#261)
         "monthly_change_rankings": monthly_change_rankings, # 追加 (#270)
+        "profit_taking_candidates": profit_taking_candidates, # 追加 (#273)
         "metadata": metadata,
         "previous_summary": previous_summary, # 過去サマリーを追加
     }

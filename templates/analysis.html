@@ -274,6 +274,25 @@
                 </div>
             </div>
 
+            <!-- AI利確診断 専用ダイアログモーダル (#281) -->
+            <div id="profit-taking-ai-modal" class="modal-overlay hidden" style="z-index: 1200;" role="dialog" aria-modal="true" aria-labelledby="modal-profit-taking-ai-title">
+                <div class="modal-content" style="max-width: 680px; max-height: 85vh; display: flex; flex-direction: column;">
+                    <div class="modal-header" style="padding-bottom: 12px; border-bottom: 1px solid var(--border-color, #e2e8f0);">
+                        <h2 id="modal-profit-taking-ai-title" style="margin: 0; font-size: 1.15rem; display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                            <span id="pt-ai-modal-header-text">🤖 AI利確・銘柄入替診断</span>
+                            <span id="pt-ai-badge-years" class="profit-capsule-badge profit-capsule-level-4 ms-2" style="font-size: 0.75rem;">💎 配当30年分達成</span>
+                        </h2>
+                    </div>
+                    <div class="modal-body" id="pt-ai-modal-body" style="padding: 18px 5px; flex: 1; overflow-y: auto;">
+                        <!-- AI診断コンテンツまたはローディング指示がJSで描画されます -->
+                    </div>
+                    <div class="modal-footer" style="padding-top: 12px; border-top: 1px solid var(--border-color, #e2e8f0); display: flex; justify-content: space-between; align-items: center;">
+                        <div id="pt-ai-modal-footer-meta" style="font-size: 0.75rem;" class="text-muted"></div>
+                        <button type="button" id="btn-close-profit-taking-ai-modal" class="btn-outline">閉じる</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- フッター免責事項領域 -->
             <footer class="app-disclaimer-footer">
                 <div class="footer-content">

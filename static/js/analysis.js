@@ -103,6 +103,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnOpenProfitTakingModal = document.getElementById('btn-open-profit-taking-modal');
     const profitTakingModal = document.getElementById('profit-taking-modal');
     const btnCloseProfitTakingModalFooter = document.getElementById('btn-close-profit-taking-modal-footer');
+    const profitTakingAiModal = document.getElementById('profit-taking-ai-modal');
+    const btnCloseProfitTakingAiModal = document.getElementById('btn-close-profit-taking-ai-modal');
 
     if (btnOpenProfitTakingModal && profitTakingModal) {
         btnOpenProfitTakingModal.addEventListener('click', () => {
@@ -124,6 +126,25 @@ document.addEventListener('DOMContentLoaded', () => {
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && !profitTakingModal.classList.contains('hidden')) {
                 closeProfitTakingModal();
+            }
+        });
+    }
+
+    if (profitTakingAiModal) {
+        const closeProfitTakingAiModal = () => {
+            profitTakingAiModal.classList.add('hidden');
+            profitTakingAiModal.style.display = 'none';
+        };
+
+        if (btnCloseProfitTakingAiModal) btnCloseProfitTakingAiModal.addEventListener('click', closeProfitTakingAiModal);
+
+        profitTakingAiModal.addEventListener('click', (e) => {
+            if (e.target === profitTakingAiModal) closeProfitTakingAiModal();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !profitTakingAiModal.classList.contains('hidden')) {
+                closeProfitTakingAiModal();
             }
         });
     }
@@ -1544,6 +1565,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <th style="color: #ffffff;" class="text-end">年間予定配当</th>
                             <th style="color: #ffffff; width: 95px;" class="text-end">配当利回り</th>
                             <th style="width: 210px; color: #ffffff;" class="text-center">到達レベル (推薦アクション)</th>
+                            <th style="width: 110px; color: #ffffff;" class="text-center">AI診断</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1596,6 +1618,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span>${badge.label || ''} (${ratioText})</span>
                         </span>
                     </td>
+                    <td class="text-center">
+                        <button type="button" class="btn-pt-ai-diagnose" onclick="openProfitTakingAiModal('${item.code}')">
+                            🤖 AI診断
+                        </button>
+                    </td>
                 </tr>
             `;
         });
@@ -1608,6 +1635,122 @@ document.addEventListener('DOMContentLoaded', () => {
 
         container.innerHTML = tableHtml;
     }
+
+    async function openProfitTakingAiModal(code, force = false) {
+        const modal = document.getElementById('profit-taking-ai-modal');
+        const modalBody = document.getElementById('pt-ai-modal-body');
+        const headerText = document.getElementById('pt-ai-modal-header-text');
+        const badgeYears = document.getElementById('pt-ai-badge-years');
+        const footerMeta = document.getElementById('pt-ai-modal-footer-meta');
+
+        if (!modal || !modalBody) return;
+
+        // 全候補の中から対象アイテムを探索
+        let targetItem = null;
+        if (fullAnalysisData && fullAnalysisData.profit_taking_candidates) {
+            targetItem = fullAnalysisData.profit_taking_candidates.find(c => c.code === code);
+        }
+
+        const name = targetItem ? targetItem.name : code;
+        const badge = targetItem ? (targetItem.profit_taking_badge || {}) : {};
+        
+        if (headerText) headerText.textContent = `🤖 AI利確・銘柄入替診断 : ${name} (${code})`;
+        if (badgeYears) {
+            badgeYears.textContent = `${badge.icon || '💰'} ${badge.label || '利確検討銘柄'}`;
+            let capsuleClass = 'profit-capsule-level-1';
+            if (badge.level === 4) capsuleClass = 'profit-capsule-level-4';
+            else if (badge.level === 3) capsuleClass = 'profit-capsule-level-3';
+            else if (badge.level === 2) capsuleClass = 'profit-capsule-level-2';
+            badgeYears.className = `profit-capsule-badge ${capsuleClass} ms-2`;
+        }
+
+        modalBody.innerHTML = `
+            <div class="text-center py-4">
+                <div class="spinner-border text-indigo mb-2" role="status" style="width: 2.2rem; height: 2.2rem; color: #6366f1;"></div>
+                <div style="font-size: 0.9rem;" class="fw-bold">AI利確・銘柄入替解析を実行中...</div>
+                <div style="font-size: 0.78rem;" class="text-muted mt-1">業績・ファンダメンタルズ・配当効率を総合評価しています</div>
+            </div>
+        `;
+        if (footerMeta) footerMeta.innerHTML = '';
+        modal.classList.remove('hidden');
+
+        try {
+            const response = await fetch('/api/ai-diagnosis/profit-taking', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: code, force: force })
+            });
+
+            const data = await response.json();
+            if (!response.ok || data.error) {
+                const errMsg = data.message || 'AI診断の実行中にエラーが発生しました。';
+                modalBody.innerHTML = `
+                    <div class="alert alert-warning py-3 mb-0" style="font-size: 0.88rem;">
+                        <i class="fas fa-exclamation-triangle me-1"></i> ${errMsg}
+                    </div>
+                `;
+                return;
+            }
+
+            // 成功レスポンスのレンダリング
+            let badgeClass = 'pt-ai-badge-partial';
+            if (data.action === 'HOLD') badgeClass = 'pt-ai-badge-hold';
+            else if (data.action === 'FULL_SELL') badgeClass = 'pt-ai-badge-full';
+
+            const cacheTag = data.is_cached 
+                ? `<span class="badge bg-success-subtle text-success border border-success-subtle me-1">⚡ キャッシュ表示 (${data.diagnosed_at || ''})</span>`
+                : `<span class="badge bg-indigo-subtle text-indigo border border-indigo-subtle me-1" style="background: rgba(99, 102, 241, 0.12); color: #4f46e5;">🤖 リアルタイム診断 (${data.diagnosed_at || ''})</span>`;
+
+            modalBody.innerHTML = `
+                <div class="pt-ai-result-card text-center mb-3 py-3" style="background: var(--card-bg, #f8fafc); border-radius: 10px;">
+                    <div class="text-muted small mb-1" style="font-size: 0.78rem;">AIの判定結果</div>
+                    <div class="pt-ai-action-badge ${badgeClass} mb-2">
+                        ${data.action_label || 'AI判定完了'}
+                    </div>
+                    <div class="fw-bold text-indigo mt-1" style="font-size: 0.92rem; color: #4f46e5;">
+                        💡 ${data.target_sell_ratio || ''}
+                    </div>
+                </div>
+
+                <div class="pt-ai-result-card mb-3">
+                    <div class="fw-bold mb-1" style="font-size: 0.88rem; color: #0284c7;">
+                        📊 業績動向とファンダメンタルズ評価
+                    </div>
+                    <div style="font-size: 0.85rem; line-height: 1.6;">
+                        ${data.fundamentals_analysis || ''}
+                    </div>
+                </div>
+
+                <div class="pt-ai-result-card mb-0">
+                    <div class="fw-bold mb-1" style="font-size: 0.88rem; color: #16a34a;">
+                        💡 利確・恩株化・銘柄入替のアドバイス
+                    </div>
+                    <div style="font-size: 0.85rem; line-height: 1.6;">
+                        ${data.profit_taking_advice || ''}
+                    </div>
+                </div>
+            `;
+
+            if (footerMeta) {
+                footerMeta.innerHTML = `
+                    ${cacheTag}
+                    <button type="button" class="btn btn-link btn-sm text-decoration-none p-0 ms-2" onclick="openProfitTakingAiModal('${code}', true)" style="font-size: 0.75rem;">
+                        🔄 再診断
+                    </button>
+                `;
+            }
+
+        } catch (err) {
+            modalBody.innerHTML = `
+                <div class="alert alert-danger py-3 mb-0" style="font-size: 0.88rem;">
+                    <i class="fas fa-times-circle me-1"></i> 通信エラーが発生しました: ${err.message}
+                </div>
+            `;
+        }
+    }
+
+    // グローバルへ公開
+    window.openProfitTakingAiModal = openProfitTakingAiModal;
 
     function getHighlightClass(key, value, assetType) {
         if (assetType !== 'jp_stock' && assetType !== 'us_stock') return '';

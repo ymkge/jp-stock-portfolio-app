@@ -612,8 +612,37 @@ def test_profit_taking_grouped_by_code_issue277():
         }
     }
 
+    processed_assets = [
+        {
+            "code": "7203",
+            "name": "トヨタ自動車",
+            "asset_type": "jp_stock",
+            "price": "3,000",
+            "per": "10.0",
+            "pbr": "1.0",
+            "roe": "10.0",
+            "dividend_yield": "3.33",
+            "annual_dividend": "100",
+            "dividend_per_share": "100",
+            "holdings": [
+                {
+                    "account_type": "specific",
+                    "quantity": 100,
+                    "purchase_price": 2000,
+                    "acquisition_price": 2000
+                },
+                {
+                    "account_type": "nisa_growth",
+                    "quantity": 100,
+                    "purchase_price": 2000,
+                    "acquisition_price": 2000
+                }
+            ]
+        }
+    ]
+
     with patch("app.portfolio_manager.load_portfolio", return_value=mock_portfolio), \
-         patch("app.history_manager.get_latest_daily_data_all", return_value=mock_scraped_data), \
+         patch("app._get_processed_asset_data", return_value=(processed_assets, {})), \
          patch("app.history_manager.get_pending_split_alerts", return_value=[]), \
          patch("app.history_manager.save_snapshot"), \
          patch("app.history_manager.save_daily_data"), \
@@ -707,6 +736,46 @@ def test_profit_taking_table_header_visibility():
 
     assert 'profit-taking-table' in js_content
     assert 'color: #ffffff;' in js_content or 'color: #ffffff' in js_content
+
+
+@patch("app.llm_service_instance.diagnose_profit_taking")
+def test_profit_taking_ai_endpoint_and_modal_issue281(mock_diagnose):
+    """Issue #281: 専用APIエンドポイント /api/ai-diagnosis/profit-taking およびモーダル構造の自動テスト"""
+    import os
+
+    mock_diagnose.return_value = {
+        "error": False,
+        "code": "7203",
+        "action": "PARTIAL_SELL",
+        "action_label": "🟡 一部利確・元本回収を推奨",
+        "target_sell_ratio": "保有株の1/2",
+        "fundamentals_analysis": "良好",
+        "profit_taking_advice": "元本回収推奨",
+        "summary": "一部利確推奨"
+    }
+
+    # APIリクエストのテスト
+    response = client.post("/api/ai-diagnosis/profit-taking", json={"code": "7203", "force": False})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["code"] == "7203"
+    assert data["action"] == "PARTIAL_SELL"
+
+    # HTML テンプレートに専用モーダル構造が含まれていること
+    html_path = os.path.join(os.path.dirname(__file__), "..", "templates", "analysis.html")
+    with open(html_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
+
+    assert 'id="profit-taking-ai-modal"' in html_content
+    assert 'id="pt-ai-modal-body"' in html_content
+
+    # static/js/analysis.js に連動処理が含まれていること
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    assert '/api/ai-diagnosis/profit-taking' in js_content
+    assert 'openProfitTakingAiModal' in js_content
 
 
 

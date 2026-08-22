@@ -3499,7 +3499,89 @@ body.dark-mode #profit-taking-modal .modal-footer,
 [data-theme="dark"] #btn-close-profit-taking-modal-footer,
 body.dark-mode #btn-close-profit-taking-modal-footer,
 .dark-mode #btn-close-profit-taking-modal-footer {
-    color: #cbd5e1 !important;
     border-color: #475569 !important;
-    background-color: #1e293b !important;
+    color: #cbd5e1 !important;
+}
+
+/* AI利確診断専用ダイアログモーダル (#profit-taking-ai-modal) 用スタイル (#281) */
+.btn-pt-ai-diagnose {
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+    color: #ffffff !important;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(79, 70, 229, 0.25);
+}
+.btn-pt-ai-diagnose:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(79, 70, 229, 0.4);
+    background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+}
+
+.pt-ai-result-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+}
+.pt-ai-action-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+.pt-ai-badge-hold {
+    background: rgba(34, 197, 94, 0.15);
+    color: #15803d;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+.pt-ai-badge-partial {
+    background: rgba(245, 158, 11, 0.15);
+    color: #b45309;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.pt-ai-badge-full {
+    background: rgba(239, 68, 68, 0.15);
+    color: #b91c1c;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+[data-theme="dark"] #profit-taking-ai-modal .modal-content,
+body.dark-mode #profit-taking-ai-modal .modal-content,
+.dark-mode #profit-taking-ai-modal .modal-content {
+    background-color: var(--card-bg-dark, #1e293b) !important;
+    color: var(--text-color-dark, #f8fafc) !important;
+}
+[data-theme="dark"] .pt-ai-result-card,
+body.dark-mode .pt-ai-result-card,
+.dark-mode .pt-ai-result-card {
+    background: #0f172a !important;
+    border-color: #334155 !important;
+    color: #f1f5f9 !important;
+}
+[data-theme="dark"] .pt-ai-badge-hold,
+body.dark-mode .pt-ai-badge-hold,
+.dark-mode .pt-ai-badge-hold {
+    background: rgba(34, 197, 94, 0.25) !important;
+    color: #4ade80 !important;
+}
+[data-theme="dark"] .pt-ai-badge-partial,
+body.dark-mode .pt-ai-badge-partial,
+.dark-mode .pt-ai-badge-partial {
+    background: rgba(245, 158, 11, 0.25) !important;
+    color: #fbbf24 !important;
+}
+[data-theme="dark"] .pt-ai-badge-full,
+body.dark-mode .pt-ai-badge-full,
+.dark-mode .pt-ai-badge-full {
+    background: rgba(239, 68, 68, 0.25) !important;
+    color: #f87171 !important;
 }

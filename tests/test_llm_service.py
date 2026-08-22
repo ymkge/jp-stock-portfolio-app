@@ -367,5 +367,129 @@ def test_trend_analysis_prompt_and_parsing(policy_manager):
     assert parsed["trend_analysis"] == "75日線下の中期調整圏ですが200日線の上を維持しており押し目買いチャンスです。"
 
 
+@patch("requests.post")
+def test_diagnose_profit_taking_success_and_cache(mock_post, policy_manager):
+    """diagnose_profit_taking の正常動作、パース、キャッシュ独立性のテスト (#281)"""
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "candidates": [{
+            "content": {
+                "parts": [{
+                    "text": '{"action": "PARTIAL_SELL", "action_label": "🟡 一部利確・元本回収を推奨", "target_sell_ratio": "保有株数の1/2", "fundamentals_analysis": "業績好調ですが利回り低下", "profit_taking_advice": "元本回収して他高配当株へ乗り換えを推奨", "summary": "一部利確推奨"}'
+                }]
+            }
+        }]
+    }
+    mock_post.return_value = mock_response
+
+    item = {
+        "code": "4751",
+        "name": "サイバーエージェント",
+        "quantity": 200,
+        "market_value": 600000.0,
+        "profit_loss": 300000.0,
+        "estimated_annual_dividend": 10000.0,
+        "dividend_years_ratio": 30.0,
+        "dividend_yield": 1.67,
+        "profit_taking_badge": {"level": 4, "label": "💎 配当30年分達成"}
+    }
+
+    # 1回目 (リアルタイム呼び出し)
+    res1 = service.diagnose_profit_taking(item)
+    assert res1["error"] is False
+    assert res1["action"] == "PARTIAL_SELL"
+    assert res1["action_label"] == "🟡 一部利確・元本回収を推奨"
+    assert res1["is_cached"] is False
+    assert mock_post.call_count == 1
+
+    # 2回目 (キャッシュHit)
+    res2 = service.diagnose_profit_taking(item)
+    assert res2["error"] is False
+    assert res2["is_cached"] is True
+    assert mock_post.call_count == 1  # requests.post は再実行されない
+
+    # 適合度診断のキャッシュと干渉していないこと
+    assert len(service._cache) == 0
+    assert len(service._profit_taking_cache) == 1
+
+
+def test_build_profit_taking_prompt_override_rule(policy_manager):
+    """プロンプト内に超高騰オーバーライド規則が含まれているかテスト (#281)"""
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+    item = {
+        "code": "7203",
+        "name": "トヨタ自動車",
+        "market_value": 600000,
+        "profit_loss": 200000,
+        "estimated_annual_dividend": 20000,
+        "dividend_years_ratio": 10.0,
+        "dividend_yield": 3.33
+    }
+    prompt = service._build_profit_taking_prompt(item, "長期保有・配当金重視")
+    assert "【超高騰・配当年数とトータル利益に関する絶対優先オーバーライド規則】" in prompt
+    assert "トヨタ自動車 (コード: 7203)" in prompt
+    assert "PARTIAL_SELL" in prompt
+
+
+def test_diagnose_profit_taking_missing_api_key(tmp_path):
+    """利確AI診断におけるAPIキー欠損テスト (#281)"""
+    import requests
+    test_file = os.path.join(tmp_path, "no_key_policy.json")
+    pm = InvestmentPolicyManager(filepath=test_file)
+    service = LLMDiagnosisService(policy_manager=pm)
+
+    with patch.dict(os.environ, {}, clear=True):
+        res = service.diagnose_profit_taking({"code": "7203", "name": "トヨタ自動車"})
+        assert res.get("error") is True
+        assert res.get("error_code") == "NO_API_KEY"
+
+
+@patch("requests.post")
+def test_diagnose_profit_taking_invalid_key_and_errors(mock_post, policy_manager):
+    """利確AI診断における無効APIキー、タイムアウト、壊れたJSONフォールバックテスト (#281)"""
+    import requests
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    # 1. 無効キー (400 API_KEY_INVALID)
+    mock_resp_400 = MagicMock()
+    mock_resp_400.status_code = 400
+    mock_resp_400.text = "API_KEY_INVALID: Key not valid"
+    mock_post.return_value = mock_resp_400
+
+    res_inv = service.diagnose_profit_taking({"code": "7203"})
+    assert res_inv.get("error") is True
+    assert res_inv.get("error_code") == "INVALID_API_KEY"
+
+    # 2. タイムアウト
+    mock_post.side_effect = requests.exceptions.Timeout("Timeout")
+    res_timeout = service.diagnose_profit_taking({"code": "7203"})
+    assert res_timeout.get("error") is True
+    assert res_timeout.get("error_code") == "TIMEOUT_ERROR"
+
+    # 3. 壊れたJSONの安全フォールバック
+    mock_post.side_effect = None
+    mock_resp_invalid_json = MagicMock()
+    mock_resp_invalid_json.status_code = 200
+    mock_resp_invalid_json.json.return_value = {
+        "candidates": [{
+            "content": {
+                "parts": [{
+                    "text": "これは壊れたJSONテキストです。{action: invalid..."
+                }]
+            }
+        }]
+    }
+    mock_post.return_value = mock_resp_invalid_json
+
+    res_bad_json = service.diagnose_profit_taking({"code": "7203"}, force=True)
+    assert res_bad_json.get("error") is False
+    assert res_bad_json.get("action") == "PARTIAL_SELL"
+    assert "🟡 一部利確・元本回収を推奨" in res_bad_json.get("action_label")
+
+
+
 
 

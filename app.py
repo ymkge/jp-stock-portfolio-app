@@ -2031,6 +2031,7 @@ async def get_portfolio_analysis(force: bool = False, cooldown_check: None = Dep
         "previous_summary": previous_summary, # 過去サマリーを追加
     }
 
+
 @app.get("/api/portfolio/analysis/csv")
 async def download_analysis_csv():
     analysis_data = await get_portfolio_analysis()
@@ -2301,3 +2302,99 @@ async def diagnose_stock_with_llm(req: LLMDiagnoseRequest):
     except Exception as e:
         logger.error(f"Error diagnosing stock with LLM: {e}")
         raise HTTPException(status_code=500, detail=f"AI診断の実行中にエラーが発生しました: {str(e)}")
+
+
+class ProfitTakingLLMRequest(BaseModel):
+    code: str
+    force: bool = False
+
+
+@app.post("/api/ai-diagnosis/profit-taking")
+async def diagnose_profit_taking_with_llm(req: ProfitTakingLLMRequest):
+    """利確・銘柄入替検討リストの銘柄に対する AI 利確診断を実行 (#281)"""
+    try:
+        code = req.code
+        all_assets, metadata = await _get_processed_asset_data(force=False)
+        
+        exchange_rates = {"JPY": 1.0}
+        try:
+            usd_jpy_rate = await asyncio.to_thread(scraper.get_exchange_rate, 'USDJPY=X')
+            if usd_jpy_rate:
+                exchange_rates["USD"] = usd_jpy_rate
+        except Exception as ex_err:
+            logger.warning(f"Failed to fetch USDJPY exchange rate: {ex_err}")
+
+        target_item = None
+        for asset in all_assets:
+            if "error" in asset or not asset.get("holdings"):
+                continue
+            if asset.get("code") == code:
+                for holding in asset["holdings"]:
+                    calculated_holding_data = portfolio_manager.calculate_holding_values(
+                        asset, holding, exchange_rates, TAX_CONFIG
+                    )
+                    h_detail = {**asset, **calculated_holding_data}
+                    if target_item is None:
+                        target_item = {
+                            "code": code,
+                            "name": h_detail.get("name"),
+                            "asset_type": h_detail.get("asset_type", "jp_stock"),
+                            "price": h_detail.get("price"),
+                            "per": h_detail.get("per"),
+                            "pbr": h_detail.get("pbr"),
+                            "roe": h_detail.get("roe"),
+                            "eps": h_detail.get("eps"),
+                            "market_cap": h_detail.get("market_cap"),
+                            "quantity": h_detail.get("quantity", 0) or 0,
+                            "market_value": h_detail.get("market_value", 0.0) or 0.0,
+                            "profit_loss": h_detail.get("profit_loss", 0.0) or 0.0,
+                            "estimated_annual_dividend": h_detail.get("estimated_annual_dividend", 0.0) or 0.0,
+                        }
+                    else:
+                        target_item["quantity"] = (target_item.get("quantity") or 0) + (h_detail.get("quantity") or 0)
+                        target_item["market_value"] = (target_item.get("market_value") or 0.0) + (h_detail.get("market_value") or 0.0)
+                        target_item["profit_loss"] = (target_item.get("profit_loss") or 0.0) + (h_detail.get("profit_loss") or 0.0)
+                        target_item["estimated_annual_dividend"] = (target_item.get("estimated_annual_dividend") or 0.0) + (h_detail.get("estimated_annual_dividend") or 0.0)
+
+        if not target_item:
+            raw_portfolio = portfolio_manager.load_portfolio()
+            for asset in raw_portfolio:
+                if asset.get("code") == code:
+                    target_item = {
+                        "code": code,
+                        "name": asset.get("name"),
+                        "asset_type": asset.get("asset_type", "jp_stock"),
+                        "quantity": 0,
+                        "market_value": 0.0,
+                        "profit_loss": 0.0,
+                        "estimated_annual_dividend": 0.0,
+                    }
+                    for holding in asset.get("holdings", []):
+                        target_item["quantity"] += holding.get("quantity", 0) or 0
+
+        if not target_item:
+            raise HTTPException(status_code=400, detail=f"保有銘柄 {code} のデータが見つかりませんでした。")
+        
+        pl = target_item.get("profit_loss", 0.0)
+        div = target_item.get("estimated_annual_dividend", 0.0)
+        mv = target_item.get("market_value", 0.0)
+        
+        if isinstance(pl, (int, float)) and isinstance(div, (int, float)) and pl > 0 and div > 0:
+            pt_signal = portfolio_manager.calculate_profit_taking_signal(pl, div)
+            if pt_signal:
+                target_item["dividend_years_ratio"] = pt_signal["dividend_years_ratio"]
+                target_item["profit_taking_badge"] = pt_signal
+        
+        if isinstance(mv, (int, float)) and mv > 0 and isinstance(div, (int, float)) and div > 0:
+            target_item["dividend_yield"] = round((div / mv) * 100, 2)
+        else:
+            target_item["dividend_yield"] = "N/A"
+            
+        res = llm_service_instance.diagnose_profit_taking(target_item, force=req.force)
+        return res
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in diagnose_profit_taking_with_llm for {req.code}: {e}")
+        raise HTTPException(status_code=500, detail=f"利確AI診断の実行中にエラーが発生しました: {str(e)}")
+

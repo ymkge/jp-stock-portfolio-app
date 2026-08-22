@@ -19,6 +19,7 @@ class LLMDiagnosisService:
     def __init__(self, policy_manager: Optional[InvestmentPolicyManager] = None):
         self.policy_manager = policy_manager or InvestmentPolicyManager()
         self._cache: Dict[str, Dict[str, Any]] = {}
+        self._profit_taking_cache: Dict[str, Dict[str, Any]] = {}
         self._lock = threading.Lock()
 
     def _get_prompt_hash(self, policy_prompt: str) -> str:
@@ -28,6 +29,7 @@ class LLMDiagnosisService:
         """全キャッシュをクリア（投資方針更新時などに使用）"""
         with self._lock:
             self._cache.clear()
+            self._profit_taking_cache.clear()
 
     def diagnose_stock(
         self, 
@@ -398,4 +400,238 @@ fit_levelの基準:
             "business_10y_eval": str(data.get("business_10y_eval", "データなし")),
             "tactical_advice": str(data.get("tactical_advice", "データなし")),
             "summary": str(data.get("summary", "診断が完了しました。"))
+        }
+
+    def diagnose_profit_taking(
+        self,
+        holding_item: Dict[str, Any],
+        force: bool = False,
+        ttl_seconds: int = DEFAULT_TTL_SECONDS
+    ) -> Dict[str, Any]:
+        """
+        利確検討銘柄データと投資方針プロンプトに基づき、Gemini APIを用いて
+        今利益確定すべきか（継続保有 / 一部利確 / 全額利確・銘柄入替）を診断する (#281)。
+        """
+        code = holding_item.get("code", "")
+        asset_type = holding_item.get("asset_type", "jp_stock")
+        cache_key = f"{code}_{asset_type}" if code else ""
+
+        api_key = self.policy_manager.get_effective_api_key()
+        if not api_key:
+            return {
+                "error": True,
+                "error_code": "NO_API_KEY",
+                "message": "Google AI Studio の APIキーが設定されていません。「⚙️ 投資方針設定」から APIキー を入力するか、環境変数 GEMINI_API_KEY を設定してください。"
+            }
+
+        config = self.policy_manager.load_config()
+        selected_model = config.get("selected_model", "gemini-flash-latest")
+        if selected_model not in ["gemini-flash-latest", "gemini-flash-lite-latest"]:
+            selected_model = "gemini-flash-latest"
+
+        policy_prompt = config.get("policy_prompt", "")
+        prompt_hash = self._get_prompt_hash(policy_prompt)
+        now = time.time()
+
+        if not force and cache_key:
+            with self._lock:
+                cached = self._profit_taking_cache.get(cache_key)
+                if cached:
+                    if (now - cached["timestamp"] < ttl_seconds) and (cached.get("prompt_hash") == prompt_hash):
+                        res = dict(cached["result"])
+                        res["is_cached"] = True
+                        res["diagnosed_at"] = cached.get("diagnosed_at", "")
+                        res["model_used"] = cached.get("model_used", selected_model)
+                        return res
+
+        prompt_text = self._build_profit_taking_prompt(holding_item, policy_prompt)
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key}"
+        payload = {
+            "contents": [{
+                "parts": [{"text": prompt_text}]
+            }],
+            "generationConfig": {
+                "temperature": 0.2,
+                "responseMimeType": "application/json"
+            }
+        }
+
+        try:
+            resp = requests.post(url, json=payload, timeout=20)
+            if resp.status_code == 400 and "API_KEY_INVALID" in resp.text:
+                return {
+                    "error": True,
+                    "error_code": "INVALID_API_KEY",
+                    "message": "Google AI Studio の APIキーが無効です。「⚙️ 投資方針設定」で正しい APIキー を設定してください。"
+                }
+            resp.raise_for_status()
+
+            res_json = resp.json()
+            candidates = res_json.get("candidates", [])
+            if not candidates:
+                return {
+                    "error": True,
+                    "error_code": "EMPTY_RESPONSE",
+                    "message": "AIからの応答が空でした。再度お試しください。"
+                }
+
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if not parts:
+                return {
+                    "error": True,
+                    "error_code": "EMPTY_RESPONSE",
+                    "message": "AIからの応答テキストが含まれていません。"
+                }
+
+            raw_text = parts[0].get("text", "")
+            parsed = self._parse_profit_taking_llm_json(raw_text)
+            parsed["error"] = False
+            parsed["code"] = code
+            parsed["name"] = holding_item.get("name", "")
+            parsed["is_cached"] = False
+            diagnosed_at_str = time.strftime("%H:%M", time.localtime(now))
+            parsed["diagnosed_at"] = diagnosed_at_str
+            parsed["model_used"] = selected_model
+
+            if cache_key:
+                with self._lock:
+                    if len(self._profit_taking_cache) >= self.MAX_CACHE_SIZE:
+                        oldest_key = min(self._profit_taking_cache.keys(), key=lambda k: self._profit_taking_cache[k]["timestamp"])
+                        del self._profit_taking_cache[oldest_key]
+                    self._profit_taking_cache[cache_key] = {
+                        "timestamp": now,
+                        "prompt_hash": prompt_hash,
+                        "diagnosed_at": diagnosed_at_str,
+                        "model_used": selected_model,
+                        "result": parsed
+                    }
+
+            return parsed
+
+        except requests.exceptions.Timeout:
+            return {
+                "error": True,
+                "error_code": "TIMEOUT_ERROR",
+                "message": "Gemini API との通信がタイムアウトしました (20秒)。ネットワーク環境を確認の上、再実行してください。"
+            }
+        except requests.exceptions.HTTPError as e:
+            status_code = e.response.status_code if e.response is not None else "Unknown"
+            if status_code == 429:
+                return {
+                    "error": True,
+                    "error_code": "RATE_LIMIT",
+                    "message": "Gemini API の利用制限 (429) に達しました。しばらく時間をおいてから再実行してください。"
+                }
+            return {
+                "error": True,
+                "error_code": f"HTTP_{status_code}",
+                "message": f"Gemini API 通信エラー (HTTP {status_code}) が発生しました。"
+            }
+        except Exception as e:
+            return {
+                "error": True,
+                "error_code": "UNKNOWN_ERROR",
+                "message": f"利確AI診断中に予期せぬエラーが発生しました: {str(e)}"
+            }
+
+    def _build_profit_taking_prompt(self, item: Dict[str, Any], policy_prompt: str) -> str:
+        code = item.get("code", "N/A")
+        name = item.get("name", "N/A")
+        asset_type = item.get("asset_type", "jp_stock")
+        quantity = item.get("quantity", 0)
+        market_value = item.get("market_value", 0.0)
+        profit_loss = item.get("profit_loss", 0.0)
+        estimated_annual_dividend = item.get("estimated_annual_dividend", 0.0)
+        dividend_years_ratio = item.get("dividend_years_ratio", 0.0)
+        dividend_yield = item.get("dividend_yield", "N/A")
+
+        badge = item.get("profit_taking_badge", {})
+        badge_label = badge.get("label", f"配当{dividend_years_ratio}年分達成")
+
+        per = item.get("per", "N/A")
+        pbr = item.get("pbr", "N/A")
+        roe = item.get("roe", "N/A")
+        payout_ratio = item.get("payout_ratio", "N/A")
+
+        prompt = f"""
+あなたは高度なポートフォリオ管理および個別銘柄の利確・銘柄入替戦略を専門とするプロフェッショナルなAIアナリストです。
+現在、ユーザーのポートフォリオに含まれる以下の「利確・銘柄入替検討銘柄」について、利益確定・元本回収・乗り換えの必要性を詳細に評価・診断してください。
+
+### 【ユーザーの投資方針プロンプト】
+{policy_prompt}
+
+### 【対象銘柄の保有・含み益・利確指標データ】
+- 銘柄名: {name} (コード: {code})
+- 資産タイプ: {asset_type}
+- 保有数量: {quantity}
+- 現在評価額: {market_value:,.0f}円
+- 含み益: +{profit_loss:,.0f}円
+- 年間予定配当: {estimated_annual_dividend:,.0f}円
+- 配当年数到達度: {badge_label} (含み益は年間配当の {dividend_years_ratio} 年分に到達)
+- 直近実効配当利回り: {dividend_yield}%
+- PER: {per} / PBR: {pbr} / ROE: {roe} / 配当性向: {payout_ratio}
+
+---
+
+### 【超高騰・配当年数とトータル利益に関する絶対優先オーバーライド規則】
+ユーザーの基本的投資方針が「長期保有・インカムゲイン重視」に設定されている場合であっても、含み益が年間予定配当の20〜30年分以上に達しており、株価高騰によって直近の配当利回りが低下している場合は、そのまま無条件に保有し続けるよりも「一部利確」または「全額利確して他の配当利回り4%以上の優良銘柄へ乗り換える」方が、将来的に受け取れる配当原資およびトータルリターンが圧倒的に向上します。この配当効率および資金回転率の観点を重視して判断してください。
+
+---
+
+### 【回答のフォーマット指示】
+必ず以下のキーを持つ完全な JSON フォーマットのみを出力してください。余計な解説文やマーカーは含めないでください。
+
+```json
+{{
+  "action": "HOLD" または "PARTIAL_SELL" または "FULL_SELL",
+  "action_label": "🟢 継続保有を推奨" または "🟡 一部利確・元本回収を推奨" または "🔴 全額利確・他銘柄へ入替を推奨",
+  "target_sell_ratio": "利確の目安株数・割合 (例: 保有株数の 1/2 を利確、全額利確、売却なし等)",
+  "fundamentals_analysis": "直近業績・指標（PER/PBR/ROE/配当利回り）と割安度・成長性の分析",
+  "profit_taking_advice": "利確・恩株化・乗り換え戦略の具体的アドバイス（トータル配当原資最大化の視点を含む）",
+  "summary": "判定の結論とポイントを1文で要約"
+}}
+```
+"""
+        return prompt.strip()
+
+    def _parse_profit_taking_llm_json(self, raw_text: str) -> Dict[str, Any]:
+        """利確AI診断からのテキスト応答を安全に JSON パースする"""
+        cleaned = raw_text.strip()
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned)
+        if match:
+            cleaned = match.group(1).strip()
+
+        try:
+            data = json.loads(cleaned)
+        except Exception:
+            return {
+                "action": "PARTIAL_SELL",
+                "action_label": "🟡 一部利確・元本回収を推奨",
+                "target_sell_ratio": "要確認 (保有株の 1/3〜1/2 目安)",
+                "fundamentals_analysis": "業績データの詳細解析を実行済みです。",
+                "profit_taking_advice": raw_text[:500],
+                "summary": "AIのテキストに応答フォーマットを調整して提示します。"
+            }
+
+        action = str(data.get("action", "PARTIAL_SELL")).upper()
+        if action not in ["HOLD", "PARTIAL_SELL", "FULL_SELL"]:
+            action = "PARTIAL_SELL"
+
+        action_label = str(data.get("action_label", ""))
+        if not action_label:
+            if action == "HOLD":
+                action_label = "🟢 継続保有を推奨"
+            elif action == "FULL_SELL":
+                action_label = "🔴 全額利確・他銘柄へ入替を推奨"
+            else:
+                action_label = "🟡 一部利確・元本回収を推奨"
+
+        return {
+            "action": action,
+            "action_label": action_label,
+            "target_sell_ratio": str(data.get("target_sell_ratio", "状況に応じて調整")),
+            "fundamentals_analysis": str(data.get("fundamentals_analysis", "直近業績・ファンダメンタルズおよび配当効率の分析を完了しました。")),
+            "profit_taking_advice": str(data.get("profit_taking_advice", "配当原資の最大化とポートフォリオ最適化の観点から助言を作成しました。")),
+            "summary": str(data.get("summary", "AI利確診断が完了しました。"))
         }

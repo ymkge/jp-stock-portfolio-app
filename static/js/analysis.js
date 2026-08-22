@@ -1534,15 +1534,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let tableHtml = `
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0" style="font-size: 0.88rem;">
+                <table class="table table-hover align-middle mb-0 profit-taking-table" style="font-size: 0.88rem;">
                     <thead>
-                        <tr class="table-dark" style="background: linear-gradient(to right, #0f172a, #1e293b);">
-                            <th style="width: 60px;" class="text-center">順位</th>
-                            <th>銘柄名 (コード)</th>
-                            <th class="text-end">現在評価額</th>
-                            <th class="text-end">含み益</th>
-                            <th class="text-end">年間予定配当</th>
-                            <th class="text-center" style="width: 210px;">到達レベル (推薦アクション)</th>
+                        <tr class="table-dark" style="background: linear-gradient(to right, #0f172a, #1e293b); color: #ffffff;">
+                            <th style="width: 60px; color: #ffffff;" class="text-center">順位</th>
+                            <th style="color: #ffffff;">銘柄名 (コード)</th>
+                            <th style="color: #ffffff;" class="text-end">現在評価額</th>
+                            <th style="color: #ffffff;" class="text-end">含み益</th>
+                            <th style="color: #ffffff;" class="text-end">年間予定配当</th>
+                            <th style="width: 210px; color: #ffffff;" class="text-center">到達レベル (推薦アクション)</th>
                         </tr>
                     </thead>
                     <tbody>

@@ -671,6 +671,25 @@ def test_rankings_top20_html_and_js_issue274():
     assert 'tab-gainers-top20' in js_content
 
 
+def test_profit_taking_table_header_visibility():
+    """ホワイトモード時の利確・銘柄入替検討リストテーブルヘッダー白文字固定 (#ffffff) の検証テスト"""
+    import os
+
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    assert '.profit-taking-table thead th' in css_content
+    assert 'color: #ffffff !important' in css_content
+
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    assert 'profit-taking-table' in js_content
+    assert 'color: #ffffff;' in js_content or 'color: #ffffff' in js_content
+
+
 
 
 

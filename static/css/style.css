@@ -3147,6 +3147,18 @@ body.dark-mode .monthly-purchase-tag,
     color: #38bdf8 !important;
 }
 
+/* 利確・銘柄入替検討リストモーダル テーブルヘッダー白文字固定 (#278追補) */
+.profit-taking-table thead tr {
+    background: linear-gradient(to right, #0f172a, #1e293b) !important;
+}
+.profit-taking-table thead th,
+[data-theme="light"] .profit-taking-table thead th,
+body:not(.dark-mode) .profit-taking-table thead th {
+    color: #ffffff !important;
+    background-color: transparent !important;
+    font-weight: 600;
+}
+
 .ranking-tab-btn {
     border: 1px solid #cbd5e1;
     background: #f8fafc;

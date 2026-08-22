@@ -778,6 +778,20 @@ def test_profit_taking_ai_endpoint_and_modal_issue281(mock_diagnose):
     assert 'openProfitTakingAiModal' in js_content
 
 
+def test_profit_taking_ai_modal_reopen_display_flex_issue282():
+    """Issue #282: モーダル2回目以降再オープン時の modal.style.display = 'flex' 復元のアサーションテスト"""
+    import os
+
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    # openProfitTakingAiModal 内で hidden 削除と同時に style.display = 'flex' が設定されていること
+    assert "openProfitTakingAiModal" in js_content
+    assert "modal.style.display = 'flex';" in js_content or "modal.style.display = \"flex\";" in js_content
+    assert "closeProfitTakingAiModal" in js_content
+
+
 
 
 

@@ -1673,6 +1673,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         if (footerMeta) footerMeta.innerHTML = '';
         modal.classList.remove('hidden');
+        modal.style.display = 'flex';
 
         try {
             const response = await fetch('/api/ai-diagnosis/profit-taking', {

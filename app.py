@@ -1997,11 +1997,16 @@ async def get_portfolio_analysis(force: bool = False, cooldown_check: None = Dep
     for code, g in profit_taking_grouped.items():
         pl = g["profit_loss"]
         div = g["estimated_annual_dividend"]
+        mv = g["market_value"]
         if isinstance(pl, (int, float)) and isinstance(div, (int, float)) and pl > 0 and div > 0:
             pt_signal = portfolio_manager.calculate_profit_taking_signal(pl, div)
             if pt_signal and pt_signal.get("level", 0) >= 1:
                 g["dividend_years_ratio"] = pt_signal["dividend_years_ratio"]
                 g["profit_taking_badge"] = pt_signal
+                if isinstance(mv, (int, float)) and mv > 0:
+                    g["dividend_yield"] = round((div / mv) * 100, 2)
+                else:
+                    g["dividend_yield"] = None
                 profit_taking_candidates.append(g)
 
     profit_taking_candidates = sorted(profit_taking_candidates, key=lambda x: x["dividend_years_ratio"], reverse=True)

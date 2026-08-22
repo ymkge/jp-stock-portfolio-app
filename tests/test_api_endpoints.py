@@ -634,7 +634,26 @@ def test_profit_taking_grouped_by_code_issue277():
         assert toyota["estimated_annual_dividend"] == 20000.0
         assert toyota["market_value"] == 600000.0
         assert toyota["dividend_years_ratio"] == 10.0
+        assert toyota["dividend_yield"] == 3.33
         assert toyota["profit_taking_badge"]["level"] == 1
+
+
+def test_profit_taking_dividend_yield_issue280():
+    """Issue #280: 利確検討リストへの直近配当利回り(%)表示追加の自動テスト"""
+    import os
+
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    assert '.yield-pill-highlight' in css_content
+
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    assert '配当利回り' in js_content
+    assert 'yield-pill-highlight' in js_content
 
 
 def test_profit_taking_masked_amount_issue278():

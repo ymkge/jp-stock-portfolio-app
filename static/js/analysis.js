@@ -1542,6 +1542,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <th style="color: #ffffff;" class="text-end">現在評価額</th>
                             <th style="color: #ffffff;" class="text-end">含み益</th>
                             <th style="color: #ffffff;" class="text-end">年間予定配当</th>
+                            <th style="color: #ffffff; width: 95px;" class="text-end">配当利回り</th>
                             <th style="width: 210px; color: #ffffff;" class="text-center">到達レベル (推薦アクション)</th>
                         </tr>
                     </thead>
@@ -1558,6 +1559,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const mvStr = isAmountVisible ? formatNumber(item.market_value, 0) + '円' : '***円';
             const plStr = isAmountVisible ? '+' + formatNumber(item.profit_loss, 0) + '円' : '***円';
             const divStr = isAmountVisible ? formatNumber(item.estimated_annual_dividend, 0) + '円' : '***円';
+            
+            const yieldVal = item.dividend_yield !== undefined && item.dividend_yield !== null 
+                ? item.dividend_yield 
+                : (item.market_value > 0 && item.estimated_annual_dividend > 0 ? ((item.estimated_annual_dividend / item.market_value) * 100) : null);
+            const yieldStr = yieldVal !== null && !isNaN(yieldVal) ? yieldVal.toFixed(2) + '%' : 'N/A';
+
             const ratioText = isAmountVisible ? (item.dividend_years_ratio !== undefined ? item.dividend_years_ratio + '年分' : '') : '***年分';
             const badge = item.profit_taking_badge || {};
 
@@ -1580,6 +1587,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="profit-pill-highlight">${plStr}</span>
                     </td>
                     <td class="text-end numeric">${divStr}</td>
+                    <td class="text-end numeric">
+                        <span class="yield-pill-highlight">${yieldStr}</span>
+                    </td>
                     <td class="text-center">
                         <span class="profit-capsule-badge ${capsuleClass}" title="${tooltipText}" style="cursor: help;">
                             <span>${badge.icon || ''}</span>

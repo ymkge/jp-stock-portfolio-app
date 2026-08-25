@@ -3586,3 +3586,38 @@ body.dark-mode .pt-ai-badge-full,
     background: rgba(239, 68, 68, 0.25) !important;
     color: #f87171 !important;
 }
+
+/* AI利確診断 再診断ピルボタン (#287) */
+.pt-ai-retry-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #4f46e5 !important;
+    background: rgba(99, 102, 241, 0.1);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+}
+.pt-ai-retry-btn:hover {
+    background: rgba(99, 102, 241, 0.2);
+    color: #4338ca !important;
+}
+
+[data-theme="dark"] .pt-ai-retry-btn,
+body.dark-mode .pt-ai-retry-btn,
+.dark-mode .pt-ai-retry-btn {
+    color: #818cf8 !important;
+    background: rgba(99, 102, 241, 0.2) !important;
+    border-color: rgba(129, 140, 248, 0.4) !important;
+}
+[data-theme="dark"] .pt-ai-retry-btn:hover,
+body.dark-mode .pt-ai-retry-btn:hover,
+.dark-mode .pt-ai-retry-btn:hover {
+    background: rgba(99, 102, 241, 0.35) !important;
+    color: #a5b4fc !important;
+}

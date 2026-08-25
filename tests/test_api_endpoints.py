@@ -836,6 +836,28 @@ def test_profit_taking_ai_blank_modal_fix_issue286():
     assert "color: #f8fafc !important;" in css_content
 
 
+def test_profit_taking_ai_retry_btn_visibility_issue287():
+    """Issue #287: 利確AI診断モーダルの再診断ボタンの視認性・スタイリッシュピルクラスの検証"""
+    import os
+
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    # 1. style.css における .pt-ai-retry-btn のライト/ダークテーマ文字色指定検証
+    assert ".pt-ai-retry-btn" in css_content
+    assert "color: #4f46e5 !important;" in css_content
+    assert "color: #818cf8 !important;" in css_content
+
+    # 2. analysis.js 内で btn-link ではなく pt-ai-retry-btn が適用されていることの検証
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    assert "class=\"pt-ai-retry-btn ms-2\"" in js_content
+
+
+
 
 
 

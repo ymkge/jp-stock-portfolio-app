@@ -1692,7 +1692,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
                 if (footerMeta) {
                     footerMeta.innerHTML = `
-                        <button type="button" class="btn btn-link btn-sm text-decoration-none p-0 ms-2" onclick="openProfitTakingAiModal('${code}', true)" style="font-size: 0.75rem;">
+                        <button type="button" class="pt-ai-retry-btn ms-2" onclick="openProfitTakingAiModal('${code}', true)" aria-label="銘柄のAI診断を再実行">
                             🔄 再診断をお試しください
                         </button>
                     `;
@@ -1756,7 +1756,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (footerMeta) {
                 footerMeta.innerHTML = `
                     ${cacheTag}
-                    <button type="button" class="btn btn-link btn-sm text-decoration-none p-0 ms-2" onclick="openProfitTakingAiModal('${code}', true)" style="font-size: 0.75rem;">
+                    <button type="button" class="pt-ai-retry-btn ms-2" onclick="openProfitTakingAiModal('${code}', true)" aria-label="銘柄のAI診断を再実行">
                         🔄 再診断
                     </button>
                 `;

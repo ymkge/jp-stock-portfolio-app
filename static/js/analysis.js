@@ -1683,13 +1683,20 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             const data = await response.json();
-            if (!response.ok || data.error) {
-                const errMsg = data.message || 'AI診断の実行中にエラーが発生しました。';
+            if (!response.ok || data.error || !data.action) {
+                const errMsg = data.message || 'AI利確診断の実行中にエラーが発生しました。';
                 modalBody.innerHTML = `
                     <div class="alert alert-warning py-3 mb-0" style="font-size: 0.88rem;">
                         <i class="fas fa-exclamation-triangle me-1"></i> ${errMsg}
                     </div>
                 `;
+                if (footerMeta) {
+                    footerMeta.innerHTML = `
+                        <button type="button" class="btn btn-link btn-sm text-decoration-none p-0 ms-2" onclick="openProfitTakingAiModal('${code}', true)" style="font-size: 0.75rem;">
+                            🔄 再診断をお試しください
+                        </button>
+                    `;
+                }
                 return;
             }
 
@@ -1702,6 +1709,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? `<span class="badge bg-success-subtle text-success border border-success-subtle me-1">⚡ キャッシュ表示 (${data.diagnosed_at || ''})</span>`
                 : `<span class="badge bg-indigo-subtle text-indigo border border-indigo-subtle me-1" style="background: rgba(99, 102, 241, 0.12); color: #4f46e5;">🤖 リアルタイム診断 (${data.diagnosed_at || ''})</span>`;
 
+            const fundamentalsText = data.fundamentals_analysis || '直近業績・ファンダメンタルズおよび配当効率の分析を完了しました。';
+            const adviceText = data.profit_taking_advice || '配当原資の最大化とポートフォリオ最適化の観点から助言を作成しました。';
+
             modalBody.innerHTML = `
                 <div class="pt-ai-result-card text-center mb-3 py-3" style="background: var(--card-bg, #f8fafc); border-radius: 10px;">
                     <div class="text-muted small mb-1" style="font-size: 0.78rem;">AIの判定結果</div>
@@ -1709,7 +1719,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${data.action_label || 'AI判定完了'}
                     </div>
                     <div class="fw-bold text-indigo mt-1" style="font-size: 0.92rem; color: #4f46e5;">
-                        💡 ${data.target_sell_ratio || ''}
+                        💡 ${data.target_sell_ratio || '状況に応じて調整'}
                     </div>
                 </div>
 
@@ -1729,7 +1739,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         📊 業績動向とファンダメンタルズ評価
                     </div>
                     <div style="font-size: 0.85rem; line-height: 1.6;">
-                        ${data.fundamentals_analysis || ''}
+                        ${fundamentalsText}
                     </div>
                 </div>
 
@@ -1738,7 +1748,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         💡 利確・恩株化・銘柄入替のアドバイス
                     </div>
                     <div style="font-size: 0.85rem; line-height: 1.6;">
-                        ${data.profit_taking_advice || ''}
+                        ${adviceText}
                     </div>
                 </div>
             `;

@@ -814,6 +814,29 @@ def test_profit_taking_ai_industry_growth_evaluation_issue283():
     assert "data.industry_growth_evaluation" in js_content
 
 
+def test_profit_taking_ai_blank_modal_fix_issue286():
+    """Issue #286: 利確AI診断モーダルの白紙表示不具合修正の検証 (JSエラーチェック強化 ✕ CSS文字色明示)"""
+    import os
+
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    # 1. JS側でのエラー多重防衛条件の検証
+    assert "!data.action" in js_content
+    assert "🔄 再診断をお試しください" in js_content
+
+    # 2. CSS文字色明示指定の検証
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    assert ".pt-ai-result-card" in css_content
+    assert "color: #0f172a !important;" in css_content
+    assert "color: #f8fafc !important;" in css_content
+
+
+
 
 
 

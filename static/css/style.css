@@ -3528,6 +3528,7 @@ body.dark-mode #btn-close-profit-taking-modal-footer,
     border-radius: 10px;
     padding: 14px 16px;
     margin-bottom: 12px;
+    color: #0f172a !important;
 }
 .pt-ai-action-badge {
     display: inline-flex;
@@ -3565,7 +3566,7 @@ body.dark-mode .pt-ai-result-card,
 .dark-mode .pt-ai-result-card {
     background: #0f172a !important;
     border-color: #334155 !important;
-    color: #f1f5f9 !important;
+    color: #f8fafc !important;
 }
 [data-theme="dark"] .pt-ai-badge-hold,
 body.dark-mode .pt-ai-badge-hold,

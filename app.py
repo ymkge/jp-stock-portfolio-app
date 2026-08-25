@@ -2338,6 +2338,7 @@ async def diagnose_profit_taking_with_llm(req: ProfitTakingLLMRequest):
                         target_item = {
                             "code": code,
                             "name": h_detail.get("name"),
+                            "industry": h_detail.get("industry", "未設定・不明"),
                             "asset_type": h_detail.get("asset_type", "jp_stock"),
                             "price": h_detail.get("price"),
                             "per": h_detail.get("per"),
@@ -2345,6 +2346,7 @@ async def diagnose_profit_taking_with_llm(req: ProfitTakingLLMRequest):
                             "roe": h_detail.get("roe"),
                             "eps": h_detail.get("eps"),
                             "market_cap": h_detail.get("market_cap"),
+                            "payout_ratio": h_detail.get("payout_ratio"),
                             "quantity": h_detail.get("quantity", 0) or 0,
                             "market_value": h_detail.get("market_value", 0.0) or 0.0,
                             "profit_loss": h_detail.get("profit_loss", 0.0) or 0.0,
@@ -2363,6 +2365,7 @@ async def diagnose_profit_taking_with_llm(req: ProfitTakingLLMRequest):
                     target_item = {
                         "code": code,
                         "name": asset.get("name"),
+                        "industry": asset.get("industry", "未設定・不明"),
                         "asset_type": asset.get("asset_type", "jp_stock"),
                         "quantity": 0,
                         "market_value": 0.0,

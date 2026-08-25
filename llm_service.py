@@ -538,6 +538,7 @@ fit_levelの基準:
     def _build_profit_taking_prompt(self, item: Dict[str, Any], policy_prompt: str) -> str:
         code = item.get("code", "N/A")
         name = item.get("name", "N/A")
+        industry = item.get("industry", "未設定・不明")
         asset_type = item.get("asset_type", "jp_stock")
         quantity = item.get("quantity", 0)
         market_value = item.get("market_value", 0.0)
@@ -552,6 +553,8 @@ fit_levelの基準:
         per = item.get("per", "N/A")
         pbr = item.get("pbr", "N/A")
         roe = item.get("roe", "N/A")
+        eps = item.get("eps", "N/A")
+        market_cap = item.get("market_cap", "N/A")
         payout_ratio = item.get("payout_ratio", "N/A")
 
         prompt = f"""
@@ -561,8 +564,9 @@ fit_levelの基準:
 ### 【ユーザーの投資方針プロンプト】
 {policy_prompt}
 
-### 【対象銘柄の保有・含み益・利確指標データ】
+### 【対象銘柄の保有・含み益・利確指標・ファンダメンタルズデータ】
 - 銘柄名: {name} (コード: {code})
+- 所属業種/セクター: {industry}
 - 資産タイプ: {asset_type}
 - 保有数量: {quantity}
 - 現在評価額: {market_value:,.0f}円
@@ -570,12 +574,16 @@ fit_levelの基準:
 - 年間予定配当: {estimated_annual_dividend:,.0f}円
 - 配当年数到達度: {badge_label} (含み益は年間配当の {dividend_years_ratio} 年分に到達)
 - 直近実効配当利回り: {dividend_yield}%
-- PER: {per} / PBR: {pbr} / ROE: {roe} / 配当性向: {payout_ratio}
+- 時価総額: {market_cap} / PER: {per} / PBR: {pbr} / ROE: {roe} / EPS: {eps} / 配当性向: {payout_ratio}
 
 ---
 
-### 【超高騰・配当年数とトータル利益に関する絶対優先オーバーライド規則】
-ユーザーの基本的投資方針が「長期保有・インカムゲイン重視」に設定されている場合であっても、含み益が年間予定配当の20〜30年分以上に達しており、株価高騰によって直近の配当利回りが低下している場合は、そのまま無条件に保有し続けるよりも「一部利確」または「全額利確して他の配当利回り4%以上の優良銘柄へ乗り換える」方が、将来的に受け取れる配当原資およびトータルリターンが圧倒的に向上します。この配当効率および資金回転率の観点を重視して判断してください。
+### 【重要判定規則：業種将来性・日本政府国策投資と利確の適正バランシングルール】
+1. **業種将来性・日本政府の国策投資方針の重視（安易な全額利確の抑制）**:
+   - 銘柄の所属業種（{industry}）が今後も需要拡大が見込まれる成長分野（例: IT/DX、半導体、精密機器、ヘルスケア、防衛・宇宙、インフラ老朽化対策、グローバル成長分野など）であるか、または**日本政府が長期的な政策投資・予算投入を行っている国策テーマ（GX/脱炭素、デジタル基盤、経済安保・半導体支援、防衛産業等）**に該当し、かつ高ROEやEPS成長など企業の稼ぐ力が強い場合、株価高騰によって配当利回りが低下していても**安易に「FULL_SELL（全額利確）」を判定してはなりません**。
+   - このような優良・国策成長銘柄に対しては「HOLD（継続保有）」、または投入元本のみを利確回収して残りをリスクフリーで育てる「PARTIAL_SELL（一部利確・恩株化）」を優先推奨してください。
+2. **「FULL_SELL（全額利確）」を適用する厳格な条件**:
+   - 所属業種自体の将来性が乏しく（成熟・衰退分野）、政府の政策支援やメガトレンドの追い風もなく、業績（純利益・EPS）も伸び悩みまたは悪化傾向にあり、かつ配当利回りも低下してインカム・キャピタルの両面で魅力が薄れた場合に限定して適用してください。
 
 ---
 
@@ -587,7 +595,8 @@ fit_levelの基準:
   "action": "HOLD" または "PARTIAL_SELL" または "FULL_SELL",
   "action_label": "🟢 継続保有を推奨" または "🟡 一部利確・元本回収を推奨" または "🔴 全額利確・他銘柄へ入替を推奨",
   "target_sell_ratio": "利確の目安株数・割合 (例: 保有株数の 1/2 を利確、全額利確、売却なし等)",
-  "fundamentals_analysis": "直近業績・指標（PER/PBR/ROE/配当利回り）と割安度・成長性の分析",
+  "industry_growth_evaluation": "所属業種の将来性、日本政府の国策投資・メガトレンド適合度、成長ストーリーの評価",
+  "fundamentals_analysis": "直近業績・収益性指標（PER/PBR/ROE/EPS/時価総額）の分析",
   "profit_taking_advice": "利確・恩株化・乗り換え戦略の具体的アドバイス（トータル配当原資最大化の視点を含む）",
   "summary": "判定の結論とポイントを1文で要約"
 }}
@@ -609,6 +618,7 @@ fit_levelの基準:
                 "action": "PARTIAL_SELL",
                 "action_label": "🟡 一部利確・元本回収を推奨",
                 "target_sell_ratio": "要確認 (保有株の 1/3〜1/2 目安)",
+                "industry_growth_evaluation": "所属業種の成長性と国策・メガトレンドへの適合性を総合評価しています。",
                 "fundamentals_analysis": "業績データの詳細解析を実行済みです。",
                 "profit_taking_advice": raw_text[:500],
                 "summary": "AIのテキストに応答フォーマットを調整して提示します。"
@@ -631,7 +641,8 @@ fit_levelの基準:
             "action": action,
             "action_label": action_label,
             "target_sell_ratio": str(data.get("target_sell_ratio", "状況に応じて調整")),
+            "industry_growth_evaluation": str(data.get("industry_growth_evaluation", "")),
             "fundamentals_analysis": str(data.get("fundamentals_analysis", "直近業績・ファンダメンタルズおよび配当効率の分析を完了しました。")),
             "profit_taking_advice": str(data.get("profit_taking_advice", "配当原資の最大化とポートフォリオ最適化の観点から助言を作成しました。")),
-            "summary": str(data.get("summary", "AI利確診断が完了しました。"))
+            "summary": str(data.get("summary", "利確AI診断を完了しました。"))
         }

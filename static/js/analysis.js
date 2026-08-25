@@ -1713,6 +1713,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>
 
+                ${data.industry_growth_evaluation ? `
+                <div class="pt-ai-result-card mb-3">
+                    <div class="fw-bold mb-1" style="font-size: 0.88rem; color: #8b5cf6;">
+                        🚀 業種将来性・国策・成長力評価
+                    </div>
+                    <div style="font-size: 0.85rem; line-height: 1.6;">
+                        ${data.industry_growth_evaluation}
+                    </div>
+                </div>
+                ` : ''}
+
                 <div class="pt-ai-result-card mb-3">
                     <div class="fw-bold mb-1" style="font-size: 0.88rem; color: #0284c7;">
                         📊 業績動向とファンダメンタルズ評価

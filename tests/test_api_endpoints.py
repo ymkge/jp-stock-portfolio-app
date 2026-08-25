@@ -738,8 +738,17 @@ def test_profit_taking_table_header_visibility():
     assert 'color: #ffffff;' in js_content or 'color: #ffffff' in js_content
 
 
+@patch("app._get_processed_asset_data")
+@patch("app.scraper.get_exchange_rate", return_value=155.0)
 @patch("app.llm_service_instance.diagnose_profit_taking")
-def test_profit_taking_ai_endpoint_and_modal_issue281(mock_diagnose):
+def test_profit_taking_ai_endpoint_and_modal_issue281(mock_diagnose, mock_rate, mock_get_assets):
+    mock_get_assets.return_value = ([{
+        "code": "7203",
+        "name": "トヨタ自動車",
+        "industry": "輸送用機器",
+        "asset_type": "jp_stock",
+        "holdings": [{"quantity": 100, "acquisition_price": 2000}]
+    }], {})
     """Issue #281: 専用APIエンドポイント /api/ai-diagnosis/profit-taking およびモーダル構造の自動テスト"""
     import os
 
@@ -790,6 +799,20 @@ def test_profit_taking_ai_modal_reopen_display_flex_issue282():
     assert "openProfitTakingAiModal" in js_content
     assert "modal.style.display = 'flex';" in js_content or "modal.style.display = \"flex\";" in js_content
     assert "closeProfitTakingAiModal" in js_content
+
+
+def test_profit_taking_ai_industry_growth_evaluation_issue283():
+    """Issue #283: 利確AI診断での業種将来性・国策・成長力評価カードの描画および引き渡しテスト"""
+    import os
+
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    # JSモーダルレンダリング内に「🚀 業種将来性・国策・成長力評価」が含まれていること
+    assert "🚀 業種将来性・国策・成長力評価" in js_content
+    assert "data.industry_growth_evaluation" in js_content
+
 
 
 

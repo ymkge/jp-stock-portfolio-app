@@ -429,7 +429,7 @@ def test_build_profit_taking_prompt_override_rule(policy_manager):
         "dividend_yield": 3.33
     }
     prompt = service._build_profit_taking_prompt(item, "長期保有・配当金重視")
-    assert "【超高騰・配当年数とトータル利益に関する絶対優先オーバーライド規則】" in prompt
+    assert "【重要判定規則：業種将来性・日本政府国策投資と利確の適正バランシングルール】" in prompt
     assert "トヨタ自動車 (コード: 7203)" in prompt
     assert "PARTIAL_SELL" in prompt
 
@@ -488,6 +488,39 @@ def test_diagnose_profit_taking_invalid_key_and_errors(mock_post, policy_manager
     assert res_bad_json.get("error") is False
     assert res_bad_json.get("action") == "PARTIAL_SELL"
     assert "🟡 一部利確・元本回収を推奨" in res_bad_json.get("action_label")
+    assert "industry_growth_evaluation" in res_bad_json
+
+
+def test_build_profit_taking_prompt_industry_and_policy(policy_manager):
+    """利確AI診断プロンプトにおける業種、国策投資キーワード、および拡充ファンダメンタルズの検証 (#283)"""
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+    holding_item = {
+        "code": "7203",
+        "name": "トヨタ自動車",
+        "industry": "輸送用機器",
+        "asset_type": "jp_stock",
+        "quantity": 100,
+        "market_value": 300000.0,
+        "profit_loss": 100000.0,
+        "estimated_annual_dividend": 9000.0,
+        "dividend_years_ratio": 11.1,
+        "dividend_yield": "3.00",
+        "per": "10.2",
+        "pbr": "1.1",
+        "roe": "12.5",
+        "eps": "250.0",
+        "market_cap": "40兆円",
+        "payout_ratio": "30.0"
+    }
+
+    prompt = service._build_profit_taking_prompt(holding_item, "国策成長投資を重視する方針")
+    assert "所属業種/セクター: 輸送用機器" in prompt
+    assert "時価総額: 40兆円" in prompt
+    assert "EPS: 250.0" in prompt
+    assert "日本政府が長期的な政策投資・予算投入を行っている国策テーマ" in prompt
+    assert "安易に「FULL_SELL（全額利確）」を判定してはなりません" in prompt
+    assert "industry_growth_evaluation" in prompt
+
 
 
 

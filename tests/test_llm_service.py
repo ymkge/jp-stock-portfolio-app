@@ -429,7 +429,7 @@ def test_build_profit_taking_prompt_override_rule(policy_manager):
         "dividend_yield": 3.33
     }
     prompt = service._build_profit_taking_prompt(item, "長期保有・配当金重視")
-    assert "【重要判定規則：業種将来性・日本政府国策投資と利確の適正バランシングルール】" in prompt
+    assert "【重要判定規則：業種将来性・日本政府国策投資・株主還元姿勢と利確の適正バランシングルール】" in prompt
     assert "トヨタ自動車 (コード: 7203)" in prompt
     assert "PARTIAL_SELL" in prompt
 
@@ -520,6 +520,38 @@ def test_build_profit_taking_prompt_industry_and_policy(policy_manager):
     assert "日本政府が長期的な政策投資・予算投入を行っている国策テーマ" in prompt
     assert "安易に「FULL_SELL（全額利確）」を判定してはなりません" in prompt
     assert "industry_growth_evaluation" in prompt
+
+
+def test_build_profit_taking_prompt_doe_and_dividend_policy_issue285(policy_manager):
+    """Issue #285: 利確AI診断プロンプトにおけるDOE、連続増配年数、および累進配当優遇ルールの検証"""
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+    holding_item = {
+        "code": "8309",
+        "name": "三井住友トラスト",
+        "industry": "銀行業",
+        "asset_type": "jp_stock",
+        "quantity": 100,
+        "market_value": 400000.0,
+        "profit_loss": 150000.0,
+        "estimated_annual_dividend": 16000.0,
+        "dividend_years_ratio": 9.375,
+        "dividend_yield": "4.00",
+        "per": "11.0",
+        "pbr": "0.7",
+        "roe": "8.5",
+        "eps": "300.0",
+        "market_cap": "3兆円",
+        "payout_ratio": "40.0",
+        "doe": 4.5,
+        "consecutive_increase_years": 5
+    }
+
+    prompt = service._build_profit_taking_prompt(holding_item, "累進配当方針・DOE採用企業重視")
+    assert "DOE: 4.5%" in prompt
+    assert "還元姿勢: 5年連続増配" in prompt
+    assert "累進配当方針・DOE導入・株主還元姿勢の重視（減配リスク抑制）" in prompt
+    assert "減配リスクが極めて低く配当の安定性・成長性が担保されている銘柄" in prompt
+
 
 
 

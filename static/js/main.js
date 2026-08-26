@@ -1725,6 +1725,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- バックグラウンド同期進捗バナー制御 (#262) ---
     let syncIntervalId = null;
 
+    let syncCompletedTimerId = null;
+
     async function checkSyncStatus() {
         try {
             const response = await fetch('/api/portfolio/sync_status');
@@ -1735,6 +1737,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!statusData.is_syncing && statusData.status === 'idle') {
                 bannerEl.classList.add('hidden');
+                if (syncCompletedTimerId) { clearTimeout(syncCompletedTimerId); syncCompletedTimerId = null; }
                 if (syncIntervalId) { clearInterval(syncIntervalId); syncIntervalId = null; }
                 return;
             }
@@ -1744,6 +1747,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (statusData.is_syncing && statusData.status === 'syncing') {
                 isSyncing = true;
+                if (syncCompletedTimerId) { clearTimeout(syncCompletedTimerId); syncCompletedTimerId = null; }
                 if (updateReportContainer) updateReportContainer.classList.add('hidden');
                 bannerEl.classList.add('status-syncing');
                 const currName = statusData.current_name || statusData.current_code || '';
@@ -1758,10 +1762,29 @@ document.addEventListener('DOMContentLoaded', () => {
                     const lastTime = statusData.last_completed_at ? new Date(statusData.last_completed_at).toLocaleString() : '';
                     bannerEl.innerHTML = `
                         <span>✅ 最新データへの更新が完了しました (${lastTime})</span>
-                        <button type="button" onclick="location.reload()" class="btn-outline" style="padding: 2px 8px; font-size: 0.75rem; margin-left: 10px;">画面を更新</button>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <button type="button" onclick="location.reload()" class="btn-outline" style="padding: 2px 8px; font-size: 0.75rem;">画面を更新</button>
+                            <button type="button" class="disclaimer-close-btn btn-close-sync-status" title="閉じる" aria-label="閉じる">&times;</button>
+                        </div>
                     `;
+
+                    const btnCloseSync = bannerEl.querySelector('.btn-close-sync-status');
+                    if (btnCloseSync) {
+                        btnCloseSync.onclick = () => {
+                            bannerEl.classList.add('hidden');
+                            if (syncCompletedTimerId) { clearTimeout(syncCompletedTimerId); syncCompletedTimerId = null; }
+                        };
+                    }
+
+                    if (syncCompletedTimerId) clearTimeout(syncCompletedTimerId);
+                    syncCompletedTimerId = setTimeout(() => {
+                        bannerEl.classList.add('hidden');
+                        syncCompletedTimerId = null;
+                    }, 5000);
+
                     if (syncIntervalId) { clearInterval(syncIntervalId); syncIntervalId = null; }
                 } else if (statusData.status === 'circuit_broken') {
+                    if (syncCompletedTimerId) { clearTimeout(syncCompletedTimerId); syncCompletedTimerId = null; }
                     bannerEl.classList.add('status-circuit-broken');
                     bannerEl.innerHTML = `
                         <span>⚠️ ${statusData.error_message || 'アクセス制限を検知したため安全停止しました'}</span>
@@ -1783,25 +1806,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     initSyncStatusPolling();
 
-    // 免責事項バナーの制御 (閉じる / 再表示 & localStorage 連携)
-    const btnCloseDisclaimer = document.getElementById('btn-close-disclaimer');
-    const btnRestoreDisclaimer = document.getElementById('btn-restore-disclaimer');
-
-    if (btnCloseDisclaimer) {
-        btnCloseDisclaimer.addEventListener('click', () => {
-            document.documentElement.classList.add('disclaimer-closed');
-            localStorage.setItem('disclaimer_banner_closed', 'true');
-        });
-    }
-
-    if (btnRestoreDisclaimer) {
-        btnRestoreDisclaimer.addEventListener('click', () => {
-            document.documentElement.classList.remove('disclaimer-closed');
-            localStorage.removeItem('disclaimer_banner_closed');
-            const topBanner = document.getElementById('top-disclaimer-banner');
-            if (topBanner) {
-                topBanner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
-        });
+    // 過去の免責バナー閉じる記憶キーの自動クリーンアップ (常時表示仕様 #288)
+    if (localStorage.getItem('disclaimer_banner_closed')) {
+        localStorage.removeItem('disclaimer_banner_closed');
     }
 });

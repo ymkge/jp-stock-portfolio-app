@@ -7,14 +7,11 @@
     <link rel="stylesheet" href="/static/css/style.css?v=3.2">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
-        // テーマおよび免責バナー表示の初期適用（チラつき防止）
+        // テーマ表示の初期適用（チラつき防止）
         (function() {
             const theme = localStorage.getItem('theme');
             if (theme === 'dark') {
                 document.documentElement.classList.add('dark-mode');
-            }
-            if (localStorage.getItem('disclaimer_banner_closed') === 'true') {
-                document.documentElement.classList.add('disclaimer-closed');
             }
         })();
     </script>
@@ -39,13 +36,12 @@
                 </div>
             </header>
 
-            <!-- 免責事項スリムバナー -->
+            <!-- 免責事項スリムバナー (常時表示仕様 #288) -->
             <div id="top-disclaimer-banner" class="top-disclaimer-banner" role="region" aria-label="免責事項通知">
                 <span class="disclaimer-icon">⚠️</span>
                 <span class="disclaimer-text">
                     <strong>免責事項:</strong> 本アプリで提供される情報・指標・売買シグナルおよびAI診断結果は一般的な情報提供を目的としており、投資勧誘や個別助言を目的としたものではありません。投資の最終決定はご自身の判断と自己責任で行ってください。運用に伴う損害・損失について開発者および運営者は一切の責任を負いません。
                 </span>
-                <button type="button" id="btn-close-disclaimer" class="disclaimer-close-btn" title="免責事項バナーを閉じる" aria-label="閉じる">&times;</button>
             </div>
 
             <!-- バックグラウンド同期進捗バナー (#262) -->
@@ -305,7 +301,6 @@
                     </p>
                     <div class="footer-bottom">
                         <span>&copy; JP Stock Portfolio App. All rights reserved.</span>
-                        <button type="button" id="btn-restore-disclaimer" class="btn-restore-disclaimer">🔗 免責バナーを再表示</button>
                     </div>
                 </div>
             </footer>

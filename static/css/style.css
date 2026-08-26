@@ -2448,12 +2448,8 @@ body.dark-mode #industry-kpi-table tbody tr:hover,
 }
 
 /* ==========================================
-   Disclaimer Banner & Footer (Issue #247)
+   Disclaimer Banner & Footer (Issue #247, #288)
    ========================================== */
-html.disclaimer-closed #top-disclaimer-banner {
-    display: none !important;
-}
-
 .top-disclaimer-banner {
     display: flex;
     align-items: flex-start;
@@ -2553,20 +2549,6 @@ html.disclaimer-closed #top-disclaimer-banner {
     padding-top: 8px;
     border-top: 1px dashed var(--border-color, #cbd5e1);
     font-size: 0.75rem;
-}
-
-.btn-restore-disclaimer {
-    background: transparent;
-    border: none;
-    color: var(--primary-color, #3b82f6);
-    font-size: 0.75rem;
-    cursor: pointer;
-    text-decoration: underline;
-    padding: 0;
-}
-
-.btn-restore-disclaimer:hover {
-    color: var(--primary-hover-color, #2563eb);
 }
 
 /* --------------------------------------------------

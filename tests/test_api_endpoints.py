@@ -120,7 +120,7 @@ def test_dividend_history_chart_tooltip_retention():
 
 
 def test_disclaimer_banner_and_footer_in_html():
-    """トップ画面 (/) および分析画面 (/analysis) に免責事項バナー・フッター・法的4要素・AIモーダル注記が正しく含まれていることを検証"""
+    """トップ画面 (/) および分析画面 (/analysis) に免責事項バナー・フッター・法的4要素が常時表示され、閉じるボタンが不在であることを検証"""
     res_index = client.get("/")
     assert res_index.status_code == 200
     assert "top-disclaimer-banner" in res_index.text
@@ -132,8 +132,10 @@ def test_disclaimer_banner_and_footer_in_html():
     assert "データの無保証" in res_index.text
     assert "AI診断結果の性質" in res_index.text
     assert "完全免責" in res_index.text
-    # 再表示ボタンおよびAI診断モーダル注記の検証
-    assert "btn-restore-disclaimer" in res_index.text
+    # 閉じるボタン・再表示ボタン・非表示化スクリプトの不在検証 (常時表示仕様 #288)
+    assert "btn-close-disclaimer" not in res_index.text
+    assert "btn-restore-disclaimer" not in res_index.text
+    assert "disclaimer_banner_closed" not in res_index.text
     assert "llm-disclaimer-note" in res_index.text
 
     res_analysis = client.get("/analysis")
@@ -143,8 +145,10 @@ def test_disclaimer_banner_and_footer_in_html():
     assert "投資助言等の否定" in res_analysis.text
     assert "データの無保証" in res_analysis.text
     assert "AI診断結果の性質" in res_analysis.text
+    assert "btn-close-disclaimer" not in res_analysis.text
+    assert "btn-restore-disclaimer" not in res_analysis.text
+    assert "disclaimer_banner_closed" not in res_analysis.text
     assert "完全免責" in res_analysis.text
-    assert "btn-restore-disclaimer" in res_analysis.text
 
 
 def test_llm_modal_first_view_and_responsive_css():

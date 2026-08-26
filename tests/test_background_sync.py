@@ -183,3 +183,12 @@ def test_banner_elements_in_html_and_polling_in_js():
     assert 'toLocaleString()' in main_js
     assert 'toLocaleString()' in analysis_js
 
+    # 7. Issue #288: 同期完了バナーの5秒自動消去タイマーおよび手動閉じるボタン (btn-close-sync-status) の検証
+    assert '5000' in main_js
+    assert '5000' in analysis_js
+    assert 'btn-close-sync-status' in main_js
+    assert 'btn-close-sync-status' in analysis_js
+    assert 'syncCompletedTimerId' in main_js
+    assert 'syncCompletedTimerId' in analysis_js
+
+

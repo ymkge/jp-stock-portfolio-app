@@ -225,5 +225,27 @@
     {"code": "998407.O", "name": "日経平均"},
     {"code": "998405.T", "name": "TOPIX"},
     {"code": "5040469.O", "name": "日経先物"}
-  ]
+  ],
+  "fibonacci_indices": {
+    "nikkei225": {
+      "name": "日経平均株価",
+      "code": "998407.O",
+      "high_price": 72353.00,
+      "high_date": "2026年6月",
+      "low_price": 30500.29,
+      "low_date": "2023年10月",
+      "updated_at": "2026-08-27",
+      "ai_commentary": "日経平均株価は直近3年間の高安値を基準に、38.2%〜50.0%戻し圏が主要なサポートゾーンとして機能しています。"
+    },
+    "topix": {
+      "name": "TOPIX",
+      "code": "998405.T",
+      "high_price": 4101.96,
+      "high_date": "2026年7月",
+      "low_price": 2217.10,
+      "low_date": "2023年10月",
+      "updated_at": "2026-08-27",
+      "ai_commentary": "TOPIXは38.2%戻しライン付近での押し目形成が意識され、堅調な下値支持線として機能しています。"
+    }
+  }
 }

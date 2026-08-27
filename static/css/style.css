@@ -3603,3 +3603,53 @@ body.dark-mode .pt-ai-retry-btn:hover,
     background: rgba(99, 102, 241, 0.35) !important;
     color: #a5b4fc !important;
 }
+
+/* ==========================================
+   Market Fibonacci Modal Styles (#231)
+   ========================================== */
+.fib-tabs .btn-tab {
+    background: transparent;
+    border: none;
+    padding: 8px 16px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-muted, #64748b);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.fib-tabs .btn-tab:hover {
+    color: var(--primary-color, #3b82f6);
+}
+
+.fib-tabs .btn-tab.active {
+    color: var(--primary-color, #3b82f6);
+    border-bottom-color: var(--primary-color, #3b82f6);
+}
+
+[data-theme="dark"] .fib-tabs .btn-tab,
+body.dark-mode .fib-tabs .btn-tab,
+.dark-mode .fib-tabs .btn-tab {
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .fib-tabs .btn-tab.active,
+body.dark-mode .fib-tabs .btn-tab.active,
+.dark-mode .fib-tabs .btn-tab.active {
+    color: #60a5fa !important;
+    border-bottom-color: #60a5fa !important;
+}
+
+[data-theme="dark"] #market-fib-ai-commentary-card,
+body.dark-mode #market-fib-ai-commentary-card,
+.dark-mode #market-fib-ai-commentary-card {
+    background: rgba(99, 102, 241, 0.12) !important;
+    border-color: rgba(129, 140, 248, 0.3) !important;
+}
+
+[data-theme="dark"] #market-fib-ai-commentary-text,
+body.dark-mode #market-fib-ai-commentary-text,
+.dark-mode #market-fib-ai-commentary-text {
+    color: #e2e8f0 !important;
+}

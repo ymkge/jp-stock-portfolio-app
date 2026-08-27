@@ -1,3 +1,4 @@
+import os
 import pytest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
@@ -861,13 +862,112 @@ def test_profit_taking_ai_retry_btn_visibility_issue287():
     assert "class=\"pt-ai-retry-btn ms-2\"" in js_content
 
 
+def test_get_market_fibonacci_api_issue231():
+    """Issue #231: GET /api/market/fibonacci の全7水準数値・絵文字・ゾーン判定検証"""
+    res = client.get("/api/market/fibonacci")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["error"] is False
+    assert "n225" in data
+    assert "topix" in data
+    assert "commentary" in data
+
+    # 日経平均の全7レベル検証
+    n225 = data["n225"]
+    assert n225["name"] == "日経平均株価"
+    assert len(n225["levels"]) == 7
+    emojis = [l["emoji"] for l in n225["levels"]]
+    assert emojis == ["🔴", "📉", "🎯", "⚖️", "🛡️", "⚠️", "🟢"]
+    assert n225["levels"][0]["level"] == 0.0
+    assert n225["levels"][-1]["level"] == 100.0
+    assert n225["levels"][0]["price"] == n225["high_price"]
+    assert n225["levels"][-1]["price"] == n225["low_price"]
+
+    # TOPIXの全7レベル検証
+    topix = data["topix"]
+    assert topix["name"] == "TOPIX"
+    assert len(topix["levels"]) == 7
+    assert topix["levels"][0]["price"] == topix["high_price"]
+    assert topix["levels"][-1]["price"] == topix["low_price"]
 
 
+def test_post_market_fibonacci_refresh_api_issue231():
+    """Issue #231: POST /api/market/fibonacci/refresh のGemini AIモック最新化テスト"""
+    mock_llm_res = {
+        "error": False,
+        "n225": {
+            "high_price": 75000.00,
+            "high_date": "2026年8月",
+            "low_price": 31000.00,
+            "low_date": "2023年11月"
+        },
+        "topix": {
+            "high_price": 4200.00,
+            "high_date": "2026年8月",
+            "low_price": 2300.00,
+            "low_date": "2023年11月"
+        },
+        "market_commentary": "モックAIによるテスト市場分析コメントです。"
+    }
+
+    # テスト前の highlight_rules.json をバックアップし、テスト後に必ず復元する
+    rules_path = "highlight_rules.json"
+    backup = None
+    if os.path.exists(rules_path):
+        with open(rules_path, "r", encoding="utf-8") as f:
+            backup = f.read()
+
+    try:
+        with patch("app.llm_service_instance.fetch_market_fibonacci_llm", return_value=mock_llm_res):
+            res = client.post("/api/market/fibonacci/refresh")
+            assert res.status_code == 200
+            data = res.json()
+            assert data["error"] is False
+            assert data["n225"]["high_price"] == 75000.00
+            assert data["n225"]["low_price"] == 31000.00
+            assert data["topix"]["high_price"] == 4200.00
+            assert data["topix"]["low_price"] == 2300.00
+    finally:
+        if backup is not None:
+            with open(rules_path, "w", encoding="utf-8") as f:
+                f.write(backup)
 
 
+def test_market_fibonacci_frontend_elements_issue231():
+    """Issue #231: / および /analysis テンプレートのJS組み込み・ボタン・モーダル・タブの存在を検証"""
+    res_main = client.get("/")
+    assert res_main.status_code == 200
+    html_main = res_main.text
 
+    res_analysis = client.get("/analysis")
+    assert res_analysis.status_code == 200
+    html_analysis = res_analysis.text
 
+    # 1. 専用 JS script タグ
+    script_tag = '<script src="/static/js/marketFibonacci.js?v=1.0"></script>'
+    assert script_tag in html_main, "main page missing marketFibonacci.js script tag"
+    assert script_tag in html_analysis, "analysis page missing marketFibonacci.js script tag"
 
+    # 2. トリガーボタン id="btn-show-market-fibonacci"
+    btn_id = 'id="btn-show-market-fibonacci"'
+    assert btn_id in html_main, "main page missing btn-show-market-fibonacci"
+    assert btn_id in html_analysis, "analysis page missing btn-show-market-fibonacci"
 
+    # 3. モーダルダイアログ id="market-fibonacci-modal"
+    modal_id = 'id="market-fibonacci-modal"'
+    assert modal_id in html_main, "main page missing market-fibonacci-modal"
+    assert modal_id in html_analysis, "analysis page missing market-fibonacci-modal"
 
+    # 4. タブ切り替え onclick="switchMarketFibTab(...)"
+    assert 'onclick="switchMarketFibTab(\'n225\')"' in html_main
+    assert 'onclick="switchMarketFibTab(\'topix\')"' in html_main
+    assert 'onclick="switchMarketFibTab(\'n225\')"' in html_analysis
+    assert 'onclick="switchMarketFibTab(\'topix\')"' in html_analysis
 
+    # 5. JS ファイル内容のグローバル展開検証
+    assert os.path.exists("static/js/marketFibonacci.js")
+    with open("static/js/marketFibonacci.js", "r", encoding="utf-8") as f:
+        js_content = f.read()
+    assert "window.switchMarketFibTab = switchMarketFibTab;" in js_content
+    assert "window.fetchMarketFibonacciData = fetchMarketFibonacciData;" in js_content
+    assert "window.initMarketFibonacciModal = initMarketFibonacciModal;" in js_content

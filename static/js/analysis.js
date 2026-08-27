@@ -1894,4 +1894,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (localStorage.getItem('disclaimer_banner_closed')) {
         localStorage.removeItem('disclaimer_banner_closed');
     }
+
+    // --- 主要指数フィボナッチ参照モーダル制御 (#231) ---
+    if (typeof initMarketFibonacciModal === 'function') {
+        initMarketFibonacciModal();
+    }
 });

@@ -1,6 +1,8 @@
 from fastapi import Depends, FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 import io
+import os
+import tempfile
 import random
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -2404,4 +2406,183 @@ async def diagnose_profit_taking_with_llm(req: ProfitTakingLLMRequest):
     except Exception as e:
         logger.error(f"Error in diagnose_profit_taking_with_llm for {req.code}: {e}")
         raise HTTPException(status_code=500, detail=f"利確AI診断の実行中にエラーが発生しました: {str(e)}")
+
+
+def _calculate_market_fibonacci_data(high_p: float, low_p: float, cur_p: float, name: str, code: str, high_date: str = "直近3年", low_date: str = "直近3年") -> Dict[str, Any]:
+    """高安値と現在値から全7段階のフィボナッチリトレースメント水準および現在地ゾーンを計算する (#231)"""
+    diff = high_p - low_p
+    levels_def = [
+        {"level": 0.0, "name": "0.0% (最高値)", "emoji": "🔴", "ratio": 0.0, "meaning": "直近3年間の最高値圏（強力なレジスタンス）"},
+        {"level": 23.6, "name": "23.6% 戻し", "emoji": "📉", "ratio": 0.236, "meaning": "強い上昇トレンドにおける最初の押し目候補"},
+        {"level": 38.2, "name": "38.2% 戻し", "emoji": "🎯", "ratio": 0.382, "meaning": "一般的な押し目の目安（重要ライン）"},
+        {"level": 50.0, "name": "50.0% 戻し", "emoji": "⚖️", "ratio": 0.500, "meaning": "半値戻し（心理的節目ライン）"},
+        {"level": 61.8, "name": "61.8% 戻し", "emoji": "🛡️", "ratio": 0.618, "meaning": "黄金比率（トレンド維持の最終防衛ライン）"},
+        {"level": 76.4, "name": "76.4% 戻し", "emoji": "⚠️", "ratio": 0.764, "meaning": "深い調整・トレンド転換の警戒ライン"},
+        {"level": 100.0, "name": "100.0% (最安値)", "emoji": "🟢", "ratio": 1.000, "meaning": "直近3年間の最安値圏（強力なサポート）"}
+    ]
+
+    calculated_levels = []
+    for l in levels_def:
+        price = high_p - (diff * l["ratio"])
+        calculated_levels.append({
+            "level": l["level"],
+            "name": l["name"],
+            "emoji": l["emoji"],
+            "price": round(price, 2),
+            "meaning": l["meaning"]
+        })
+
+    # 現在地ゾーンの判定
+    zone_label = "到達確認中"
+    if cur_p > 0 and diff > 0:
+        if cur_p >= calculated_levels[0]["price"]:
+            zone_label = "🔴 最高値超え・最高値圏"
+        elif cur_p >= calculated_levels[1]["price"]:
+            zone_label = "📉 0.0% 〜 23.6% (高値圏)"
+        elif cur_p >= calculated_levels[2]["price"]:
+            zone_label = "🎯 23.6% 〜 38.2% (浅い押し目)"
+        elif cur_p >= calculated_levels[3]["price"]:
+            zone_label = "⚖️ 38.2% 〜 50.0% (標準押し目)"
+        elif cur_p >= calculated_levels[4]["price"]:
+            zone_label = "🛡️ 50.0% 〜 61.8% (半値〜黄金比)"
+        elif cur_p >= calculated_levels[5]["price"]:
+            zone_label = "⚠️ 61.8% 〜 76.4% (深押し調整圏)"
+        elif cur_p >= calculated_levels[6]["price"]:
+            zone_label = "⚠️ 76.4% 〜 100.0% (安値警戒圏)"
+        else:
+            zone_label = "🟢 最安値下抜け・底値圏"
+
+    return {
+        "name": name,
+        "code": code,
+        "current_price": round(cur_p, 2) if cur_p > 0 else 0.0,
+        "high_price": round(high_p, 2),
+        "high_date": high_date,
+        "low_price": round(low_p, 2),
+        "low_date": low_date,
+        "current_zone": zone_label,
+        "levels": calculated_levels
+    }
+
+
+@app.get("/api/market/fibonacci")
+def get_market_fibonacci():
+    """日経平均株価・TOPIXの直近3年高安値に基づく全7段階フィボナッチ水準を取得する (#231)"""
+    try:
+        # 現在値の取得
+        idx_scraper = scraper.get_scraper("market_index")
+        n225_raw = idx_scraper.fetch_data("998407.O") or {}
+        topix_raw = idx_scraper.fetch_data("998405.T") or {}
+
+        def _safe_float(v):
+            try: return float(str(v).replace(',', ''))
+            except: return 0.0
+
+        n225_cur = _safe_float(n225_raw.get("price", 0))
+        topix_cur = _safe_float(topix_raw.get("price", 0))
+
+        # highlight_rules.json から基準高安値設定を取得
+        fib_rules = get_config("fibonacci_indices", {})
+        n225_rule = fib_rules.get("nikkei225", {})
+        topix_rule = fib_rules.get("topix", {})
+
+        n225_high = float(n225_rule.get("high_price", 72353.00))
+        n225_low = float(n225_rule.get("low_price", 30500.29))
+        n225_hdate = str(n225_rule.get("high_date", "2026年6月"))
+        n225_ldate = str(n225_rule.get("low_date", "2023年10月"))
+        n225_comm = str(n225_rule.get("ai_commentary", "日経平均株価は直近3年間の高安値を基準に、38.2%〜50.0%戻し圏が主要なサポートゾーンとして機能しています。"))
+
+        topix_high = float(topix_rule.get("high_price", 4101.96))
+        topix_low = float(topix_rule.get("low_price", 2217.10))
+        topix_hdate = str(topix_rule.get("high_date", "2026年7月"))
+        topix_ldate = str(topix_rule.get("low_date", "2023年10月"))
+        topix_comm = str(topix_rule.get("ai_commentary", "TOPIXは38.2%戻しライン付近での押し目形成が意識され、堅調な下値支持線として機能しています。"))
+
+        n225_data = _calculate_market_fibonacci_data(n225_high, n225_low, n225_cur, "日経平均株価", "998407.O", n225_hdate, n225_ldate)
+        topix_data = _calculate_market_fibonacci_data(topix_high, topix_low, topix_cur, "TOPIX", "998405.T", topix_hdate, topix_ldate)
+
+        return {
+            "error": False,
+            "updated_at": str(n225_rule.get("updated_at", "2026-08-27")),
+            "n225": n225_data,
+            "topix": topix_data,
+            "commentary": f"【日経平均】{n225_comm}\n【TOPIX】{topix_comm}"
+        }
+    except Exception as e:
+        logger.error(f"Error in get_market_fibonacci: {e}")
+        raise HTTPException(status_code=500, detail=f"市場フィボナッチデータの取得に失敗しました: {str(e)}")
+
+
+@app.post("/api/market/fibonacci/refresh")
+def refresh_market_fibonacci():
+    """Gemini AIを起動して直近3年間の日経平均・TOPIX高安値を最新化し設定保存する (#231)"""
+    try:
+        idx_scraper = scraper.get_scraper("market_index")
+        n225_raw = idx_scraper.fetch_data("998407.O") or {}
+        topix_raw = idx_scraper.fetch_data("998405.T") or {}
+
+        def _safe_float(v):
+            try: return float(str(v).replace(',', ''))
+            except: return 0.0
+
+        n225_cur = _safe_float(n225_raw.get("price", 0))
+        topix_cur = _safe_float(topix_raw.get("price", 0))
+
+        llm_res = llm_service_instance.fetch_market_fibonacci_llm(n225_cur, topix_cur)
+        if llm_res.get("error"):
+            msg = llm_res.get("message", "AIからの応答取得に失敗しました")
+            if msg == "NO_API_KEY":
+                raise HTTPException(status_code=400, detail="Gemini APIキーが未設定です。設定画面からキーを入力してください。")
+            raise HTTPException(status_code=500, detail=f"Gemini AI 最新化エラー: {msg}")
+
+        # highlight_rules.json をアトミック更新
+        rules_path = "highlight_rules.json"
+        rules_data = {}
+        if os.path.exists(rules_path):
+            try:
+                with open(rules_path, "r", encoding="utf-8") as f:
+                    rules_data = json.load(f)
+            except: pass
+
+        today_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        rules_data["fibonacci_indices"] = {
+            "nikkei225": {
+                "name": "日経平均株価",
+                "code": "998407.O",
+                "high_price": llm_res["n225"]["high_price"],
+                "high_date": llm_res["n225"]["high_date"],
+                "low_price": llm_res["n225"]["low_price"],
+                "low_date": llm_res["n225"]["low_date"],
+                "updated_at": today_str,
+                "ai_commentary": llm_res.get("market_commentary", "")
+            },
+            "topix": {
+                "name": "TOPIX",
+                "code": "998405.T",
+                "high_price": llm_res["topix"]["high_price"],
+                "high_date": llm_res["topix"]["high_date"],
+                "low_price": llm_res["topix"]["low_price"],
+                "low_date": llm_res["topix"]["low_date"],
+                "updated_at": today_str,
+                "ai_commentary": llm_res.get("market_commentary", "")
+            }
+        }
+
+        # アトミック保存 (一時ファイル + os.replace)
+        with tempfile.NamedTemporaryFile("w", dir=".", delete=False, encoding="utf-8") as tf:
+            json.dump(rules_data, tf, indent=2, ensure_ascii=False)
+            temp_name = tf.name
+        os.replace(temp_name, rules_path)
+
+        # メモリ上の HIGHLIGHT_RULES も更新
+        global HIGHLIGHT_RULES
+        HIGHLIGHT_RULES["fibonacci_indices"] = rules_data["fibonacci_indices"]
+
+        # 最新データで計算して返却
+        return get_market_fibonacci()
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in refresh_market_fibonacci: {e}")
+        raise HTTPException(status_code=500, detail=f"市場フィボナッチデータの最新化に失敗しました: {str(e)}")
 

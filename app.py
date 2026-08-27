@@ -2568,11 +2568,19 @@ def refresh_market_fibonacci():
             }
         }
 
-        # アトミック保存 (一時ファイル + os.replace)
-        with tempfile.NamedTemporaryFile("w", dir=".", delete=False, encoding="utf-8") as tf:
-            json.dump(rules_data, tf, indent=2, ensure_ascii=False)
-            temp_name = tf.name
-        os.replace(temp_name, rules_path)
+        # アトミック保存 (一時ファイル + os.replace + クリーンアップ)
+        target_dir = os.path.dirname(os.path.abspath(rules_path))
+        temp_name = None
+        try:
+            with tempfile.NamedTemporaryFile("w", dir=target_dir, delete=False, encoding="utf-8") as tf:
+                json.dump(rules_data, tf, indent=2, ensure_ascii=False)
+                temp_name = tf.name
+            os.replace(temp_name, rules_path)
+            temp_name = None
+        finally:
+            if temp_name and os.path.exists(temp_name):
+                try: os.remove(temp_name)
+                except: pass
 
         # メモリ上の HIGHLIGHT_RULES も更新
         global HIGHLIGHT_RULES

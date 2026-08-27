@@ -27,3 +27,7 @@ portfolio_history.db.bak*
 
 *bak_*
 debug*
+
+# Temporary files
+tmp*
+*.tmp

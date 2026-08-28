@@ -980,3 +980,22 @@ def test_market_fibonacci_frontend_elements_issue231():
     assert "fib-summary-card" in html_main
     assert "fib-summary-card" in html_analysis
     assert "fib-summary-title" in js_content
+
+
+def test_split_alert_message_text_issue292():
+    """案件 #292: 株式分割アラートのバナーおよびモーダル本文の文言が『監視銘柄』に補正されているか検証"""
+    from fastapi.testclient import TestClient
+    from app import app
+
+    client = TestClient(app)
+    response = client.get("/")
+    assert response.status_code == 200
+    html_content = response.text
+
+    # ポジティブテスト (新文言の存在確認)
+    assert "株式分割（または併合）が検知された監視銘柄があります。" in html_content
+    assert "以下の監視銘柄で株式分割（または併合）が検知されました。" in html_content
+
+    # ネガティブテスト (旧文言の完全排除確認)
+    assert "検知された保有銘柄" not in html_content
+    assert "以下の保有銘柄で" not in html_content

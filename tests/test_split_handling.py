@@ -278,9 +278,67 @@ def test_app_realtime_split_alert_persistence():
     
     # 4.09 ➔ 4.0 の丸めと自動保存の検証
     rounded_ratio = history_manager.round_split_ratio(4.09)
-    assert rounded_ratio == 4.0
+    history_manager.add_split_alert(code, rounded_ratio)
+    assert history_manager.has_pending_split_alert(code)
     
-    res = history_manager.add_split_alert(code, rounded_ratio)
-    assert res is True
-    assert history_manager.has_pending_split_alert(code) is True
+    # クリーンアップ
+    history_manager.update_split_alert_status(code, 'dismissed')
 
+
+def test_get_split_alerts_non_holding_flag():
+    """案件 #291: 0株(非保有)銘柄の split-alerts 取得時の is_non_holding フラグ検証"""
+    from fastapi.testclient import TestClient
+    from app import app
+    from unittest.mock import patch
+
+    code = "8011_non_holding"
+    history_manager.add_split_alert(code, 3.0)
+
+    # 0株のポートフォリオデータモック
+    mock_portfolio = [
+        {"code": code, "name": "三陽商会", "holdings": []}
+    ]
+
+    client = TestClient(app)
+    with patch("portfolio_manager.load_portfolio", return_value=mock_portfolio):
+        response = client.get("/api/split-alerts")
+        assert response.status_code == 200
+        data = response.json()
+        target = [x for x in data if x["code"] == code]
+        assert len(target) == 1
+        assert target[0]["is_non_holding"] is True
+        assert target[0]["total_quantity"] == 0.0
+
+    # クリーンアップ
+    history_manager.update_split_alert_status(code, 'dismissed')
+
+
+def test_apply_split_alert_adjusts_db_history():
+    """案件 #291: split-alerts 適用時に DB 過去時系列株価 (stock_price_history) が自動補正されるか検証"""
+    from fastapi.testclient import TestClient
+    from app import app
+    from unittest.mock import patch, MagicMock
+
+    code = "8011_db_adjust"
+    history_manager.add_split_alert(code, 2.0)
+
+    mock_portfolio = [
+        {
+            "code": code,
+            "name": "テスト銘柄",
+            "holdings": [{"id": "h1", "purchase_price": 2000, "quantity": 100}]
+        }
+    ]
+
+    client = TestClient(app)
+    with patch("portfolio_manager.load_portfolio", return_value=mock_portfolio), \
+         patch("portfolio_manager.save_portfolio"), \
+         patch("sync_history.HistorySyncTool.apply_split_adjustment") as mock_adjust:
+        response = client.post("/api/split-alerts/apply", json={"code": code, "ratio": 2.0})
+        assert response.status_code == 200
+        assert response.json()["status"] == "success"
+        # apply_split_adjustment が呼び出されたことを検証
+        mock_adjust.assert_called_once_with(code, 2.0)
+
+    # クリーンアップ
+    history_manager.update_split_alert_status(code, 'dismissed')

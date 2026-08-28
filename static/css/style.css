@@ -3867,3 +3867,36 @@ body.dark-mode #market-fib-ai-commentary-text,
 .dark-mode #market-fib-ai-commentary-text {
     color: #f1f5f9 !important;
 }
+
+/* ==========================================
+   Non-holding Split Alert Card Styles (#291)
+   ========================================== */
+.split-non-holding-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    margin: 12px 0;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    color: #1e293b;
+}
+
+.split-non-holding-icon {
+    font-size: 1.3rem;
+    line-height: 1.2;
+}
+
+.split-non-holding-text {
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+[data-theme="dark"] .split-non-holding-card,
+body.dark-mode .split-non-holding-card,
+.dark-mode .split-non-holding-card {
+    background: #1e293b !important;
+    border-color: #475569 !important;
+    color: #f8fafc !important;
+}

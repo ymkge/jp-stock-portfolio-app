@@ -2095,9 +2095,11 @@ async def get_split_alerts():
                 
                 holdings = stock.get("holdings", [])
                 preview_holdings = []
+                total_qty = 0.0
                 for h in holdings:
-                    purchase_price = h.get("purchase_price", 0)
-                    quantity = h.get("quantity", 0)
+                    purchase_price = float(h.get("purchase_price", 0) or 0)
+                    quantity = float(h.get("quantity", 0) or 0)
+                    total_qty += quantity
                     
                     # プレビュー計算
                     new_price = round(purchase_price / ratio, 2)
@@ -2113,11 +2115,15 @@ async def get_split_alerts():
                         "new_quantity": new_qty
                     })
                 
+                is_non_holding = (total_qty == 0 or len(preview_holdings) == 0)
+                
                 results.append({
                     "code": code,
                     "name": name,
                     "ratio": ratio,
                     "detected_date": alert["detected_date"],
+                    "total_quantity": total_qty,
+                    "is_non_holding": is_non_holding,
                     "holdings": preview_holdings
                 })
         return results
@@ -2127,7 +2133,7 @@ async def get_split_alerts():
 
 @app.post("/api/split-alerts/apply")
 async def apply_split_alert(req: ApplySplitRequest):
-    """株式分割を portfolio.json に適用し、アラートを解消する"""
+    """株式分割を portfolio.json および DB過去時系列に適用し、アラートを解消する"""
     code = req.code
     ratio = req.ratio
     
@@ -2146,14 +2152,25 @@ async def apply_split_alert(req: ApplySplitRequest):
             if not target_stock:
                 raise HTTPException(status_code=404, detail="Stock not found in portfolio")
                 
-            # 保有情報の補正
+            # 保有情報の補正 (数量が存在する場合のみ)
             for h in target_stock.get("holdings", []):
-                h["purchase_price"] = round(h["purchase_price"] / ratio, 2)
-                h["quantity"] = round(h["quantity"] * ratio, 6)
+                if h.get("purchase_price"):
+                    h["purchase_price"] = round(float(h["purchase_price"]) / ratio, 2)
+                if h.get("quantity"):
+                    h["quantity"] = round(float(h["quantity"]) * ratio, 6)
                 
             # 保存
             portfolio_manager.save_portfolio(portfolio_data)
             
+        # DB内の過去時系列株価 (stock_price_history) も自動分割補正
+        try:
+            from sync_history import HistorySyncTool
+            sync_tool = HistorySyncTool()
+            sync_tool.apply_split_adjustment(code, ratio)
+            logger.info(f"Successfully applied DB split adjustment for {code} with ratio {ratio}")
+        except Exception as db_e:
+            logger.warning(f"Failed to apply DB split adjustment for {code}: {db_e}")
+
         # アラートのステータス更新
         history_manager.update_split_alert_status(code, 'applied')
         return {"status": "success", "message": f"Successfully applied split for {code}"}

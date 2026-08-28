@@ -1167,23 +1167,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let html = '';
         pendingSplitAlerts.forEach(alert => {
-            let holdingsHtml = '';
-            alert.holdings.forEach(h => {
-                holdingsHtml += `
-                    <tr>
-                        <td><strong>${h.account_type}</strong> (${h.security_company || '不明'})</td>
-                        <td>${formatNumber(h.purchase_price, 2)}円 × ${formatNumber(h.quantity, 0)}株</td>
-                        <td><span style="color: var(--danger-color); font-weight: bold;">${formatNumber(h.new_purchase_price, 2)}円</span> × <span style="color: #28a745; font-weight: bold;">${formatNumber(h.new_quantity, 0)}株</span></td>
-                    </tr>
-                `;
-            });
+            let bodyContentHtml = '';
+            let actionButtonsHtml = '';
 
-            html += `
-                <div class="split-detail-card" data-code="${alert.code}">
-                    <div class="split-detail-header">
-                        <span>${alert.name} (${alert.code}) - 分割比率 1 : ${alert.ratio}</span>
-                        <span style="font-size: 0.8rem; color: #6c757d;">検知日: ${alert.detected_date}</span>
+            if (alert.is_non_holding) {
+                // 非保有（0株）銘柄専用の案内カード (#291)
+                bodyContentHtml = `
+                    <div class="split-non-holding-card">
+                        <div class="split-non-holding-icon">💡</div>
+                        <div class="split-non-holding-text">
+                            <strong>現在この銘柄の保有数量は 0株 (非保有) です。</strong>
+                            <p style="margin: 4px 0 0 0; font-size: 0.85rem; opacity: 0.9;">保有株数・取得単価の自動調整はありません。[確認済みにする] を押すと、DB過去株価を自動補正して通知を消去します。</p>
+                        </div>
                     </div>
+                `;
+                actionButtonsHtml = `
+                    <button class="btn-primary btn-sm btn-apply-split" data-code="${alert.code}" data-ratio="${alert.ratio}">確認済みにする (通知消去)</button>
+                `;
+            } else {
+                // 通常保有銘柄用調整プレビューテーブル
+                let holdingsHtml = '';
+                alert.holdings.forEach(h => {
+                    holdingsHtml += `
+                        <tr>
+                            <td><strong>${h.account_type}</strong> (${h.security_company || '不明'})</td>
+                            <td>${formatNumber(h.purchase_price, 2)}円 × ${formatNumber(h.quantity, 0)}株</td>
+                            <td><span style="color: var(--danger-color); font-weight: bold;">${formatNumber(h.new_purchase_price, 2)}円</span> × <span style="color: #28a745; font-weight: bold;">${formatNumber(h.new_quantity, 0)}株</span></td>
+                        </tr>
+                    `;
+                });
+
+                bodyContentHtml = `
                     <table class="split-detail-table">
                         <thead>
                             <tr>
@@ -1196,9 +1210,22 @@ document.addEventListener('DOMContentLoaded', () => {
                             ${holdingsHtml}
                         </tbody>
                     </table>
+                `;
+                actionButtonsHtml = `
+                    <button class="btn-outline btn-sm btn-dismiss-split" data-code="${alert.code}">無視する (非表示)</button>
+                    <button class="btn-primary btn-sm btn-apply-split" data-code="${alert.code}" data-ratio="${alert.ratio}">適用して保存</button>
+                `;
+            }
+
+            html += `
+                <div class="split-detail-card" data-code="${alert.code}">
+                    <div class="split-detail-header">
+                        <span>${alert.name} (${alert.code}) - 分割比率 1 : ${alert.ratio}</span>
+                        <span style="font-size: 0.8rem; color: #6c757d;">検知日: ${alert.detected_date}</span>
+                    </div>
+                    ${bodyContentHtml}
                     <div class="split-actions">
-                        <button class="btn-outline btn-sm btn-dismiss-split" data-code="${alert.code}">無視する (非表示)</button>
-                        <button class="btn-primary btn-sm btn-apply-split" data-code="${alert.code}" data-ratio="${alert.ratio}">適用して保存</button>
+                        ${actionButtonsHtml}
                     </div>
                 </div>
             `;

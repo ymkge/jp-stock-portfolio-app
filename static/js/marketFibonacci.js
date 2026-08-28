@@ -86,7 +86,7 @@ function renderMarketFibonacciModal() {
                     <div style="font-size: 1.15rem; font-weight: bold; color: var(--primary-color, #3b82f6);">
                         ${curPriceStr}
                     </div>
-                    <span class="badge bg-primary" style="font-size: 0.78rem; margin-top: 2px;">${indexData.current_zone}</span>
+                    <span class="fib-current-zone-badge">${indexData.current_zone}</span>
                 </div>
             </div>
         `;
@@ -98,10 +98,10 @@ function renderMarketFibonacciModal() {
         let html = '';
         (indexData.levels || []).forEach((item) => {
             const isHighlight = indexData.current_zone && indexData.current_zone.includes(item.emoji);
-            const bgStyle = isHighlight ? 'background: rgba(99, 102, 241, 0.12); font-weight: bold;' : '';
+            const rowClass = isHighlight ? 'class="fib-row-highlight"' : '';
             
             html += `
-                <tr style="${bgStyle} border-bottom: 1px solid var(--border-color, #e2e8f0);">
+                <tr ${rowClass} style="border-bottom: 1px solid var(--border-color, #e2e8f0);">
                     <td style="padding: 10px 12px;">
                         <span style="font-size: 1.1rem; margin-right: 6px;">${item.emoji}</span>
                         <span>${item.name}</span>

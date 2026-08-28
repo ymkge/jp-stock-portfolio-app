@@ -964,10 +964,16 @@ def test_market_fibonacci_frontend_elements_issue231():
     assert 'onclick="switchMarketFibTab(\'n225\')"' in html_analysis
     assert 'onclick="switchMarketFibTab(\'topix\')"' in html_analysis
 
-    # 5. JS ファイル内容のグローバル展開検証
+    # 5. JS ファイル内容のグローバル展開検証 & 新バッジ・ハイライトクラスアサーション (#289)
     assert os.path.exists("static/js/marketFibonacci.js")
     with open("static/js/marketFibonacci.js", "r", encoding="utf-8") as f:
         js_content = f.read()
     assert "window.switchMarketFibTab = switchMarketFibTab;" in js_content
     assert "window.fetchMarketFibonacciData = fetchMarketFibonacciData;" in js_content
     assert "window.initMarketFibonacciModal = initMarketFibonacciModal;" in js_content
+    assert "fib-current-zone-badge" in js_content
+    assert "fib-row-highlight" in js_content
+
+    # 6. フッターピルボタンクラス検証 (#289)
+    assert "fib-close-pill-btn" in html_main
+    assert "fib-close-pill-btn" in html_analysis

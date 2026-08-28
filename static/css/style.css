@@ -3605,7 +3605,7 @@ body.dark-mode .pt-ai-retry-btn:hover,
 }
 
 /* ==========================================
-   Market Fibonacci Modal Styles (#231)
+   Market Fibonacci Modal Styles (#231, #289)
    ========================================== */
 .fib-tabs .btn-tab {
     background: transparent;
@@ -3628,6 +3628,77 @@ body.dark-mode .pt-ai-retry-btn:hover,
     border-bottom-color: var(--primary-color, #3b82f6);
 }
 
+/* サマリーカード現在地バッジ (#289) */
+.fib-current-zone-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #ffffff !important;
+    background: linear-gradient(135deg, #4f46e5, #4338ca);
+    box-shadow: 0 2px 6px rgba(79, 70, 229, 0.3);
+    margin-top: 4px;
+    letter-spacing: 0.02em;
+}
+
+/* ハイライト行アクセント (#289) */
+.fib-row-highlight {
+    background: rgba(99, 102, 241, 0.14) !important;
+    border-left: 4px solid #6366f1 !important;
+    font-weight: 600;
+    transition: background 0.2s ease;
+}
+
+.fib-row-highlight td {
+    color: #1e1b4b !important;
+}
+
+/* ヘッダー閉じる×ボタン丸型デザイン (#289) */
+#market-fibonacci-modal .modal-close-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color, #cbd5e1);
+    background: var(--card-bg, #ffffff);
+    color: var(--text-muted, #64748b);
+    font-size: 1.2rem;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+#market-fibonacci-modal .modal-close-btn:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+    border-color: #94a3b8;
+}
+
+/* フッター閉じるボタンピルデザイン (#289) */
+.fib-close-pill-btn {
+    padding: 7px 24px !important;
+    border-radius: 20px !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+    border: 1px solid #cbd5e1 !important;
+    background: #f1f5f9 !important;
+    color: #334155 !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+}
+
+.fib-close-pill-btn:hover {
+    background: #e2e8f0 !important;
+    color: #0f172a !important;
+    border-color: #94a3b8 !important;
+}
+
+/* --- ダークモード対応 (#289) --- */
 [data-theme="dark"] .fib-tabs .btn-tab,
 body.dark-mode .fib-tabs .btn-tab,
 .dark-mode .fib-tabs .btn-tab {
@@ -3641,15 +3712,69 @@ body.dark-mode .fib-tabs .btn-tab.active,
     border-bottom-color: #60a5fa !important;
 }
 
+[data-theme="dark"] .fib-current-zone-badge,
+body.dark-mode .fib-current-zone-badge,
+.dark-mode .fib-current-zone-badge {
+    background: linear-gradient(135deg, #3730a3, #312e81) !important;
+    border: 1px solid rgba(129, 140, 248, 0.6) !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .fib-row-highlight,
+body.dark-mode .fib-row-highlight,
+.dark-mode .fib-row-highlight {
+    background: rgba(99, 102, 241, 0.25) !important;
+    border-left: 4px solid #818cf8 !important;
+}
+
+[data-theme="dark"] .fib-row-highlight td,
+body.dark-mode .fib-row-highlight td,
+.dark-mode .fib-row-highlight td {
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] #market-fibonacci-modal .modal-close-btn,
+body.dark-mode #market-fibonacci-modal .modal-close-btn,
+.dark-mode #market-fibonacci-modal .modal-close-btn {
+    background: #1e293b !important;
+    border-color: #334155 !important;
+    color: #cbd5e1 !important;
+}
+
+[data-theme="dark"] #market-fibonacci-modal .modal-close-btn:hover,
+body.dark-mode #market-fibonacci-modal .modal-close-btn:hover,
+.dark-mode #market-fibonacci-modal .modal-close-btn:hover {
+    background: #334155 !important;
+    color: #ffffff !important;
+    border-color: #64748b !important;
+}
+
+[data-theme="dark"] .fib-close-pill-btn,
+body.dark-mode .fib-close-pill-btn,
+.dark-mode .fib-close-pill-btn {
+    background: #1e293b !important;
+    border-color: #475569 !important;
+    color: #f1f5f9 !important;
+}
+
+[data-theme="dark"] .fib-close-pill-btn:hover,
+body.dark-mode .fib-close-pill-btn:hover,
+.dark-mode .fib-close-pill-btn:hover {
+    background: #334155 !important;
+    color: #ffffff !important;
+    border-color: #818cf8 !important;
+}
+
 [data-theme="dark"] #market-fib-ai-commentary-card,
 body.dark-mode #market-fib-ai-commentary-card,
 .dark-mode #market-fib-ai-commentary-card {
-    background: rgba(99, 102, 241, 0.12) !important;
-    border-color: rgba(129, 140, 248, 0.3) !important;
+    background: rgba(99, 102, 241, 0.16) !important;
+    border-color: rgba(129, 140, 248, 0.4) !important;
 }
 
 [data-theme="dark"] #market-fib-ai-commentary-text,
 body.dark-mode #market-fib-ai-commentary-text,
 .dark-mode #market-fib-ai-commentary-text {
-    color: #e2e8f0 !important;
+    color: #f1f5f9 !important;
 }

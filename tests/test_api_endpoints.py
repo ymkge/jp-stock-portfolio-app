@@ -974,6 +974,9 @@ def test_market_fibonacci_frontend_elements_issue231():
     assert "fib-current-zone-badge" in js_content
     assert "fib-row-highlight" in js_content
 
-    # 6. フッターピルボタンクラス検証 (#289)
+    # 6. フッターピルボタン ✕ サマリーカードクラス検証 (#289, #290)
     assert "fib-close-pill-btn" in html_main
     assert "fib-close-pill-btn" in html_analysis
+    assert "fib-summary-card" in html_main
+    assert "fib-summary-card" in html_analysis
+    assert "fib-summary-title" in js_content

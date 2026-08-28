@@ -75,15 +75,15 @@ function renderMarketFibonacciModal() {
         summaryEl.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <div>
-                    <h4 style="margin: 0 0 4px 0; font-size: 1.1rem; color: var(--text-color, #1e293b);">${indexData.name}</h4>
-                    <div style="font-size: 0.85rem; color: var(--text-muted, #64748b);">
-                        最安値: <strong style="color: #10b981;">${indexData.low_price.toLocaleString()}${unit}</strong> (${indexData.low_date}) 〜 
-                        最高値: <strong style="color: #ef4444;">${indexData.high_price.toLocaleString()}${unit}</strong> (${indexData.high_date})
+                    <h4 class="fib-summary-title">${indexData.name}</h4>
+                    <div class="fib-summary-date">
+                        最安値: <strong class="fib-summary-low">${indexData.low_price.toLocaleString()}${unit}</strong> (${indexData.low_date}) 〜 
+                        最高値: <strong class="fib-summary-high">${indexData.high_price.toLocaleString()}${unit}</strong> (${indexData.high_date})
                     </div>
                 </div>
                 <div style="text-align: right;">
-                    <div style="font-size: 0.78rem; color: var(--text-muted, #64748b);">現在値 & 到達エリア</div>
-                    <div style="font-size: 1.15rem; font-weight: bold; color: var(--primary-color, #3b82f6);">
+                    <div class="fib-summary-label">現在値 & 到達エリア</div>
+                    <div class="fib-summary-price">
                         ${curPriceStr}
                     </div>
                     <span class="fib-current-zone-badge">${indexData.current_zone}</span>

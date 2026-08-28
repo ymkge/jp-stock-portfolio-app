@@ -3628,6 +3628,51 @@ body.dark-mode .pt-ai-retry-btn:hover,
     border-bottom-color: var(--primary-color, #3b82f6);
 }
 
+/* サマリーカード専用スタイル (#290) */
+.fib-summary-card {
+    padding: 14px 18px;
+    margin-bottom: 16px;
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 10px !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+    transition: all 0.2s ease;
+}
+
+.fib-summary-title {
+    margin: 0 0 4px 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #0f172a !important;
+}
+
+.fib-summary-date {
+    font-size: 0.85rem;
+    color: #475569 !important;
+}
+
+.fib-summary-low {
+    color: #059669 !important;
+    font-weight: 700;
+}
+
+.fib-summary-high {
+    color: #dc2626 !important;
+    font-weight: 700;
+}
+
+.fib-summary-label {
+    font-size: 0.78rem;
+    color: #475569 !important;
+    font-weight: 600;
+}
+
+.fib-summary-price {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #2563eb !important;
+}
+
 /* サマリーカード現在地バッジ (#289) */
 .fib-current-zone-badge {
     display: inline-flex;
@@ -3710,6 +3755,50 @@ body.dark-mode .fib-tabs .btn-tab.active,
 .dark-mode .fib-tabs .btn-tab.active {
     color: #60a5fa !important;
     border-bottom-color: #60a5fa !important;
+}
+
+[data-theme="dark"] .fib-summary-card,
+body.dark-mode .fib-summary-card,
+.dark-mode .fib-summary-card {
+    background: #1e293b !important;
+    border: 1px solid #334155 !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .fib-summary-title,
+body.dark-mode .fib-summary-title,
+.dark-mode .fib-summary-title {
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] .fib-summary-date,
+body.dark-mode .fib-summary-date,
+.dark-mode .fib-summary-date {
+    color: #cbd5e1 !important;
+}
+
+[data-theme="dark"] .fib-summary-low,
+body.dark-mode .fib-summary-low,
+.dark-mode .fib-summary-low {
+    color: #34d399 !important;
+}
+
+[data-theme="dark"] .fib-summary-high,
+body.dark-mode .fib-summary-high,
+.dark-mode .fib-summary-high {
+    color: #f87171 !important;
+}
+
+[data-theme="dark"] .fib-summary-label,
+body.dark-mode .fib-summary-label,
+.dark-mode .fib-summary-label {
+    color: #94a3b8 !important;
+}
+
+[data-theme="dark"] .fib-summary-price,
+body.dark-mode .fib-summary-price,
+.dark-mode .fib-summary-price {
+    color: #60a5fa !important;
 }
 
 [data-theme="dark"] .fib-current-zone-badge,

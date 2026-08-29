@@ -591,13 +591,16 @@ def test_fetch_market_fibonacci_llm_direct_issue293(policy_manager):
     }
 
     with patch("requests.post", return_value=mock_response):
-        result = service.fetch_market_fibonacci_llm(current_n225=68308, current_topix=4176)
+        # 1. 現在値が高値を下回る通常のケース (繰り上がりなし)
+        result = service.fetch_market_fibonacci_llm(current_n225=68308, current_topix=4000)
         assert "n225" in result
         assert result["n225"]["high_price"] == 72353.0
         assert result["topix"]["high_price"] == 4101.96
         assert result["market_commentary"] == "テスト相場解説"
 
-
+        # 2. 現在値が最高値を下から突破するケース (#295: TOPIX 4176 > 4101.96)
+        result_new_high = service.fetch_market_fibonacci_llm(current_n225=40000, current_topix=4176)
+        assert result_new_high["topix"]["high_price"] == 4176.0
 
 
 

@@ -3,9 +3,13 @@ import re
 import hashlib
 import time
 import threading
+import logging
 import requests
+from datetime import datetime
 from typing import Dict, Any, Optional
 from investment_policy_manager import InvestmentPolicyManager
+
+logger = logging.getLogger(__name__)
 
 class LLMDiagnosisService:
     """
@@ -726,8 +730,31 @@ fit_levelの基準:
             # バリデーションチェック
             n225_h = float(parsed["n225"]["high_price"])
             n225_l = float(parsed["n225"]["low_price"])
+            n225_hd = str(parsed["n225"].get("high_date", "直近3年"))
+            n225_ld = str(parsed["n225"].get("low_date", "直近3年"))
+
             topix_h = float(parsed["topix"]["high_price"])
             topix_l = float(parsed["topix"]["low_price"])
+            topix_hd = str(parsed["topix"].get("high_date", "直近3年"))
+            topix_ld = str(parsed["topix"].get("low_date", "直近3年"))
+
+            # リアルタイム現在値との比較・最高値繰り上げ / 最安値繰り下げ (双方向ガード)
+            now_month_str = datetime.now().strftime("%Y年%m月")
+            if current_n225 > 0:
+                if current_n225 > n225_h:
+                    n225_h = current_n225
+                    n225_hd = now_month_str
+                if 0 < current_n225 < n225_l:
+                    n225_l = current_n225
+                    n225_ld = now_month_str
+
+            if current_topix > 0:
+                if current_topix > topix_h:
+                    topix_h = current_topix
+                    topix_hd = now_month_str
+                if 0 < current_topix < topix_l:
+                    topix_l = current_topix
+                    topix_ld = now_month_str
 
             if n225_h <= n225_l or topix_h <= topix_l or n225_l <= 0 or topix_l <= 0:
                 raise ValueError("Invalid High/Low relationship")
@@ -736,15 +763,15 @@ fit_levelの基準:
                 "error": False,
                 "n225": {
                     "high_price": round(n225_h, 2),
-                    "high_date": str(parsed["n225"].get("high_date", "直近3年")),
+                    "high_date": n225_hd,
                     "low_price": round(n225_l, 2),
-                    "low_date": str(parsed["n225"].get("low_date", "直近3年"))
+                    "low_date": n225_ld
                 },
                 "topix": {
                     "high_price": round(topix_h, 2),
-                    "high_date": str(parsed["topix"].get("high_date", "直近3年")),
+                    "high_date": topix_hd,
                     "low_price": round(topix_l, 2),
-                    "low_date": str(parsed["topix"].get("low_date", "直近3年"))
+                    "low_date": topix_ld
                 },
                 "market_commentary": str(parsed.get("market_commentary", "直近3年間の高安値を基準としたフィボナッチ水準を分析しました。"))
             }

@@ -999,3 +999,63 @@ def test_split_alert_message_text_issue292():
     # ネガティブテスト (旧文言の完全排除確認)
     assert "検知された保有銘柄" not in html_content
     assert "以下の保有銘柄で" not in html_content
+
+
+def test_market_fibonacci_auto_update_on_new_high_and_low_issue295():
+    """案件 #295: リアルタイム現在値が最高値を突破/最安値を下回った際にフィボナッチ水準が自動繰り上げ/繰り下げ更新されるか検証"""
+    from fastapi.testclient import TestClient
+    from unittest.mock import patch, MagicMock
+    from app import app
+
+    client = TestClient(app)
+
+    # 1. 現在値が過去最高値を突破した場合 (TOPIX 現在値 4146.0 > 過去最高値 4101.96)
+    mock_idx_scraper = MagicMock()
+    mock_idx_scraper.fetch_data.side_effect = lambda code: (
+        {"price": "68,000.0"} if code == "998407.O" else {"price": "4,146.0"}
+    )
+
+    mock_llm_res = {
+        "error": False,
+        "n225": {"high_price": 72353.0, "high_date": "2026年6月", "low_price": 30500.29, "low_date": "2023年10月"},
+        "topix": {"high_price": 4101.96, "high_date": "2026年7月", "low_price": 2217.10, "low_date": "2023年10月"},
+        "market_commentary": "TOPIX新高値更新テスト"
+    }
+
+    with patch("app.scraper.get_scraper", return_value=mock_idx_scraper), \
+         patch("app.llm_service_instance.fetch_market_fibonacci_llm", return_value=mock_llm_res), \
+         patch("os.replace", MagicMock()):
+        
+        # POST /refresh の検証
+        res_post = client.post("/api/market/fibonacci/refresh")
+        assert res_post.status_code == 200
+
+        # GET / の検証 (動的保護)
+        res_get = client.get("/api/market/fibonacci")
+        assert res_get.status_code == 200
+        data = res_get.json()
+        assert data["error"] is False
+        
+        # TOPIXの最高値（0.0%水準）が現在値 4146.0 に繰り上がっていること
+        topix_info = data["topix"]
+        assert topix_info["high_price"] == 4146.0
+        assert topix_info["levels"][0]["price"] == 4146.0
+
+    # 2. 現在値が過去最安値を下回った場合 (N225 現在値 28000.0 < 過去最安値 30500.29)
+    mock_idx_scraper_low = MagicMock()
+    mock_idx_scraper_low.fetch_data.side_effect = lambda code: (
+        {"price": "28,000.0"} if code == "998407.O" else {"price": "2,500.0"}
+    )
+
+    with patch("app.scraper.get_scraper", return_value=mock_idx_scraper_low), \
+         patch("app.llm_service_instance.fetch_market_fibonacci_llm", return_value=mock_llm_res), \
+         patch("os.replace", MagicMock()):
+        
+        res_get_low = client.get("/api/market/fibonacci")
+        assert res_get_low.status_code == 200
+        data_low = res_get_low.json()
+        
+        # 日経平均の最安値（100.0%水準）が現在値 28000.0 に繰り下がっていること
+        n225_info = data_low["n225"]
+        assert n225_info["low_price"] == 28000.0
+        assert n225_info["levels"][6]["price"] == 28000.0

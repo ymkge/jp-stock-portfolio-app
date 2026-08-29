@@ -2515,6 +2515,24 @@ def get_market_fibonacci():
         topix_ldate = str(topix_rule.get("low_date", "2023年10月"))
         topix_comm = str(topix_rule.get("ai_commentary", "TOPIXは38.2%戻しライン付近での押し目形成が意識され、堅調な下値支持線として機能しています。"))
 
+        # 動的二重保護 (現在値が最高値を突破または最安値を下回っている場合の動的繰り上げ/繰り下げ)
+        now_m_str = datetime.now().strftime("%Y年%m月")
+        if n225_cur > 0:
+            if n225_cur > n225_high:
+                n225_high = n225_cur
+                n225_hdate = now_m_str
+            if 0 < n225_cur < n225_low:
+                n225_low = n225_cur
+                n225_ldate = now_m_str
+
+        if topix_cur > 0:
+            if topix_cur > topix_high:
+                topix_high = topix_cur
+                topix_hdate = now_m_str
+            if 0 < topix_cur < topix_low:
+                topix_low = topix_cur
+                topix_ldate = now_m_str
+
         n225_data = _calculate_market_fibonacci_data(n225_high, n225_low, n225_cur, "日経平均株価", "998407.O", n225_hdate, n225_ldate)
         topix_data = _calculate_market_fibonacci_data(topix_high, topix_low, topix_cur, "TOPIX", "998405.T", topix_hdate, topix_ldate)
 
@@ -2551,6 +2569,27 @@ def refresh_market_fibonacci():
             if msg == "NO_API_KEY":
                 raise HTTPException(status_code=400, detail="Gemini APIキーが未設定です。設定画面からキーを入力してください。")
             raise HTTPException(status_code=500, detail=f"Gemini AI 最新化エラー: {msg}")
+
+        # リアルタイム現在値による最終比較・繰り上げ/繰り下げ補正 (双方向ガード)
+        now_month_str = datetime.now().strftime("%Y年%m月")
+        for key, cur_p in [("n225", n225_cur), ("topix", topix_cur)]:
+            high_p = float(llm_res[key]["high_price"])
+            low_p = float(llm_res[key]["low_price"])
+            high_d = str(llm_res[key]["high_date"])
+            low_d = str(llm_res[key]["low_date"])
+
+            if cur_p > 0 and cur_p > high_p:
+                high_p = cur_p
+                high_d = now_month_str
+
+            if 0 < cur_p < low_p:
+                low_p = cur_p
+                low_d = now_month_str
+
+            llm_res[key]["high_price"] = round(high_p, 2)
+            llm_res[key]["high_date"] = high_d
+            llm_res[key]["low_price"] = round(low_p, 2)
+            llm_res[key]["low_date"] = low_d
 
         # highlight_rules.json をアトミック更新
         rules_path = "highlight_rules.json"

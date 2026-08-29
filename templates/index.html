@@ -303,7 +303,7 @@
         <div class="modal-content large-modal" style="max-width: 750px;">
             <div class="modal-header">
                 <h2>⚙️ 投資方針 & AI診断設定</h2>
-                <button type="button" id="btn-close-policy-modal" class="modal-close" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">&times;</button>
+                <button type="button" id="btn-close-policy-modal" class="modal-close modal-close-btn">&times;</button>
             </div>
             <div class="modal-body" style="padding: 15px 0;">
                 <form id="investment-policy-form">
@@ -311,7 +311,7 @@
                     <div class="form-group" style="margin-bottom: 15px;">
                         <label for="policy-api-key-input" style="font-weight: bold;">Google AI Studio API Key (Gemini API)</label>
                         <input type="password" id="policy-api-key-input" placeholder="AIzaSy... (空欄の場合は環境変数 GEMINI_API_KEY を参照)" style="width: 100%; padding: 8px; font-family: monospace;">
-                        <small id="api-key-status-help" style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;"></small>
+                        <small id="api-key-status-help" style="font-size: 0.8rem; display: block; margin-top: 4px;"></small>
                     </div>
                     <div class="form-group" style="margin-bottom: 15px;">
                         <label for="policy-model-select" style="font-weight: bold;">使用モデル (Google AI Studio 無料枠)</label>

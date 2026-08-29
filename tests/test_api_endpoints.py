@@ -1059,3 +1059,32 @@ def test_market_fibonacci_auto_update_on_new_high_and_low_issue295():
         n225_info = data_low["n225"]
         assert n225_info["low_price"] == 28000.0
         assert n225_info["levels"][6]["price"] == 28000.0
+
+
+def test_investment_policy_modal_ui_theme_issue296():
+    """案件 #296: 投資方針モーダルに丸型閉じるボタンおよびダークモード用CSS定義が存在するか検証"""
+    from fastapi.testclient import TestClient
+    from app import app
+
+    client = TestClient(app)
+
+    # 1. HTML構造の検証
+    res_html = client.get("/")
+    assert res_html.status_code == 200
+    html_text = res_html.text
+
+    assert 'id="btn-close-policy-modal" class="modal-close modal-close-btn"' in html_text
+    assert 'id="policy-api-key-input"' in html_text
+    assert 'id="policy-prompt-textarea"' in html_text
+    assert 'id="policy-model-select"' in html_text
+
+    # 2. CSSルールの存在検証
+    res_css = client.get("/static/css/style.css")
+    assert res_css.status_code == 200
+    css_text = res_css.text
+
+    assert '#policy-prompt-textarea' in css_text
+    assert '#policy-api-key-input' in css_text
+    assert '#policy-model-select' in css_text
+    assert '[data-theme="dark"] #investment-policy-modal .modal-content' in css_text
+    assert '[data-theme="dark"] #policy-prompt-textarea' in css_text

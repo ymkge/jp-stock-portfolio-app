@@ -3900,3 +3900,80 @@ body.dark-mode .split-non-holding-card,
     border-color: #475569 !important;
     color: #f8fafc !important;
 }
+
+/* ==========================================
+   投資方針 & AI診断設定モーダル UIスタイル (#296)
+   ========================================== */
+
+#api-key-status-help {
+    color: #64748b;
+}
+
+#policy-api-key-input,
+#policy-model-select,
+#policy-prompt-textarea {
+    background-color: #f8fafc;
+    border: 1px solid #cbd5e1;
+    color: #0f172a;
+    border-radius: 6px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+#policy-api-key-input:focus,
+#policy-model-select:focus,
+#policy-prompt-textarea:focus {
+    border-color: #3b82f6 !important;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2) !important;
+}
+
+/* ダークモードスタイル */
+[data-theme="dark"] #investment-policy-modal .modal-content,
+body.dark-mode #investment-policy-modal .modal-content,
+.dark-mode #investment-policy-modal .modal-content {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] #investment-policy-modal label,
+body.dark-mode #investment-policy-modal label,
+.dark-mode #investment-policy-modal label {
+    color: #cbd5e1 !important;
+}
+
+[data-theme="dark"] #api-key-status-help,
+body.dark-mode #api-key-status-help,
+.dark-mode #api-key-status-help {
+    color: #94a3b8 !important;
+}
+
+[data-theme="dark"] #policy-api-key-input,
+[data-theme="dark"] #policy-model-select,
+[data-theme="dark"] #policy-prompt-textarea,
+body.dark-mode #policy-api-key-input,
+body.dark-mode #policy-model-select,
+body.dark-mode #policy-prompt-textarea,
+.dark-mode #policy-api-key-input,
+.dark-mode #policy-model-select,
+.dark-mode #policy-prompt-textarea {
+    background-color: #0f172a !important;
+    border: 1px solid #475569 !important;
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] #policy-model-select option,
+body.dark-mode #policy-model-select option,
+.dark-mode #policy-model-select option {
+    background-color: #0f172a !important;
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] #policy-api-key-input::placeholder,
+[data-theme="dark"] #policy-prompt-textarea::placeholder,
+body.dark-mode #policy-api-key-input::placeholder,
+body.dark-mode #policy-prompt-textarea::placeholder,
+.dark-mode #policy-api-key-input::placeholder,
+.dark-mode #policy-prompt-textarea::placeholder {
+    color: #64748b !important;
+}

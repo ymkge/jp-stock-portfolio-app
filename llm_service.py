@@ -655,11 +655,12 @@ fit_levelの基準:
 
     def fetch_market_fibonacci_llm(self, current_n225: float = 0.0, current_topix: float = 0.0) -> Dict[str, Any]:
         """Gemini AIに問い合わせて直近3年間の日経平均・TOPIXの最高値・最安値・発生年月および相場解説を取得する (#231)"""
-        api_key = get_effective_api_key()
+        api_key = self.policy_manager.get_effective_api_key()
         if not api_key:
             return {"error": True, "message": "NO_API_KEY"}
 
-        selected_model = get_config("llm.selected_model", "gemini-flash-latest")
+        config = self.policy_manager.load_config()
+        selected_model = config.get("selected_model", "gemini-flash-latest")
         if selected_model not in ["gemini-flash-latest", "gemini-flash-lite-latest"]:
             selected_model = "gemini-flash-latest"
 

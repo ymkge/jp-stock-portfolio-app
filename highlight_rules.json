@@ -109,7 +109,12 @@
     }
   },
   "profit_taking": {
-    "years_thresholds": [10.0, 15.0, 20.0, 30.0],
+    "years_thresholds": [
+      10.0,
+      15.0,
+      20.0,
+      30.0
+    ],
     "display": {
       "level_1": {
         "icon": "💰",
@@ -142,38 +147,36 @@
     }
   },
   "system": {
-      "market_times": {
-          "jp_stock": {
-              "open_time_jst": "09:00",
-              "close_time_jst": "15:30",
-              "timezone": "Asia/Tokyo"
-          },
-          "us_stock": {
-              "open_time_jst": "23:30",
-              "close_time_jst": "07:00",
-              "timezone": "Asia/Tokyo"
-          },
-          "investment_trust": {
-              "open_time_jst": "09:00",
-              "close_time_jst": "18:00",
-              "timezone": "Asia/Tokyo"
-          },
-          "market_index": {
-              "open_time_jst": "09:00",
-              "close_time_jst": "06:00",
-              "timezone": "Asia/Tokyo"
-          }
+    "market_times": {
+      "jp_stock": {
+        "open_time_jst": "09:00",
+        "close_time_jst": "15:30",
+        "timezone": "Asia/Tokyo"
       },
-      "update_cooldown_seconds": 600,
-      "scraping": {
-          "concurrency_limit": 1,
-          "delay_min": 1.5,
-          "delay_max": 4.0,
-          "failure_threshold": 3
+      "us_stock": {
+        "open_time_jst": "23:30",
+        "close_time_jst": "07:00",
+        "timezone": "Asia/Tokyo"
+      },
+      "investment_trust": {
+        "open_time_jst": "09:00",
+        "close_time_jst": "18:00",
+        "timezone": "Asia/Tokyo"
+      },
+      "market_index": {
+        "open_time_jst": "09:00",
+        "close_time_jst": "06:00",
+        "timezone": "Asia/Tokyo"
       }
-
+    },
+    "update_cooldown_seconds": 600,
+    "scraping": {
+      "concurrency_limit": 1,
+      "delay_min": 1.5,
+      "delay_max": 4.0,
+      "failure_threshold": 3
+    }
   },
-
   "radar_chart": {
     "benchmarks": {
       "valuation_per": 15.0,
@@ -186,7 +189,15 @@
       "diversification_hhi": 1500.0,
       "safety_score": 50.0
     },
-    "labels": ["割安性", "収益性", "インカム", "クオリティ", "モメンタム", "分散度", "安全性"],
+    "labels": [
+      "割安性",
+      "収益性",
+      "インカム",
+      "クオリティ",
+      "モメンタム",
+      "分散度",
+      "安全性"
+    ],
     "descriptions": {
       "割安性": "利益(PER)と資産(PBR)の両面から、ポートフォリオ全体の割安度を評価。数値が高いほど、実力に対して株価が安く放置されている状態です。",
       "収益性": "加重平均ROE（自己資本利益率）に基づき、投資した資本をいかに効率よく利益に変えているかを評価。稼ぐ力が強いほど高スコアになります。",
@@ -199,10 +210,26 @@
   },
   "portfolio_dna": {
     "standards": {
-      "per": {"value": 15.0, "type": "lower_is_better", "label": "割安圏"},
-      "pbr": {"value": 1.2, "type": "lower_is_better", "label": "資産妥当"},
-      "roe": {"value": 8.0, "type": "higher_is_better", "label": "効率的"},
-      "yield": {"value": 3.0, "type": "higher_is_better", "label": "高配当"}
+      "per": {
+        "value": 15.0,
+        "type": "lower_is_better",
+        "label": "割安圏"
+      },
+      "pbr": {
+        "value": 1.2,
+        "type": "lower_is_better",
+        "label": "資産妥当"
+      },
+      "roe": {
+        "value": 8.0,
+        "type": "higher_is_better",
+        "label": "効率的"
+      },
+      "yield": {
+        "value": 3.0,
+        "type": "higher_is_better",
+        "label": "高配当"
+      }
     },
     "diagnosis": {
       "growth": "将来の成長を期待した、勢いのある攻めの構成です。",
@@ -213,8 +240,16 @@
   },
   "concentration_risk": {
     "standards": {
-      "top5": {"value": 40.0, "type": "lower_is_better", "label": "理想的"},
-      "hhi": {"value": 1500.0, "type": "lower_is_better", "label": "分散良好"}
+      "top5": {
+        "value": 40.0,
+        "type": "lower_is_better",
+        "label": "理想的"
+      },
+      "hhi": {
+        "value": 1500.0,
+        "type": "lower_is_better",
+        "label": "分散良好"
+      }
     },
     "descriptions": {
       "top5": "上位5銘柄がポートフォリオ全体に占める割合。この数値が高いほど、少数の銘柄の動きに資産全体が左右されやすくなります。",
@@ -222,30 +257,39 @@
     }
   },
   "market_indices": [
-    {"code": "998407.O", "name": "日経平均"},
-    {"code": "998405.T", "name": "TOPIX"},
-    {"code": "5040469.O", "name": "日経先物"}
+    {
+      "code": "998407.O",
+      "name": "日経平均"
+    },
+    {
+      "code": "998405.T",
+      "name": "TOPIX"
+    },
+    {
+      "code": "5040469.O",
+      "name": "日経先物"
+    }
   ],
   "fibonacci_indices": {
     "nikkei225": {
       "name": "日経平均株価",
       "code": "998407.O",
-      "high_price": 72353.00,
+      "high_price": 72353.0,
       "high_date": "2026年6月",
       "low_price": 30500.29,
       "low_date": "2023年10月",
-      "updated_at": "2026-08-27",
-      "ai_commentary": "日経平均株価は直近3年間の高安値を基準に、38.2%〜50.0%戻し圏が主要なサポートゾーンとして機能しています。"
+      "updated_at": "2026-08-29 19:07:07",
+      "ai_commentary": "現在の日経平均およびTOPIXは、過去3年の高安を基準とした高値圏で強含みの推移を見せており、主要な上値抵抗帯を意識した利食い売りと押し目買いが交錯する展開となっています。下値においてはフィボナッチの主要な押し目水準が強力なサポート帯として機能しており、強気トレンドを維持したまま底堅い値動きが継続する見通しです。"
     },
     "topix": {
       "name": "TOPIX",
       "code": "998405.T",
       "high_price": 4101.96,
       "high_date": "2026年7月",
-      "low_price": 2217.10,
+      "low_price": 2217.1,
       "low_date": "2023年10月",
-      "updated_at": "2026-08-27",
-      "ai_commentary": "TOPIXは38.2%戻しライン付近での押し目形成が意識され、堅調な下値支持線として機能しています。"
+      "updated_at": "2026-08-29 19:07:07",
+      "ai_commentary": "現在の日経平均およびTOPIXは、過去3年の高安を基準とした高値圏で強含みの推移を見せており、主要な上値抵抗帯を意識した利食い売りと押し目買いが交錯する展開となっています。下値においてはフィボナッチの主要な押し目水準が強力なサポート帯として機能しており、強気トレンドを維持したまま底堅い値動きが継続する見通しです。"
     }
   }
 }

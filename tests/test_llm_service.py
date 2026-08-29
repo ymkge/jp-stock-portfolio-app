@@ -553,6 +553,51 @@ def test_build_profit_taking_prompt_doe_and_dividend_policy_issue285(policy_mana
     assert "減配リスクが極めて低く配当の安定性・成長性が担保されている銘柄" in prompt
 
 
+def test_fetch_market_fibonacci_llm_no_api_key_issue293():
+    """案件 #293: API Key 未設定時に NameError が出ず安全に NO_API_KEY を返却するか検証"""
+    from unittest.mock import MagicMock
+    mock_policy_manager = MagicMock()
+    mock_policy_manager.get_effective_api_key.return_value = ""
+
+    service = LLMDiagnosisService(policy_manager=mock_policy_manager)
+    res = service.fetch_market_fibonacci_llm(current_n225=38000, current_topix=2600)
+    assert res.get("error") is True
+    assert res.get("message") == "NO_API_KEY"
+
+
+def test_fetch_market_fibonacci_llm_direct_issue293(policy_manager):
+    """案件 #293: fetch_market_fibonacci_llm が NameError (get_effective_api_key, get_config) なく正常動作するか直接テスト"""
+    from unittest.mock import patch, MagicMock
+
+    policy_manager.save_config(api_key="test_api_key_dummy_293")
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    mock_gemini_json = """{
+        "n225": {"high_price": 72353.0, "high_date": "2026-06", "low_price": 30500.29, "low_date": "2023-10"},
+        "topix": {"high_price": 4101.96, "high_date": "2026-07", "low_price": 2217.10, "low_date": "2023-10"},
+        "market_commentary": "テスト相場解説"
+    }"""
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [{"text": mock_gemini_json}]
+                }
+            }
+        ]
+    }
+
+    with patch("requests.post", return_value=mock_response):
+        result = service.fetch_market_fibonacci_llm(current_n225=68308, current_topix=4176)
+        assert "n225" in result
+        assert result["n225"]["high_price"] == 72353.0
+        assert result["topix"]["high_price"] == 4101.96
+        assert result["market_commentary"] == "テスト相場解説"
+
+
 
 
 

@@ -1359,13 +1359,20 @@ async def _get_processed_asset_data(request: Optional[Any] = None, force: bool =
     consecutive_failures = 0
     lock = asyncio.Lock() # 共有変数の保護用
 
+    # キャンセル共有フラグ
+    is_cancelled_by_client = False
+
     async def fetch_with_smart_cache_bulk(scraper_instance, code, asset_type):
-        nonlocal is_circuit_open, consecutive_failures
+        nonlocal is_circuit_open, consecutive_failures, is_cancelled_by_client
 
         # 1. データの特定 (メモリ または DB)
         cached_data = None
         is_fresh = False
         source = None
+
+        if is_cancelled_by_client or await is_client_disconnected(request):
+            is_cancelled_by_client = True
+            return {"code": code, "error": "Cancelled by user"}
 
         if force:
             # 強制更新時はメモリキャッシュを破棄
@@ -1426,20 +1433,24 @@ async def _get_processed_asset_data(request: Optional[Any] = None, force: bool =
                 return cached_data
 
         # 2. スクレイピング実行
-        if await is_client_disconnected(request):
-            logger.info(f"Client disconnected. Skipping scraping for {code}")
+        if is_cancelled_by_client or await is_client_disconnected(request):
+            is_cancelled_by_client = True
             return {"code": code, "error": "Cancelled by user"}
 
         if is_circuit_open:
             return {"code": code, "error": "アクセス制限等により更新を中断しました", "error_details": {"status_code": 403, "type": "CircuitBreaker"}}
 
         async with semaphore:
+            if is_cancelled_by_client or await is_client_disconnected(request):
+                is_cancelled_by_client = True
+                return {"code": code, "error": "Cancelled by user"}
+
             # スクレイピングが必要な場合のみ待機
             wait_time = random.uniform(delay_min, delay_max)
             await asyncio.sleep(wait_time)
 
-            if await is_client_disconnected(request):
-                logger.info(f"Client disconnected during wait. Aborting scrape for {code}")
+            if is_cancelled_by_client or await is_client_disconnected(request):
+                is_cancelled_by_client = True
                 return {"code": code, "error": "Cancelled by user"}
 
             if is_circuit_open:
@@ -1448,8 +1459,8 @@ async def _get_processed_asset_data(request: Optional[Any] = None, force: bool =
             result = await asyncio.to_thread(scraper_instance.fetch_data, code)
 
             async with lock:
-                if await is_client_disconnected(request):
-                    logger.info(f"Client disconnected post-scrape for {code}. Skipping DB save.")
+                if is_cancelled_by_client or await is_client_disconnected(request):
+                    is_cancelled_by_client = True
                     return {"code": code, "error": "Cancelled by user"}
 
                 if not result or "error" in result:
@@ -1482,6 +1493,9 @@ async def _get_processed_asset_data(request: Optional[Any] = None, force: bool =
             tasks.append(dummy_task())
 
     scraped_results = await asyncio.gather(*tasks)
+    if is_cancelled_by_client or await is_client_disconnected(request):
+        logger.info("Client disconnected during bulk fetch. Skipping index scraping and returning immediately.")
+        return [], {}
     scraped_data_map = {item['code']: item for item in scraped_results if item}
 
     processed_data = []

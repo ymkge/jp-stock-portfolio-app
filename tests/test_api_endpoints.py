@@ -1126,11 +1126,12 @@ def test_add_asset_endpoint_custom_jp_stock_codes_issue294():
         mock_add.assert_called_with("AAPL", "us_stock")
 
 
-def test_get_stocks_cancellation_issue297():
-    """案件 #297: GET /api/stocks におけるキャンセルボタン用CSSクラスの存在確認および通信切断検知ガードの挙動テスト"""
+def test_get_stocks_instant_cancellation_issue299():
+    """案件 #299: クライアント切断検知時、全銘柄タスクが asyncio.sleep 待機を一切消費せず 0秒で即時一括キャンセル完了することのテスト"""
     from fastapi.testclient import TestClient
     from app import app, _get_processed_asset_data
     import asyncio
+    import time
     from unittest.mock import patch, MagicMock
 
     client = TestClient(app)
@@ -1140,15 +1141,24 @@ def test_get_stocks_cancellation_issue297():
     assert res_css.status_code == 200
     assert '.btn-updating-cancel' in res_css.text
 
-    # 2. クライアント切断時の is_disconnected ガードの単体検証
+    # 2. クライアント切断時、複数銘柄(5件)が asyncio.sleep 待機を一切消費せず 0秒で即時一括キャンセル完了することを検証
     mock_request = MagicMock()
-    # is_disconnected() が True (切断) を返す AsyncMock
     mock_request.is_disconnected = MagicMock(side_effect=lambda: True)
 
+    dummy_portfolio = [
+        {"code": f"720{i}", "asset_type": "jp_stock"} for i in range(5)
+    ]
+
+    start_time = time.perf_counter()
     with patch("app.history_manager.save_daily_data") as mock_save_daily, \
-         patch("app.portfolio_manager.load_portfolio", return_value=[{"code": "7203", "asset_type": "jp_stock"}]):
+         patch("app.portfolio_manager.load_portfolio", return_value=dummy_portfolio):
         
         processed_data, metadata = asyncio.run(_get_processed_asset_data(request=mock_request, force=True))
         
+        # 1銘柄につき 1.5秒〜4秒待機するはずが、即時キャンセルフラグにより 0.5秒未満で一括終了すること
+        elapsed = time.perf_counter() - start_time
+        assert elapsed < 0.5, f"Expected instant cancellation (<0.5s), but took {elapsed:.2f}s"
+        
         # 切断が検知されたため、DB保存(save_daily_data)が一切呼び出されていないこと
         mock_save_daily.assert_not_called()
+        assert processed_data == []

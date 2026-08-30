@@ -139,8 +139,16 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        refreshAllButton.disabled = true;
-        refreshAllButton.textContent = '更新中...';
+        let isExplicitCancel = false;
+        if (force) {
+            isUpdating = true;
+            refreshAllButton.disabled = false;
+            refreshAllButton.textContent = '⏹️ 更新中止 (クリックでストップ)';
+            refreshAllButton.classList.add('btn-updating-cancel');
+        } else {
+            refreshAllButton.disabled = true;
+            refreshAllButton.textContent = '更新中...';
+        }
         
         try {
             const apiFetch = (url) => fetch(url, { signal }).then(handleApiResponse);
@@ -175,7 +183,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
         } catch (error) {
-            if (error.name === 'AbortError') return;
+            if (error.name === 'AbortError') {
+                if (force) {
+                    showAlert('全件更新を中止しました。', 'info');
+                }
+                return;
+            }
             console.error('Data fetch error:', error);
             if (error instanceof window.appState.HttpError && error.status === 429) {
                 console.log('Backend is currently throttling or updating. Using cached data.');
@@ -187,8 +200,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             await checkAndShowSplitAlerts(); // 株式分割アラートの確認 (新規)
         } finally {
-            refreshAllButton.disabled = false;
-            refreshAllButton.textContent = '全件更新';
+            isUpdating = false;
+            refreshAllButton.classList.remove('btn-updating-cancel');
+            if (cooldownTimer === null) {
+                refreshAllButton.disabled = false;
+                refreshAllButton.textContent = '全件更新';
+            }
         }
     }
     
@@ -1109,7 +1126,16 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) { showAlert(err.message, 'danger'); }
     });
 
-    refreshAllButton.addEventListener('click', () => fetchAndRenderAllData(true));
+    refreshAllButton.addEventListener('click', () => {
+        if (cooldownTimer) return;
+        if (isUpdating) {
+            if (fetchController) {
+                fetchController.abort();
+            }
+            return;
+        }
+        fetchAndRenderAllData(true);
+    });
     addNewHoldingBtn.addEventListener('click', () => showHoldingForm());
     holdingForm.addEventListener('submit', handleHoldingFormSubmit);
     holdingFormCancelBtn.addEventListener('click', hideHoldingForm);

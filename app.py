@@ -1297,7 +1297,21 @@ class BackgroundSyncManager:
 sync_manager = BackgroundSyncManager.get_instance()
 
 
-async def _get_processed_asset_data(force: bool = False) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+async def is_client_disconnected(request: Optional[Any]) -> bool:
+    if not request:
+        return False
+    try:
+        if asyncio.iscoroutinefunction(request.is_disconnected):
+            return await request.is_disconnected()
+        res = request.is_disconnected()
+        if asyncio.iscoroutine(res) or hasattr(res, '__await__'):
+            return await res
+        return bool(res)
+    except Exception:
+        return False
+
+
+async def _get_processed_asset_data(request: Optional[Any] = None, force: bool = False) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
     ポートフォリオ内の全資産のデータを並行して取得し、スコア計算などを行う。
     JST基準の市場確定時刻に基づき、DBキャッシュをインテリジェントに活用する。
@@ -1412,6 +1426,10 @@ async def _get_processed_asset_data(force: bool = False) -> Tuple[List[Dict[str,
                 return cached_data
 
         # 2. スクレイピング実行
+        if await is_client_disconnected(request):
+            logger.info(f"Client disconnected. Skipping scraping for {code}")
+            return {"code": code, "error": "Cancelled by user"}
+
         if is_circuit_open:
             return {"code": code, "error": "アクセス制限等により更新を中断しました", "error_details": {"status_code": 403, "type": "CircuitBreaker"}}
 
@@ -1420,12 +1438,20 @@ async def _get_processed_asset_data(force: bool = False) -> Tuple[List[Dict[str,
             wait_time = random.uniform(delay_min, delay_max)
             await asyncio.sleep(wait_time)
 
+            if await is_client_disconnected(request):
+                logger.info(f"Client disconnected during wait. Aborting scrape for {code}")
+                return {"code": code, "error": "Cancelled by user"}
+
             if is_circuit_open:
                 return {"code": code, "error": "アクセス制限等により更新を中断しました", "error_details": {"status_code": 403, "type": "CircuitBreaker"}}
 
             result = await asyncio.to_thread(scraper_instance.fetch_data, code)
 
             async with lock:
+                if await is_client_disconnected(request):
+                    logger.info(f"Client disconnected post-scrape for {code}. Skipping DB save.")
+                    return {"code": code, "error": "Cancelled by user"}
+
                 if not result or "error" in result:
                     consecutive_failures += 1
                     status_code = result.get("error_details", {}).get("status_code") if result else None
@@ -1670,9 +1696,12 @@ async def get_recent_stocks():
     return recent_stocks_manager.load_recent_codes()
 
 @app.get("/api/stocks")
-async def get_stocks(force: bool = False, cooldown_check: None = Depends(check_update_cooldown)):
+async def get_stocks(request: Request, force: bool = False, cooldown_check: None = Depends(check_update_cooldown)):
     global last_full_update_time
-    processed_data, metadata = await _get_processed_asset_data(force=force)
+    processed_data, metadata = await _get_processed_asset_data(request=request, force=force)
+    if await is_client_disconnected(request):
+        logger.info("Client disconnected at endpoint level. Skipping last_full_update_time update.")
+        return {"data": [], "metadata": {}}
     last_full_update_time = datetime.now()
     return {"data": processed_data, "metadata": metadata}
 

@@ -3977,3 +3977,36 @@ body.dark-mode #policy-prompt-textarea::placeholder,
 .dark-mode #policy-prompt-textarea::placeholder {
     color: #64748b !important;
 }
+
+/* ==========================================
+   全件更新 中止(キャンセル)ボタン スタイル (#297)
+   ========================================== */
+.btn-updating-cancel {
+    border: 1px solid #ef4444 !important;
+    color: #dc2626 !important;
+    background-color: #fef2f2 !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+}
+
+.btn-updating-cancel:hover {
+    background-color: #fee2e2 !important;
+    color: #b91c1c !important;
+    border-color: #dc2626 !important;
+}
+
+[data-theme="dark"] .btn-updating-cancel,
+body.dark-mode .btn-updating-cancel,
+.dark-mode .btn-updating-cancel {
+    border: 1px solid #ef4444 !important;
+    color: #fca5a5 !important;
+    background-color: #450a0a !important;
+}
+
+[data-theme="dark"] .btn-updating-cancel:hover,
+body.dark-mode .btn-updating-cancel:hover,
+.dark-mode .btn-updating-cancel:hover {
+    background-color: #7f1d1d !important;
+    color: #fecaca !important;
+    border-color: #f87171 !important;
+}

@@ -1124,3 +1124,31 @@ def test_add_asset_endpoint_custom_jp_stock_codes_issue294():
         res4 = client.post("/api/stocks", json={"code": "AAPL"})
         assert res4.status_code == 200
         mock_add.assert_called_with("AAPL", "us_stock")
+
+
+def test_get_stocks_cancellation_issue297():
+    """案件 #297: GET /api/stocks におけるキャンセルボタン用CSSクラスの存在確認および通信切断検知ガードの挙動テスト"""
+    from fastapi.testclient import TestClient
+    from app import app, _get_processed_asset_data
+    import asyncio
+    from unittest.mock import patch, MagicMock
+
+    client = TestClient(app)
+
+    # 1. CSSスタイルの存在検証
+    res_css = client.get("/static/css/style.css")
+    assert res_css.status_code == 200
+    assert '.btn-updating-cancel' in res_css.text
+
+    # 2. クライアント切断時の is_disconnected ガードの単体検証
+    mock_request = MagicMock()
+    # is_disconnected() が True (切断) を返す AsyncMock
+    mock_request.is_disconnected = MagicMock(side_effect=lambda: True)
+
+    with patch("app.history_manager.save_daily_data") as mock_save_daily, \
+         patch("app.portfolio_manager.load_portfolio", return_value=[{"code": "7203", "asset_type": "jp_stock"}]):
+        
+        processed_data, metadata = asyncio.run(_get_processed_asset_data(request=mock_request, force=True))
+        
+        # 切断が検知されたため、DB保存(save_daily_data)が一切呼び出されていないこと
+        mock_save_daily.assert_not_called()

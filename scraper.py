@@ -271,12 +271,17 @@ class JPStockScraper(BaseScraper):
             return {"high": hi, "low": lo, "current": cur, "retracement": (hi - cur) / (hi - lo) * 100, "period": len(prices)}
         except: return None
 
+    def _get_quote_symbol(self, code: str) -> str:
+        """銘柄コードに既にドット(市場識別子)が含まれる場合はそのまま、含まれない場合は .T を付与"""
+        return code if '.' in code else f"{code}.T"
+
     @cachedmethod(lambda self: self.cache, key=lambda self, code, **kwargs: code)
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
-        logger.info(f"Fetching JP Stock (Hybrid): {code}.T")
+        symbol = self._get_quote_symbol(code)
+        logger.info(f"Fetching JP Stock (Hybrid): {symbol}")
         
         # 1. メインページから基本情報、現在値、財務指標を一括取得する
-        url_q = f"https://finance.yahoo.co.jp/quote/{code}.T"
+        url_q = f"https://finance.yahoo.co.jp/quote/{symbol}"
         res_q = self._make_request(url_q)
         if not res_q:
             return {
@@ -376,7 +381,7 @@ class JPStockScraper(BaseScraper):
 
         # 2. 履歴ページを取得し、現在値を基準にパース
         time.sleep(1.2)
-        url_h = f"https://finance.yahoo.co.jp/quote/{code}.T/history"
+        url_h = f"https://finance.yahoo.co.jp/quote/{symbol}/history"
         res_h = self._make_request(url_h)
         if not res_h:
             return {
@@ -426,7 +431,7 @@ class JPStockScraper(BaseScraper):
         # 4. 配当履歴の抽出 (詳細ページ)
         div_history = {}
         time.sleep(1.2)
-        url_div = f"https://finance.yahoo.co.jp/quote/{code}.T/dividend"
+        url_div = f"https://finance.yahoo.co.jp/quote/{symbol}/dividend"
         res_div = self._make_request(url_div)
         if res_div:
             json_div = self._extract_next_data(res_div.text) or self._extract_legacy_data(res_div.text)

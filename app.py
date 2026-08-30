@@ -1743,7 +1743,7 @@ async def add_asset_endpoint(asset: Asset):
     # 銘柄コードの形式から asset_type を自動判定
     if re.match(r'^[A-Z]{1,5}(\.[A-Z]{1,2})?$', code): # 米国株ティッカー (例: AAPL, BRK.B)
         asset_type = "us_stock"
-    elif re.match(r'^\d{4}$', code): # 国内株コード
+    elif re.match(r'^[0-9]{3,4}[A-Z]?(?:\.[A-Z0-9]{1,2})?$', code): # 国内株コード (例: 7203, 6623.N, 130A, 7203.T)
         asset_type = "jp_stock"
     elif re.match(r'^[A-Z0-9]{10}$', code): # 投資信託コード (仮)
         asset_type = "investment_trust"
@@ -1767,7 +1767,8 @@ async def add_asset_endpoint(asset: Asset):
     if new_asset_data and "error" not in new_asset_data:
         recent_stocks_manager.add_recent_code(code)
         
-        merged_data = {**portfolio_manager.get_stock_info(code), **new_asset_data}
+        stock_info = portfolio_manager.get_stock_info(code) or {}
+        merged_data = {**stock_info, **new_asset_data}
         # 分析情報の付与とDB更新（国内株のみ）
         merged_data = _enrich_stock_data(merged_data, new_asset_data)
 

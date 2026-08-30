@@ -244,7 +244,7 @@ class HistorySyncTool:
         
         all_histories_to_save = []
         # URL正規化
-        full_code = code if (code.endswith('.T') or code.endswith('.O')) else f"{code}.T"
+        full_code = code if '.' in code else f"{code}.T"
         base_url = f"https://finance.yahoo.co.jp/quote/{full_code}/history"
         
         # まず現在値を把握 (銘柄名の取得のみに使用)
@@ -417,7 +417,7 @@ class HistorySyncTool:
                         import history_manager
                         db_latest_p = history_manager.get_latest_price_from_db(code)
                         if db_latest_p and db_latest_p > 0:
-                            full_code = code if (code.endswith('.T') or code.endswith('.O')) else f"{code}.T"
+                            full_code = code if '.' in code else f"{code}.T"
                             res_m = self.scraper._make_request(f"https://finance.yahoo.co.jp/quote/{full_code}")
                             if res_m:
                                 json_m = self.scraper._extract_next_data(res_m.text)

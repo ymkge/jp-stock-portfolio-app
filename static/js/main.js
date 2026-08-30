@@ -571,7 +571,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             createCell(codeHtml, 'numeric');
             
-            const baseUrl = `https://finance.yahoo.co.jp/quote/${jpStock.code}.T`;
+            const symbol = jpStock.code.includes('.') ? jpStock.code : `${jpStock.code}.T`;
+            const baseUrl = `https://finance.yahoo.co.jp/quote/${symbol}`;
             let nameHtml = `<div class="d-flex flex-wrap align-items-center gap-1"><a href="${baseUrl}" target="_blank" class="fw-bold me-1">${jpStock.name}</a><div class="quick-links d-inline-flex gap-1"><a href="${baseUrl}/disclosure" target="_blank" class="badge bg-light text-dark border text-decoration-none" title="適時開示" style="font-size: 0.65rem; padding: 0.15rem 0.3rem;">開示</a><a href="${baseUrl}/performance" target="_blank" class="badge bg-light text-dark border text-decoration-none" title="業績詳細" style="font-size: 0.65rem; padding: 0.15rem 0.3rem;">業績</a></div>`;
             const isDiamond = jpStock.is_diamond || (jpStock.buy_signal && jpStock.buy_signal.is_diamond);
             if (jpStock.buy_signal) nameHtml += renderBuySignalBadge(jpStock.buy_signal, isDiamond);

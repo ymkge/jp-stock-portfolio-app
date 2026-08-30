@@ -1088,3 +1088,39 @@ def test_investment_policy_modal_ui_theme_issue296():
     assert '#policy-model-select' in css_text
     assert '[data-theme="dark"] #investment-policy-modal .modal-content' in css_text
     assert '[data-theme="dark"] #policy-prompt-textarea' in css_text
+
+
+def test_add_asset_endpoint_custom_jp_stock_codes_issue294():
+    """案件 #294: 6623.N (名証), 130A (新規格), 7203.T (サフィックス) 等の銘柄コードが国内株として正常判定・追加されるかテスト"""
+    from unittest.mock import patch, MagicMock
+    from fastapi.testclient import TestClient
+    from app import app
+
+    client = TestClient(app)
+
+    # モックの準備 (本番DB書き込み保護)
+    mock_scraped = {"code": "6623.N", "name": "テスト名証", "price": 1000, "asset_type": "jp_stock"}
+
+    with patch("app.portfolio_manager.add_asset", return_value=True) as mock_add, \
+         patch("app.portfolio_manager.get_stock_info", side_effect=lambda code: {"code": code, "holdings": []}), \
+         patch("app._fetch_scraped_data_with_cache", return_value=mock_scraped):
+        
+        # 1. 6623.N (名証サフィックス)
+        res1 = client.post("/api/stocks", json={"code": "6623.N"})
+        assert res1.status_code == 200
+        mock_add.assert_called_with("6623.N", "jp_stock")
+
+        # 2. 130A (英数字混在国内株)
+        res2 = client.post("/api/stocks", json={"code": "130A"})
+        assert res2.status_code == 200
+        mock_add.assert_called_with("130A", "jp_stock")
+
+        # 3. 7203.T (東証サフィックス付き)
+        res3 = client.post("/api/stocks", json={"code": "7203.T"})
+        assert res3.status_code == 200
+        mock_add.assert_called_with("7203.T", "jp_stock")
+
+        # 4. 米国株 AAPL, BRK.B が誤って jp_stock にならないことの分離検証
+        res4 = client.post("/api/stocks", json={"code": "AAPL"})
+        assert res4.status_code == 200
+        mock_add.assert_called_with("AAPL", "us_stock")

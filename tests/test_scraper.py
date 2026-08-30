@@ -74,3 +74,12 @@ def test_jp_stock_scraper_fetch_data_mock(mocker):
     data = scraper.fetch_data("8001")
     assert data["code"] == "8001"
     assert data["per"] == "15.0"
+
+
+def test_jp_stock_scraper_quote_symbol_issue294():
+    """案件 #294: JPStockScraper の _get_quote_symbol が 6623.N や 7203 を正しく処理するかテスト"""
+    scraper = JPStockScraper()
+    assert scraper._get_quote_symbol("6623.N") == "6623.N"
+    assert scraper._get_quote_symbol("7203.T") == "7203.T"
+    assert scraper._get_quote_symbol("7203") == "7203.T"
+    assert scraper._get_quote_symbol("130A") == "130A.T"

@@ -120,7 +120,19 @@
                     </section>
 
                     <section class="portfolio-history card">
-                        <h3>資産推移</h3>
+                        <div class="history-card-header d-flex justify-content-between align-items-center mb-3">
+                            <h3 class="m-0">資産推移</h3>
+                            <div id="asset-history-mom-summary" class="history-mom-summary hidden">
+                                <span class="mom-item me-3">
+                                    <span class="mom-label">総資産 先月末比:</span>
+                                    <strong id="asset-mom-value" class="mom-value">--</strong>
+                                </span>
+                                <span class="mom-item">
+                                    <span class="mom-label">投資元本 先月末比:</span>
+                                    <strong id="capital-mom-value" class="mom-value">--</strong>
+                                </span>
+                            </div>
+                        </div>
                         <div class="chart-container" style="margin-bottom: 2rem;">
                             <canvas id="asset-history-chart"></canvas>
                         </div>

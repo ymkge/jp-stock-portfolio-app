@@ -1162,3 +1162,29 @@ def test_get_stocks_instant_cancellation_issue299():
         # 切断が検知されたため、DB保存(save_daily_data)が一切呼び出されていないこと
         mock_save_daily.assert_not_called()
         assert processed_data == []
+
+
+def test_analytics_page_asset_history_mom_summary_issue300():
+    """案件 #300: analytics ページの資産推移における先月末比要素・CSS・JSロジックの存在および表示検証"""
+    from fastapi.testclient import TestClient
+    from app import app
+
+    client = TestClient(app)
+
+    # 1. templates/analysis.html 内に #asset-history-mom-summary が存在すること
+    res_analysis = client.get("/analysis")
+    assert res_analysis.status_code == 200
+    assert 'id="asset-history-mom-summary"' in res_analysis.text
+    assert 'id="asset-mom-value"' in res_analysis.text
+    assert 'id="capital-mom-value"' in res_analysis.text
+
+    # 2. static/css/style.css 内に .history-mom-summary スタイルが存在すること
+    res_css = client.get("/static/css/style.css")
+    assert res_css.status_code == 200
+    assert '.history-mom-summary' in res_css.text
+
+    # 3. static/js/analysis.js 内に先月末比(Tooltip afterLabel & サマリー描画)のスクリプトが存在すること
+    res_js = client.get("/static/js/analysis.js")
+    assert res_js.status_code == 200
+    assert '先月末比:' in res_js.text
+    assert 'asset-history-mom-summary' in res_js.text

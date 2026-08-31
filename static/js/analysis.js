@@ -399,6 +399,49 @@ document.addEventListener('DOMContentLoaded', () => {
         const assetCanvas = document.getElementById('asset-history-chart');
         if (assetCanvas) {
             const existingChart = Chart.getChart(assetCanvas); if (existingChart) existingChart.destroy();
+            
+            const assetOptions = JSON.parse(JSON.stringify(commonOptions));
+            assetOptions.plugins = assetOptions.plugins || {};
+            assetOptions.plugins.tooltip = assetOptions.plugins.tooltip || {};
+            assetOptions.plugins.tooltip.callbacks = {
+                label: (c) => `${c.dataset.label}: ${isAmountVisible ? formatNumber(c.raw, 0) + '円' : '***円'}`,
+                afterLabel: (c) => {
+                    const idx = c.dataIndex;
+                    const datasetIdx = c.datasetIndex;
+                    const dataArr = c.dataset.data;
+                    const val = c.raw || 0;
+
+                    if (idx === 0) {
+                        return isAmountVisible ? '先月末比: -' : '先月末比: ***円';
+                    }
+
+                    const prevVal = dataArr[idx - 1] || 0;
+                    const diff = val - prevVal;
+
+                    if (!isAmountVisible) {
+                        return '先月末比: ***円';
+                    }
+
+                    if (diff > 0) {
+                        if (prevVal > 0) {
+                            const pct = ((diff / prevVal) * 100).toFixed(1);
+                            return `先月末比: +${formatNumber(diff, 0)}円 (+${pct}%)`;
+                        } else {
+                            return `先月末比: +${formatNumber(diff, 0)}円`;
+                        }
+                    } else if (diff < 0) {
+                        if (prevVal > 0) {
+                            const pct = ((diff / prevVal) * 100).toFixed(1);
+                            return `先月末比: ${formatNumber(diff, 0)}円 (${pct}%)`;
+                        } else {
+                            return `先月末比: ${formatNumber(diff, 0)}円`;
+                        }
+                    } else {
+                        return `先月末比: ±0円`;
+                    }
+                }
+            };
+
             new Chart(assetCanvas.getContext('2d'), {
                 type: 'line',
                 data: {
@@ -406,8 +449,47 @@ document.addEventListener('DOMContentLoaded', () => {
                     datasets: [{ label: '総資産額', data: marketValues, borderColor: '#4e73df', backgroundColor: 'rgba(78, 115, 223, 0.1)', fill: true, tension: 0.3 },
                                { label: '投資元本', data: originalInvestments, borderColor: '#858796', borderDash: [5, 5], fill: false, tension: 0 }]
                 },
-                options: commonOptions
+                options: assetOptions
             });
+
+            // 最新月の先月末比サマリー描画 (#300)
+            const summaryContainer = document.getElementById('asset-history-mom-summary');
+            const assetMomValEl = document.getElementById('asset-mom-value');
+            const capitalMomValEl = document.getElementById('capital-mom-value');
+
+            if (summaryContainer && assetMomValEl && capitalMomValEl) {
+                const lastIdx = historyData.length - 1;
+                if (lastIdx > 0) {
+                    const formatMomText = (curr, prev) => {
+                        if (!isAmountVisible) return { text: '***円', className: '' };
+                        const diff = curr - prev;
+                        if (diff > 0) {
+                            const pct = prev > 0 ? ((diff / prev) * 100).toFixed(1) : null;
+                            const pctStr = pct ? ` (+${pct}%)` : '';
+                            return { text: `+${formatNumber(diff, 0)}円${pctStr}`, className: 'profit' };
+                        } else if (diff < 0) {
+                            const pct = prev > 0 ? ((diff / prev) * 100).toFixed(1) : null;
+                            const pctStr = pct ? ` (${pct}%)` : '';
+                            return { text: `${formatNumber(diff, 0)}円${pctStr}`, className: 'loss' };
+                        } else {
+                            return { text: '±0円', className: '' };
+                        }
+                    };
+
+                    const assetRes = formatMomText(marketValues[lastIdx], marketValues[lastIdx - 1]);
+                    const capitalRes = formatMomText(originalInvestments[lastIdx], originalInvestments[lastIdx - 1]);
+
+                    assetMomValEl.textContent = assetRes.text;
+                    assetMomValEl.className = `mom-value ${assetRes.className}`;
+
+                    capitalMomValEl.textContent = capitalRes.text;
+                    capitalMomValEl.className = `mom-value ${capitalRes.className}`;
+
+                    summaryContainer.classList.remove('hidden');
+                } else {
+                    summaryContainer.classList.add('hidden');
+                }
+            }
         }
         const divCanvas = document.getElementById('dividend-history-chart');
         if (divCanvas) {

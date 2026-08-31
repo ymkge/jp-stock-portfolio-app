@@ -4010,3 +4010,37 @@ body.dark-mode .btn-updating-cancel:hover,
     color: #fecaca !important;
     border-color: #f87171 !important;
 }
+
+/* ==========================================
+   資産推移 先月末比サマリー バッジ スタイル (#300)
+   ========================================== */
+.history-mom-summary {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.history-mom-summary .mom-item {
+    background-color: var(--bg-card-subtle, rgba(241, 245, 249, 0.8));
+    border: 1px solid var(--border-color, #e2e8f0);
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
+    color: var(--text-muted, #64748b);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+[data-theme="dark"] .history-mom-summary .mom-item,
+body.dark-mode .history-mom-summary .mom-item,
+.dark-mode .history-mom-summary .mom-item {
+    background-color: #0f172a;
+    border-color: #334155;
+    color: #94a3b8;
+}
+
+.history-mom-summary .mom-value {
+    font-weight: 600;
+}

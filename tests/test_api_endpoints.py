@@ -453,8 +453,8 @@ def test_daily_ranking_modal_ui_and_dark_mode_issue261():
     assert 'id="btn-close-daily-ranking-modal-footer"' in html_content
     assert 'id="tab-gainers-top20"' in html_content
     assert 'id="tab-losers-top20"' in html_content
-    assert 'max-height: 85vh' in html_content
-    assert 'overflow-y: auto' in html_content
+    assert 'class="modal-content large-modal"' in html_content
+    assert 'class="modal-body"' in html_content
 
     # 2. CSS モーダル親コンテナのダークモードトリプルセレクタ検証
     css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
@@ -1217,3 +1217,28 @@ def test_modal_responsive_styles_issue301():
     assert 'class="modal-header d-flex flex-column' in res_analysis.text
     assert 'id="fib-tab-n225"' in res_analysis.text
     assert 'id="fib-tab-topix"' in res_analysis.text
+
+
+def test_modal_padding_issue302():
+    """案件 #302: モーダル左端・右端の詰まり解消とパディング一元標準化 (padding: 1.25rem 1.5rem) の検証"""
+    from fastapi.testclient import TestClient
+    from app import app
+
+    client = TestClient(app)
+
+    # 1. style.css 内で .modal-body の左右パディング 1.5rem が設定されていること
+    res_css = client.get("/static/css/style.css")
+    assert res_css.status_code == 200
+    assert "padding: 1.25rem 1.5rem;" in res_css.text
+
+    # 2. templates/index.html 内に padding: 20px 0; や padding: 15px 0; が残っていないこと
+    res_index = client.get("/")
+    assert res_index.status_code == 200
+    assert 'style="padding: 20px 0;"' not in res_index.text
+    assert 'style="padding: 15px 0;"' not in res_index.text
+
+    # 3. templates/analysis.html 内に padding: 15px 0; や padding: 18px 5px; が残っていないこと
+    res_analysis = client.get("/analysis")
+    assert res_analysis.status_code == 200
+    assert 'style="padding: 15px 0;' not in res_analysis.text
+    assert 'style="padding: 18px 5px;' not in res_analysis.text

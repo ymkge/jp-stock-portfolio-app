@@ -322,25 +322,27 @@
 
     <!-- 📈 主要指数フィボナッチ水準参照モーダル (#231) -->
     <div id="market-fibonacci-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="market-fibonacci-modal-title">
-        <div class="modal-content large-modal" style="max-width: 820px; border-radius: 12px;">
-            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid var(--border-color, #e2e8f0);">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <h3 id="market-fibonacci-modal-title" style="margin: 0; font-size: 1.25rem;">📈 主要指数 フィボナッチリトレースメント</h3>
-                    <span id="market-fib-updated-tag" class="badge bg-secondary" style="font-size: 0.75rem;">直近3年基準</span>
+        <div class="modal-content large-modal">
+            <div class="modal-header d-flex flex-column align-items-stretch" style="padding-bottom: 0.5rem;">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <h3 id="market-fibonacci-modal-title" style="margin: 0; font-size: 1.25rem;">📈 主要指数 フィボナッチリトレースメント</h3>
+                        <span id="market-fib-updated-tag" class="badge bg-secondary" style="font-size: 0.75rem;">直近3年基準</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <button type="button" id="btn-refresh-market-fib" class="btn-outline" style="font-size: 0.8rem; padding: 4px 10px; display: flex; align-items: center; gap: 4px;" title="Gemini AIで直近3年間の高安値を最新データへ更新">
+                            🔄 Gemini AIで最新化
+                        </button>
+                        <button type="button" id="btn-close-market-fib-modal" class="modal-close-btn">&times;</button>
+                    </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <button type="button" id="btn-refresh-market-fib" class="btn-outline" style="font-size: 0.8rem; padding: 4px 10px; display: flex; align-items: center; gap: 4px;" title="Gemini AIで直近3年間の高安値を最新データへ更新">
-                        🔄 Gemini AIで最新化
-                    </button>
-                    <button type="button" id="btn-close-market-fib-modal" class="modal-close-btn">&times;</button>
-                </div>
-            </div>
-            <div class="modal-body" style="padding: 16px 0;">
-                <!-- 指数切り替えタブ -->
-                <div class="fib-tabs" style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 2px solid var(--border-color, #e2e8f0); padding-bottom: 8px;">
+                <!-- 固定指数切り替えタブ (スクロールしても隠れない) -->
+                <div class="fib-tabs" style="display: flex; gap: 8px; margin-top: 4px;">
                     <button type="button" id="fib-tab-n225" class="btn-tab active" onclick="switchMarketFibTab('n225')">日経平均株価</button>
                     <button type="button" id="fib-tab-topix" class="btn-tab" onclick="switchMarketFibTab('topix')">TOPIX</button>
                 </div>
+            </div>
+            <div class="modal-body">
 
                 <!-- 指数概要 & 現在地バッジ -->
                 <div id="fib-index-summary-card" class="card fib-summary-card">
@@ -373,7 +375,7 @@
                     </div>
                 </div>
             </div>
-            <div class="modal-footer" style="padding-top: 12px; border-top: 1px solid var(--border-color, #e2e8f0); text-align: right;">
+            <div class="modal-footer">
                 <button type="button" id="btn-close-market-fib-footer" class="btn-secondary fib-close-pill-btn">閉じる</button>
             </div>
         </div>

@@ -160,11 +160,10 @@ def test_llm_modal_first_view_and_responsive_css():
         css_content = f.read()
 
     # 1. モーダル高さ制限と内部スクロール検証
-    assert "#llm-diagnosis-modal .modal-dialog" in css_content
     assert "#llm-diagnosis-modal .modal-content" in css_content
-    assert "#llm-diagnosis-modal .modal-body" in css_content
-    assert "max-height: 88vh;" in css_content
-    assert "max-height: calc(88vh - 120px);" in css_content
+    assert ".modal-content" in css_content
+    assert ".modal-body" in css_content
+    assert "max-height: calc(100vh - 40px);" in css_content
     assert "overflow-y: auto;" in css_content
 
     # 2. レスポンシブ2列レイアウトとコンパクトブロック検証
@@ -183,8 +182,8 @@ def test_llm_modal_first_view_and_responsive_css():
     assert "body.dark-mode .llm-section-block.theme-highlight-summary" in css_content
     assert "body.dark-mode .llm-section-block.theme-highlight-action" in css_content
 
-    # 5. 他モーダルへの副作用防止確認（汎用モーダルクラスを直接汚染せず#llm-diagnosis-modalでスコープしているか）
-    assert "#llm-diagnosis-modal .modal-body {" in css_content
+    # 5. 一元化された共通モーダル構造（.modal-body）が定義されているか検証 (#301)
+    assert ".modal-body {" in css_content
 
     # JS/HTML構造検証
     js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "main.js")
@@ -1188,3 +1187,33 @@ def test_analytics_page_asset_history_mom_summary_issue300():
     assert res_js.status_code == 200
     assert '先月末比:' in res_js.text
     assert 'asset-history-mom-summary' in res_js.text
+
+
+def test_modal_responsive_styles_issue301():
+    """案件 #301: 小画面・ノートPCでのモーダル上下削れを防止する一元標準レスポンシブCSSおよびHTML構造の検証"""
+    from fastapi.testclient import TestClient
+    from app import app
+
+    client = TestClient(app)
+
+    # 1. CSSルール内の max-height: calc(100vh - 40px) および Flexbox 設定の検証
+    res_css = client.get("/static/css/style.css")
+    assert res_css.status_code == 200
+    assert 'max-height: calc(100vh - 40px);' in res_css.text
+    assert 'overscroll-behavior: contain;' in res_css.text
+
+    # 2. templates/index.html および templates/analysis.html 内のモーダル共通構造検証
+    res_index = client.get("/")
+    assert res_index.status_code == 200
+    assert 'id="market-fibonacci-modal"' in res_index.text
+    # .fib-tabsが.modal-header内部（.modal-bodyの直前）に存在することを確認
+    assert 'class="modal-header d-flex flex-column' in res_index.text
+    assert 'id="fib-tab-n225"' in res_index.text
+    assert 'id="fib-tab-topix"' in res_index.text
+
+    res_analysis = client.get("/analysis")
+    assert res_analysis.status_code == 200
+    assert 'id="market-fibonacci-modal"' in res_analysis.text
+    assert 'class="modal-header d-flex flex-column' in res_analysis.text
+    assert 'id="fib-tab-n225"' in res_analysis.text
+    assert 'id="fib-tab-topix"' in res_analysis.text

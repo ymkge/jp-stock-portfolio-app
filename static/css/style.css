@@ -1950,6 +1950,63 @@ body.dark-mode .dividend-spec-note small,
     flex: 0 0 auto;
     padding: 1rem 1.5rem;
     border-bottom: 1px solid var(--border-color, #e2e8f0);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* 2段構成モーダルヘッダー（指数フィボナッチ等）用補正 (#305) */
+.modal-header.flex-column,
+.modal-header.d-flex.flex-column,
+#market-fibonacci-modal .modal-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+}
+
+.modal-header-top {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2,
+.modal-header h3 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+.modal-close,
+.modal-close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text-muted, #64748b);
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: color 0.2s, background-color 0.2s;
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-close:hover,
+.modal-close-btn:hover {
+    color: var(--text-color, #1e293b);
+    background-color: var(--bg-hover, rgba(0, 0, 0, 0.05));
+}
+
+[data-theme="dark"] .modal-close:hover,
+[data-theme="dark"] .modal-close-btn:hover,
+body.dark-mode .modal-close:hover,
+body.dark-mode .modal-close-btn:hover,
+.dark-mode .modal-close:hover,
+.dark-mode .modal-close-btn:hover {
+    color: #f8fafc;
+    background-color: rgba(255, 255, 255, 0.1);
 }
 
 .modal-body {

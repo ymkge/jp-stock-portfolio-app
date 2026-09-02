@@ -449,7 +449,7 @@ def test_daily_ranking_modal_ui_and_dark_mode_issue261():
     # 1. HTML起動ボタンおよびモーダル構造アサーション
     assert 'id="btn-open-daily-ranking-modal"' in html_content
     assert 'id="daily-ranking-modal"' in html_content
-    assert 'id="btn-close-daily-ranking-modal"' not in html_content
+    assert 'id="btn-close-daily-ranking-modal"' in html_content
     assert 'id="btn-close-daily-ranking-modal-footer"' in html_content
     assert 'id="tab-gainers-top20"' in html_content
     assert 'id="tab-losers-top20"' in html_content
@@ -1242,3 +1242,59 @@ def test_modal_padding_issue302():
     assert res_analysis.status_code == 200
     assert 'style="padding: 15px 0;' not in res_analysis.text
     assert 'style="padding: 18px 5px;' not in res_analysis.text
+
+
+def test_modal_close_button_layout_issue305():
+    """案件 #305: モーダルヘッダー内の閉じるバツ印 (×) ボタンの横並びFlexbox配置およびスタイルの検証"""
+    from fastapi.testclient import TestClient
+    from app import app
+
+    client = TestClient(app)
+
+    # 1. style.css 内で .modal-header に display: flex および justify-content: space-between が設定されていること
+    res_css = client.get("/static/css/style.css")
+    assert res_css.status_code == 200
+    assert "justify-content: space-between;" in res_css.text
+    assert "margin-left: auto;" in res_css.text
+    assert ".modal-close:hover" in res_css.text
+
+    # 2. templates/index.html 内の各モーダルで modal-close ボタンが存在すること
+    res_index = client.get("/")
+    assert res_index.status_code == 200
+    assert 'id="btn-close-split-modal"' in res_index.text
+    assert 'id="btn-close-split-history-modal"' in res_index.text
+    assert 'id="btn-close-policy-modal"' in res_index.text
+
+    # 3. templates/analysis.html 内の各モーダルで modal-close ボタンが存在すること
+    res_analysis = client.get("/analysis")
+    assert res_analysis.status_code == 200
+    assert 'id="btn-close-daily-ranking-modal"' in res_analysis.text
+    assert 'id="btn-close-profit-taking-modal"' in res_analysis.text
+    assert 'id="btn-close-profit-taking-ai-modal-header"' in res_analysis.text
+
+
+def test_market_fibonacci_modal_header_layout_issue305():
+    """案件 #305: 指数フィボナッチモーダル(#market-fibonacci-modal)の2段組みヘッダー構造と.modal-header-topの配置検証"""
+    from fastapi.testclient import TestClient
+    from app import app
+
+    client = TestClient(app)
+
+    # 1. style.css 内に #market-fibonacci-modal .modal-header への flex-direction: column !important および .modal-header-top が定義されていること
+    res_css = client.get("/static/css/style.css")
+    assert res_css.status_code == 200
+    assert "#market-fibonacci-modal .modal-header" in res_css.text
+    assert "flex-direction: column !important;" in res_css.text
+    assert ".modal-header-top" in res_css.text
+
+    # 2. templates/index.html 内で .modal-header-top クラスが 1段目に設定され、btn-refresh-market-fibがフッター内にあること
+    res_index = client.get("/")
+    assert res_index.status_code == 200
+    assert 'class="modal-header-top d-flex justify-content-between align-items-center mb-2"' in res_index.text
+    assert 'id="btn-refresh-market-fib"' in res_index.text
+
+    # 3. templates/analysis.html 内で .modal-header-top クラスが 1段目に設定され、btn-refresh-market-fibがフッター内にあること
+    res_analysis = client.get("/analysis")
+    assert res_analysis.status_code == 200
+    assert 'class="modal-header-top d-flex justify-content-between align-items-center mb-2"' in res_analysis.text
+    assert 'id="btn-refresh-market-fib"' in res_analysis.text

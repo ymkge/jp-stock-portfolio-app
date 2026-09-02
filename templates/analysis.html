@@ -238,6 +238,7 @@
                 <div class="modal-content large-modal" style="max-width: 750px;">
                     <div class="modal-header">
                         <h2 id="modal-ranking-title">🚀 資産変動ランキング (TOP20)</h2>
+                        <button type="button" id="btn-close-daily-ranking-modal" class="modal-close">&times;</button>
                     </div>
                     <div class="modal-body">
                         <!-- 期間切替 メインタブ (#270) -->
@@ -268,6 +269,7 @@
                             <span>💰 利確・銘柄入替検討リスト</span>
                             <span class="badge bg-warning text-dark" style="font-size: 0.75rem;">配当10年分以上達成</span>
                         </h2>
+                        <button type="button" id="btn-close-profit-taking-modal" class="modal-close">&times;</button>
                     </div>
                     <div class="modal-body">
                         <p class="text-muted" style="font-size: 0.85rem; margin-bottom: 12px;">
@@ -286,11 +288,12 @@
             <!-- AI利確診断 専用ダイアログモーダル (#281) -->
             <div id="profit-taking-ai-modal" class="modal-overlay hidden" style="z-index: 1200;" role="dialog" aria-modal="true" aria-labelledby="modal-profit-taking-ai-title">
                 <div class="modal-content" style="max-width: 680px;">
-                    <div class="modal-header" style="padding-bottom: 12px; border-bottom: 1px solid var(--border-color, #e2e8f0);">
-                        <h2 id="modal-profit-taking-ai-title" style="margin: 0; font-size: 1.15rem; display: flex; align-items: center; justify-content: space-between; width: 100%;">
-                            <span id="pt-ai-modal-header-text">🤖 AI利確・銘柄入替診断</span>
-                            <span id="pt-ai-badge-years" class="profit-capsule-badge profit-capsule-level-4 ms-2" style="font-size: 0.75rem;">💎 配当30年分達成</span>
-                        </h2>
+                    <div class="modal-header">
+                        <div class="d-flex align-items-center gap-2">
+                            <span id="pt-ai-modal-header-text" style="font-weight: bold; font-size: 1.15rem;">🤖 AI利確・銘柄入替診断</span>
+                            <span id="pt-ai-badge-years" class="profit-capsule-badge profit-capsule-level-4" style="font-size: 0.75rem;">💎 配当30年分達成</span>
+                        </div>
+                        <button type="button" id="btn-close-profit-taking-ai-modal-header" class="modal-close">&times;</button>
                     </div>
                     <div class="modal-body" id="pt-ai-modal-body">
                         <!-- AI診断コンテンツまたはローディング指示がJSで描画されます -->
@@ -324,17 +327,12 @@
     <div id="market-fibonacci-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="market-fibonacci-modal-title">
         <div class="modal-content large-modal">
             <div class="modal-header d-flex flex-column align-items-stretch" style="padding-bottom: 0.5rem;">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <div class="d-flex align-items-center gap-2">
+                <div class="modal-header-top d-flex justify-content-between align-items-center mb-2" style="width: 100%;">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
                         <h3 id="market-fibonacci-modal-title" style="margin: 0; font-size: 1.25rem;">📈 主要指数 フィボナッチリトレースメント</h3>
                         <span id="market-fib-updated-tag" class="badge bg-secondary" style="font-size: 0.75rem;">直近3年基準</span>
                     </div>
-                    <div class="d-flex align-items-center gap-2">
-                        <button type="button" id="btn-refresh-market-fib" class="btn-outline" style="font-size: 0.8rem; padding: 4px 10px; display: flex; align-items: center; gap: 4px;" title="Gemini AIで直近3年間の高安値を最新データへ更新">
-                            🔄 Gemini AIで最新化
-                        </button>
-                        <button type="button" id="btn-close-market-fib-modal" class="modal-close-btn">&times;</button>
-                    </div>
+                    <button type="button" id="btn-close-market-fib-modal" class="modal-close">&times;</button>
                 </div>
                 <!-- 固定指数切り替えタブ (スクロールしても隠れない) -->
                 <div class="fib-tabs" style="display: flex; gap: 8px; margin-top: 4px;">
@@ -375,7 +373,10 @@
                     </div>
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+                <button type="button" id="btn-refresh-market-fib" class="btn-outline" style="font-size: 0.8rem; padding: 6px 12px; display: flex; align-items: center; gap: 4px;" title="Gemini AIで直近3年間の高安値を最新データへ更新">
+                    🔄 Gemini AIで最新化
+                </button>
                 <button type="button" id="btn-close-market-fib-footer" class="btn-secondary fib-close-pill-btn">閉じる</button>
             </div>
         </div>

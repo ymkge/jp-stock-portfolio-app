@@ -103,8 +103,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnOpenProfitTakingModal = document.getElementById('btn-open-profit-taking-modal');
     const profitTakingModal = document.getElementById('profit-taking-modal');
     const btnCloseProfitTakingModalFooter = document.getElementById('btn-close-profit-taking-modal-footer');
+    const btnCloseProfitTakingModal = document.getElementById('btn-close-profit-taking-modal');
     const profitTakingAiModal = document.getElementById('profit-taking-ai-modal');
     const btnCloseProfitTakingAiModal = document.getElementById('btn-close-profit-taking-ai-modal');
+    const btnCloseProfitTakingAiModalHeader = document.getElementById('btn-close-profit-taking-ai-modal-header');
 
     if (btnOpenProfitTakingModal && profitTakingModal) {
         btnOpenProfitTakingModal.addEventListener('click', () => {
@@ -117,6 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
             profitTakingModal.style.display = 'none';
         };
 
+        if (btnCloseProfitTakingModal) btnCloseProfitTakingModal.addEventListener('click', closeProfitTakingModal);
         if (btnCloseProfitTakingModalFooter) btnCloseProfitTakingModalFooter.addEventListener('click', closeProfitTakingModal);
 
         profitTakingModal.addEventListener('click', (e) => {
@@ -137,6 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         if (btnCloseProfitTakingAiModal) btnCloseProfitTakingAiModal.addEventListener('click', closeProfitTakingAiModal);
+        if (btnCloseProfitTakingAiModalHeader) btnCloseProfitTakingAiModalHeader.addEventListener('click', closeProfitTakingAiModal);
 
         profitTakingAiModal.addEventListener('click', (e) => {
             if (e.target === profitTakingAiModal) closeProfitTakingAiModal();

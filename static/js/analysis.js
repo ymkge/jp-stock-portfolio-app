@@ -1644,14 +1644,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 <table class="table table-hover align-middle mb-0 profit-taking-table" style="font-size: 0.88rem;">
                     <thead>
                         <tr class="table-dark" style="background: linear-gradient(to right, #0f172a, #1e293b); color: #ffffff;">
-                            <th style="width: 60px; color: #ffffff;" class="text-center">順位</th>
-                            <th style="color: #ffffff;">銘柄名 (コード)</th>
-                            <th style="color: #ffffff;" class="text-end">現在評価額</th>
-                            <th style="color: #ffffff;" class="text-end">含み益</th>
-                            <th style="color: #ffffff;" class="text-end">年間予定配当</th>
-                            <th style="color: #ffffff; width: 95px;" class="text-end">配当利回り</th>
-                            <th style="width: 210px; color: #ffffff;" class="text-center">到達レベル (推薦アクション)</th>
-                            <th style="width: 110px; color: #ffffff;" class="text-center">AI診断</th>
+                            <th style="width: 50px; color: #ffffff;" class="text-center">順位</th>
+                            <th style="min-width: 200px; color: #ffffff;" class="col-stock-name">銘柄名 (コード)</th>
+                            <th style="min-width: 110px; color: #ffffff; white-space: nowrap;" class="text-end">現在評価額</th>
+                            <th style="min-width: 110px; color: #ffffff; white-space: nowrap;" class="text-end">含み益</th>
+                            <th style="min-width: 105px; color: #ffffff; white-space: nowrap;" class="text-end">年間予定配当</th>
+                            <th style="width: 95px; min-width: 90px; color: #ffffff; white-space: nowrap;" class="text-end">配当利回り</th>
+                            <th style="width: 200px; min-width: 180px; color: #ffffff;" class="text-center">到達レベル (推薦アクション)</th>
+                            <th style="width: 100px; min-width: 95px; color: #ffffff;" class="text-center">AI診断</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1686,16 +1686,16 @@ document.addEventListener('DOMContentLoaded', () => {
             tableHtml += `
                 <tr>
                     <td class="text-center">${rankBadgeHtml}</td>
-                    <td>
+                    <td class="col-stock-name">
                         <span class="fw-bold">${item.name || ''}</span>
                         <small class="text-muted ms-1">(${item.code})</small>
                     </td>
-                    <td class="text-end numeric">${mvStr}</td>
-                    <td class="text-end numeric">
+                    <td class="text-end numeric" style="white-space: nowrap;">${mvStr}</td>
+                    <td class="text-end numeric" style="white-space: nowrap;">
                         <span class="profit-pill-highlight">${plStr}</span>
                     </td>
-                    <td class="text-end numeric">${divStr}</td>
-                    <td class="text-end numeric">
+                    <td class="text-end numeric" style="white-space: nowrap;">${divStr}</td>
+                    <td class="text-end numeric" style="white-space: nowrap;">
                         <span class="yield-pill-highlight">${yieldStr}</span>
                     </td>
                     <td class="text-center">

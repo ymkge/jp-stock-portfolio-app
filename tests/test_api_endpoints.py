@@ -1298,3 +1298,27 @@ def test_market_fibonacci_modal_header_layout_issue305():
     assert res_analysis.status_code == 200
     assert 'class="modal-header-top d-flex justify-content-between align-items-center mb-2"' in res_analysis.text
     assert 'id="btn-refresh-market-fib"' in res_analysis.text
+
+
+def test_profit_taking_table_column_widths_issue306():
+    """案件 #306: 利確検討モーダルの銘柄名カラム幅(min-width: 200px)および数値列折り返し防止指定の検証"""
+    import os
+    from fastapi.testclient import TestClient
+    from app import app
+
+    client = TestClient(app)
+
+    # 1. style.css 内で .profit-taking-table .col-stock-name に min-width: 200px が定義されていること
+    res_css = client.get("/static/css/style.css")
+    assert res_css.status_code == 200
+    assert ".profit-taking-table th.col-stock-name" in res_css.text
+    assert "min-width: 200px" in res_css.text
+
+    # 2. static/js/analysis.js 内で profit-taking-table の th に col-stock-name および min-width: 200px が設定されていること
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    assert 'class="col-stock-name"' in js_content
+    assert 'style="min-width: 200px; color: #ffffff;"' in js_content
+    assert 'white-space: nowrap;' in js_content

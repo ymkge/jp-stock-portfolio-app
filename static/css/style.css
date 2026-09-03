@@ -3223,6 +3223,14 @@ body:not(.dark-mode) .profit-taking-table thead th {
     font-weight: 600;
 }
 
+/* 利確・銘柄入替検討リストモーダル 銘柄名幅確保・可読性向上 (#306) */
+.profit-taking-table th.col-stock-name,
+.profit-taking-table td.col-stock-name {
+    min-width: 200px !important;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+}
+
 .ranking-tab-btn {
     border: 1px solid #cbd5e1;
     background: #f8fafc;

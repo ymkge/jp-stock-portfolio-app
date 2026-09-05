@@ -603,6 +603,64 @@ def test_fetch_market_fibonacci_llm_direct_issue293(policy_manager):
         assert result_new_high["topix"]["high_price"] == 4176.0
 
 
+def test_diagnose_anomaly_no_api_key_issue298(tmp_path):
+    """案件 #298: APIキー未設定時に diagnose_anomaly が NO_API_KEY を返却するか検証"""
+    test_file = os.path.join(tmp_path, "no_key_policy_298.json")
+    pm = InvestmentPolicyManager(filepath=test_file)
+    service = LLMDiagnosisService(policy_manager=pm)
+    
+    with patch.dict(os.environ, {}, clear=True):
+        res = service.diagnose_anomaly(month=5, anomaly_info={"title": "5月に売れ"})
+        assert res.get("error") is True
+        assert res.get("error_code") == "NO_API_KEY"
+
+
+def test_diagnose_anomaly_success_and_cache_issue298(policy_manager):
+    """案件 #298: diagnose_anomaly の正常レスポンスとキャッシュ動作の検証"""
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [{"text": "5月のアノマリー解説テキスト。"}]
+                }
+            }
+        ]
+    }
+
+    anomaly_info = {
+        "title": "Sell in May",
+        "summary": "5月に売れ",
+        "risk_level": "high",
+        "reasons": ["決算通過"],
+        "actions": "ポジション調整"
+    }
+
+    with patch("requests.post", return_value=mock_response) as mock_post:
+        # 初回実行（キャッシュなし）
+        res1 = service.diagnose_anomaly(month=5, anomaly_info=anomaly_info)
+        assert res1.get("error") is False
+        assert res1.get("commentary") == "5月のアノマリー解説テキスト。"
+        assert res1.get("is_cached") is False
+        assert mock_post.call_count == 1
+
+        # 2回目実行（キャッシュヒット）
+        res2 = service.diagnose_anomaly(month=5, anomaly_info=anomaly_info)
+        assert res2.get("error") is False
+        assert res2.get("is_cached") is True
+        assert mock_post.call_count == 1
+
+        # force=True実行（キャッシュバイパス）
+        res3 = service.diagnose_anomaly(month=5, anomaly_info=anomaly_info, force=True)
+        assert res3.get("error") is False
+        assert res3.get("is_cached") is False
+        assert mock_post.call_count == 2
+
+
+
 
 
 

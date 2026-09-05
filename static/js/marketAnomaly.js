@@ -1,11 +1,12 @@
 /**
  * marketAnomaly.js
- * 投資のアノマリー（季節性・傾向）参照・分析機能 (#298)
+ * 投資のアノマリー（季節性・傾向）参照・分析機能 (#298, #307)
  */
 
 let anomalyData = null;
 let currentSelectedMonth = new Date().getMonth() + 1;
 let currentAnomalyTab = 'current'; // 'current' | 'calendar' | 'proverbs'
+let aiDiagnosisCache = {}; // { 1: { commentary: '...', diagnosed_at: '...', is_cached: true }, ... }
 
 document.addEventListener('DOMContentLoaded', () => {
     initAnomalyModal();
@@ -116,6 +117,14 @@ function selectAnomalyMonth(monthNum) {
     renderAnomalyModalContent();
 }
 
+function updateAnomalyAiButtonLabel(monthNum) {
+    const btnRefreshAi = document.getElementById('btn-refresh-anomaly-ai');
+    if (btnRefreshAi) {
+        btnRefreshAi.innerHTML = `🤖 Gemini AIで${monthNum}月を診断`;
+        btnRefreshAi.title = `Gemini AI で${monthNum}月のアノマリー診断を生成`;
+    }
+}
+
 function renderAnomalyModalContent() {
     const container = document.getElementById('anomaly-modal-body-container');
     if (!container || !anomalyData) return;
@@ -140,6 +149,8 @@ function renderCurrentMonthTab(container) {
         actions: ''
     };
 
+    updateAnomalyAiButtonLabel(currentSelectedMonth);
+
     const isThisMonth = currentSelectedMonth === (anomalyData.current_month || new Date().getMonth() + 1);
     const monthBadgeTag = isThisMonth ? '<span class="badge bg-primary ms-2" style="font-size: 0.75rem;">今月</span>' : '';
 
@@ -153,6 +164,17 @@ function renderCurrentMonthTab(container) {
     }
 
     const reasonsListHtml = (item.reasons || []).map(r => `<li style="margin-bottom: 6px; line-height: 1.5;">${r}</li>`).join('');
+
+    const cached = aiDiagnosisCache[currentSelectedMonth];
+    let commentaryContent = `『🤖 Gemini AIで${currentSelectedMonth}月を診断』ボタンを押すと、現在のアノマリーに基づくワンポイントアドバイスを生成します。`;
+    let timeContent = '';
+
+    if (cached) {
+        commentaryContent = cached.commentary || commentaryContent;
+        if (cached.diagnosed_at) {
+            timeContent = `${cached.is_cached ? '(キャッシュ)' : '(最新)'} ${cached.diagnosed_at} 更新`;
+        }
+    }
 
     container.innerHTML = `
         <div class="anomaly-month-header-card card p-3 mb-3" style="background: var(--card-bg, #f8fafc); border-left: 4px solid var(--primary-color, #4f46e5); border-radius: 8px;">
@@ -198,16 +220,13 @@ function renderCurrentMonthTab(container) {
         <div id="anomaly-ai-commentary-card" class="card mt-3 p-3" style="background: rgba(99, 102, 241, 0.05); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 8px;">
             <div style="font-weight: 600; font-size: 0.9rem; color: var(--primary-color, #4f46e5); margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
                 <span class="d-flex align-items-center gap-1">🤖 Gemini AI ${currentSelectedMonth}月のアノマリーワンポイント解説</span>
-                <span id="anomaly-ai-updated-at" class="text-muted fw-normal" style="font-size: 0.75rem;"></span>
+                <span id="anomaly-ai-updated-at" class="text-muted fw-normal" style="font-size: 0.75rem;">${timeContent}</span>
             </div>
             <div id="anomaly-ai-commentary-text" style="font-size: 0.85rem; line-height: 1.5; color: var(--text-color, #334155);">
-                AI診断ボタンを押すと、現在のアノマリーに基づくワンポイントアドバイスを生成します。
+                ${commentaryContent}
             </div>
         </div>
     `;
-
-    // キャッシュがあれば自動表示、無ければ自動取得
-    fetchAnomalyAiDiagnosis(currentSelectedMonth, false);
 }
 
 function renderCalendarTab(container) {
@@ -290,14 +309,18 @@ function renderProverbsTab(container) {
     `;
 }
 
-async function fetchAnomalyAiDiagnosis(monthNum, force = false) {
+async function fetchAnomalyAiDiagnosis(monthNum, force = true) {
     const textEl = document.getElementById('anomaly-ai-commentary-text');
     const timeEl = document.getElementById('anomaly-ai-updated-at');
+    const btnRefreshAi = document.getElementById('btn-refresh-anomaly-ai');
     if (!textEl) return;
 
-    if (force) {
-        textEl.innerHTML = '<span class="spinner-border spinner-border-sm text-primary me-2"></span>Gemini AI で今月のアノマリーを最新診断中...';
+    if (btnRefreshAi) {
+        btnRefreshAi.disabled = true;
+        btnRefreshAi.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> 診断生成中...';
     }
+
+    textEl.innerHTML = `<span class="spinner-border spinner-border-sm text-primary me-2"></span>Gemini AI で${monthNum}月のアノマリーを最新診断中...`;
 
     try {
         const resp = await fetch('/api/ai-diagnosis/anomaly', {
@@ -314,12 +337,27 @@ async function fetchAnomalyAiDiagnosis(monthNum, force = false) {
             return;
         }
 
-        textEl.innerText = result.commentary || '診断結果を取得できませんでした。';
-        if (timeEl && result.diagnosed_at) {
-            timeEl.innerText = `${result.is_cached ? '(キャッシュ)' : '(最新)'} ${result.diagnosed_at} 更新`;
+        const commentaryText = result.commentary || '診断結果を取得できませんでした。';
+        textEl.innerText = commentaryText;
+
+        const timeStr = `${result.is_cached ? '(キャッシュ)' : '(最新)'} ${result.diagnosed_at || ''} 更新`;
+        if (timeEl) {
+            timeEl.innerText = timeStr;
         }
+
+        // フロントエンドキャッシュに保存
+        aiDiagnosisCache[monthNum] = {
+            commentary: commentaryText,
+            diagnosed_at: result.diagnosed_at || '',
+            is_cached: result.is_cached || false
+        };
     } catch (err) {
         console.error('Failed to fetch anomaly AI diagnosis:', err);
         textEl.innerHTML = `<span class="text-danger">⚠️ AI診断通信エラー: ${err.message}</span>`;
+    } finally {
+        if (btnRefreshAi) {
+            btnRefreshAi.disabled = false;
+            updateAnomalyAiButtonLabel(monthNum);
+        }
     }
 }

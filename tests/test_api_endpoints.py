@@ -1376,3 +1376,17 @@ def test_anomaly_api_endpoints_issue298():
     assert ".anomaly-tabs .btn-tab" in res_css.text
     assert "color: #475569 !important;" in res_css.text
     assert ".anomaly-tabs .btn-tab.active" in res_css.text
+
+
+def test_anomaly_manual_ai_trigger_issue307():
+    """案件 #307: 投資アノマリーの Gemini AI 診断が自動呼出されず手動ボタン押下時のみ実行される構造のテスト"""
+    import os
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "marketAnomaly.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    # renderCurrentMonthTab 関数内で fetchAnomalyAiDiagnosis が自動呼出されていないことの確認
+    assert "updateAnomalyAiButtonLabel" in js_content
+    assert "aiDiagnosisCache" in js_content
+    # renderCurrentMonthTab 直下の自動 fetchAnomalyAiDiagnosis(currentSelectedMonth, false); が削除されていること
+    assert "fetchAnomalyAiDiagnosis(currentSelectedMonth, false);" not in js_content

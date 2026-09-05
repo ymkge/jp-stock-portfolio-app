@@ -3685,27 +3685,36 @@ body.dark-mode .pt-ai-retry-btn:hover,
 }
 
 /* ==========================================
-   Market Fibonacci Modal Styles (#231, #289)
+   Market Fibonacci & Anomaly Modal Tabs (#231, #289, #298)
    ========================================== */
-.fib-tabs .btn-tab {
-    background: transparent;
-    border: none;
-    padding: 8px 16px;
-    font-size: 0.95rem;
+.btn-tab,
+.fib-tabs .btn-tab,
+.anomaly-tabs .btn-tab {
+    background: #f1f5f9;
+    color: #475569 !important;
+    border: 1px solid #cbd5e1;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.88rem;
     font-weight: 600;
-    color: var(--text-muted, #64748b);
     cursor: pointer;
-    border-bottom: 3px solid transparent;
     transition: all 0.2s ease;
+    white-space: nowrap;
 }
 
-.fib-tabs .btn-tab:hover {
-    color: var(--primary-color, #3b82f6);
+.btn-tab:hover:not(.active),
+.fib-tabs .btn-tab:hover:not(.active),
+.anomaly-tabs .btn-tab:hover:not(.active) {
+    background: #e2e8f0;
+    color: #1e293b !important;
 }
 
-.fib-tabs .btn-tab.active {
-    color: var(--primary-color, #3b82f6);
-    border-bottom-color: var(--primary-color, #3b82f6);
+.btn-tab.active,
+.fib-tabs .btn-tab.active,
+.anomaly-tabs .btn-tab.active {
+    background: #4f46e5 !important;
+    color: #ffffff !important;
+    border-color: #4f46e5 !important;
 }
 
 /* サマリーカード専用スタイル (#290) */
@@ -3823,18 +3832,33 @@ body.dark-mode .pt-ai-retry-btn:hover,
     border-color: #94a3b8 !important;
 }
 
-/* --- ダークモード対応 (#289) --- */
+/* --- ダークモード対応 (#289, #298) --- */
+[data-theme="dark"] .btn-tab,
+body.dark-mode .btn-tab,
+.dark-mode .btn-tab,
 [data-theme="dark"] .fib-tabs .btn-tab,
 body.dark-mode .fib-tabs .btn-tab,
-.dark-mode .fib-tabs .btn-tab {
-    color: #94a3b8;
+.dark-mode .fib-tabs .btn-tab,
+[data-theme="dark"] .anomaly-tabs .btn-tab,
+body.dark-mode .anomaly-tabs .btn-tab,
+.dark-mode .anomaly-tabs .btn-tab {
+    background: #1e293b !important;
+    color: #94a3b8 !important;
+    border-color: #334155 !important;
 }
 
+[data-theme="dark"] .btn-tab.active,
+body.dark-mode .btn-tab.active,
+.dark-mode .btn-tab.active,
 [data-theme="dark"] .fib-tabs .btn-tab.active,
 body.dark-mode .fib-tabs .btn-tab.active,
-.dark-mode .fib-tabs .btn-tab.active {
-    color: #60a5fa !important;
-    border-bottom-color: #60a5fa !important;
+.dark-mode .fib-tabs .btn-tab.active,
+[data-theme="dark"] .anomaly-tabs .btn-tab.active,
+body.dark-mode .anomaly-tabs .btn-tab.active,
+.dark-mode .anomaly-tabs .btn-tab.active {
+    background: #6366f1 !important;
+    color: #ffffff !important;
+    border-color: #6366f1 !important;
 }
 
 [data-theme="dark"] .fib-summary-card,
@@ -4116,9 +4140,46 @@ body.dark-mode .btn-updating-cancel:hover,
 [data-theme="dark"] .history-mom-summary .mom-item,
 body.dark-mode .history-mom-summary .mom-item,
 .dark-mode .history-mom-summary .mom-item {
-    background-color: #0f172a;
+    background-color: rgba(30, 41, 59, 0.8);
     border-color: #334155;
     color: #94a3b8;
+}
+
+/* ==========================================
+   投資のアノマリー参照モーダル スタイル (#298)
+   ========================================== */
+[data-theme="dark"] #investment-anomaly-modal .modal-content,
+body.dark-mode #investment-anomaly-modal .modal-content,
+.dark-mode #investment-anomaly-modal .modal-content {
+    background-color: #0f172a !important;
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] .anomaly-month-header-card,
+body.dark-mode .anomaly-month-header-card,
+.dark-mode .anomaly-month-header-card {
+    background: #1e293b !important;
+    border-color: #4f46e5 !important;
+}
+
+.anomaly-month-grid-card:hover {
+    border-color: var(--primary-color, #4f46e5) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] .anomaly-month-grid-card,
+body.dark-mode .anomaly-month-grid-card,
+.dark-mode .anomaly-month-grid-card {
+    background: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+[data-theme="dark"] #anomaly-ai-commentary-card,
+body.dark-mode #anomaly-ai-commentary-card,
+.dark-mode #anomaly-ai-commentary-card {
+    background: rgba(99, 102, 241, 0.12) !important;
+    border-color: rgba(99, 102, 241, 0.3) !important;
 }
 
 .history-mom-summary .mom-value {

@@ -2694,3 +2694,64 @@ def refresh_market_fibonacci():
         logger.error(f"Error in refresh_market_fibonacci: {e}")
         raise HTTPException(status_code=500, detail=f"市場フィボナッチデータの最新化に失敗しました: {str(e)}")
 
+
+class AnomalyLLMRequest(BaseModel):
+    month: Optional[int] = None
+    force: bool = False
+
+
+@app.get("/api/anomalies")
+def get_market_anomalies():
+    """1月〜12月の月別アノマリーおよび相場格言データを返却する API (#298)"""
+    try:
+        current_m = datetime.now().month
+        anomalies_file = os.path.join(os.path.dirname(__file__), "data", "anomaly_rules.json")
+        
+        data = {}
+        if os.path.exists(anomalies_file):
+            try:
+                with open(anomalies_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception as fe:
+                logger.error(f"Failed to read anomaly_rules.json: {fe}")
+
+        monthly_map = data.get("monthly_anomalies", {})
+        proverbs = data.get("market_proverbs", [])
+
+        return {
+            "error": False,
+            "current_month": current_m,
+            "monthly_anomalies": monthly_map,
+            "market_proverbs": proverbs
+        }
+    except Exception as e:
+        logger.error(f"Error in get_market_anomalies: {e}")
+        raise HTTPException(status_code=500, detail=f"アノマリーデータの取得に失敗しました: {str(e)}")
+
+
+@app.post("/api/ai-diagnosis/anomaly")
+def diagnose_market_anomaly(req: AnomalyLLMRequest):
+    """指定月（未指定時は現在月）のアノマリーに対する Gemini AI 診断ワンポイント解説を生成 (#298)"""
+    try:
+        current_m = datetime.now().month
+        target_month = req.month if req.month and 1 <= req.month <= 12 else current_m
+        
+        anomalies_res = get_market_anomalies()
+        monthly_map = anomalies_res.get("monthly_anomalies", {})
+        target_info = monthly_map.get(str(target_month)) or monthly_map.get(target_month) or {
+            "month": target_month,
+            "title": f"{target_month}月のアノマリー",
+            "summary": "季節的傾向と市場動向",
+            "risk_level": "medium",
+            "reasons": ["季節的な需給要因"],
+            "actions": "慎重なポートフォリオ管理"
+        }
+
+        res = llm_service_instance.diagnose_anomaly(month=target_month, anomaly_info=target_info, force=req.force)
+        return res
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in diagnose_market_anomaly: {e}")
+        raise HTTPException(status_code=500, detail=f"アノマリーAI診断の実行に失敗しました: {str(e)}")
+

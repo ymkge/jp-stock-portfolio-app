@@ -1322,3 +1322,57 @@ def test_profit_taking_table_column_widths_issue306():
     assert 'class="col-stock-name"' in js_content
     assert 'style="min-width: 200px; color: #ffffff;"' in js_content
     assert 'white-space: nowrap;' in js_content
+
+
+def test_anomaly_api_endpoints_issue298():
+    """案件 #298: 投資アノマリー情報API (/api/anomalies) および AI 診断エンドポイント (/api/ai-diagnosis/anomaly) の自動テスト"""
+    from unittest.mock import patch
+    from fastapi.testclient import TestClient
+    from app import app
+
+    client = TestClient(app)
+
+    # 1. GET /api/anomalies のレスポンス構造・現在月・12ヶ月分アノマリーデータおよび格言データの検証
+    res = client.get("/api/anomalies")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["error"] is False
+    assert 1 <= data["current_month"] <= 12
+    assert "monthly_anomalies" in data
+    assert "market_proverbs" in data
+    assert len(data["monthly_anomalies"]) >= 12
+    assert len(data["market_proverbs"]) >= 3
+
+    # 2. POST /api/ai-diagnosis/anomaly の検証 (モック使用)
+    with patch("llm_service.LLMDiagnosisService.diagnose_anomaly") as mock_diag:
+        mock_diag.return_value = {
+            "error": False,
+            "month": 8,
+            "commentary": "8月は夏枯れ相場で出来高が細りやすいため、警戒が必要です。",
+            "is_cached": False,
+            "diagnosed_at": "12:00"
+        }
+        res_post = client.post("/api/ai-diagnosis/anomaly", json={"month": 8, "force": True})
+        assert res_post.status_code == 200
+        post_data = res_post.json()
+        assert post_data["error"] is False
+        assert post_data["month"] == 8
+        assert "8月は夏枯れ相場" in post_data["commentary"]
+
+    # 3. HTMLテンプレート (index.html, analysis.html) 内のボタンおよびモーダルID存在検証
+    res_index = client.get("/")
+    assert res_index.status_code == 200
+    assert 'id="btn-open-market-anomaly-modal"' in res_index.text
+    assert 'id="investment-anomaly-modal"' in res_index.text
+
+    res_analysis = client.get("/analysis")
+    assert res_analysis.status_code == 200
+    assert 'id="btn-open-market-anomaly-modal"' in res_analysis.text
+    assert 'id="investment-anomaly-modal"' in res_analysis.text
+
+    # 4. style.css 内の .anomaly-tabs .btn-tab スタイル定義の検証
+    res_css = client.get("/static/css/style.css")
+    assert res_css.status_code == 200
+    assert ".anomaly-tabs .btn-tab" in res_css.text
+    assert "color: #475569 !important;" in res_css.text
+    assert ".anomaly-tabs .btn-tab.active" in res_css.text

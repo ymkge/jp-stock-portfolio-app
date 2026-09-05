@@ -38,6 +38,7 @@
                 <div class="nav-right">
                     <button id="btn-open-policy-config" class="btn-outline">⚙️ 投資方針</button>
                     <button id="btn-show-market-fibonacci" class="btn-outline">📈 指数フィボナッチ</button>
+                    <button id="btn-open-market-anomaly-modal" class="btn-outline">📅 投資アノマリー</button>
                     <button id="btn-show-split-history" class="btn-outline">✂️ 分割履歴</button>
                     <button id="refresh-all-button" class="btn-outline">全件更新</button>
                     <a href="/analysis" class="nav-link-btn btn-primary">📊 分析ページ</a>
@@ -429,8 +430,41 @@
         </div>
     </div>
 
+    <!-- 投資のアノマリー（季節性・傾向）モーダルダイアログ (#298) -->
+    <div id="investment-anomaly-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="investment-anomaly-modal-title">
+        <div class="modal-content" style="max-width: 900px; width: 95%;">
+            <div class="modal-header d-flex flex-column align-items-stretch" style="padding-bottom: 0.5rem;">
+                <div class="modal-header-top d-flex justify-content-between align-items-center mb-2" style="width: 100%;">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <h3 id="investment-anomaly-modal-title" style="margin: 0; font-size: 1.25rem;">📅 投資アノマリー & 季節性分析</h3>
+                        <span class="badge bg-primary" style="font-size: 0.75rem;">月別傾向・格言ガイド</span>
+                    </div>
+                    <button type="button" id="btn-close-investment-anomaly-modal" class="modal-close">&times;</button>
+                </div>
+                <!-- 固定アノマリー切り替えタブ -->
+                <div class="anomaly-tabs" style="display: flex; gap: 8px; margin-top: 4px; overflow-x: auto;">
+                    <button type="button" id="anomaly-tab-current" class="btn-tab active" onclick="switchAnomalyTab('current')">今月のアノマリー</button>
+                    <button type="button" id="anomaly-tab-calendar" class="btn-tab" onclick="switchAnomalyTab('calendar')">12ヶ月年間カレンダー</button>
+                    <button type="button" id="anomaly-tab-proverbs" class="btn-tab" onclick="switchAnomalyTab('proverbs')">相場の格言・豆知識</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div id="anomaly-modal-body-container">
+                    <!-- JSにて動的描画 -->
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+                <button type="button" id="btn-refresh-anomaly-ai" class="btn-outline" style="font-size: 0.8rem; padding: 6px 12px; display: flex; align-items: center; gap: 4px;" title="Gemini AIで今月のアノマリー診断を再実行">
+                    🤖 Gemini AIで今月を診断
+                </button>
+                <button type="button" id="btn-close-investment-anomaly-modal-footer" class="btn-secondary">閉じる</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/js/stateManager.js?v=3.2"></script>
     <script src="/static/js/marketFibonacci.js?v=1.0"></script>
+    <script src="/static/js/marketAnomaly.js?v=1.0"></script>
     <script src="/static/js/main.js?v=3.2"></script>
 </body>
 </html>

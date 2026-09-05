@@ -778,3 +778,90 @@ fit_levelの基準:
         except Exception as e:
             logger.error(f"Failed to parse Market Fibonacci LLM response: {e}")
             return {"error": True, "message": f"AI応答の生成・パースに失敗しました: {e}"}
+
+    def diagnose_anomaly(self, month: int, anomaly_info: Dict[str, Any], force: bool = False) -> Dict[str, Any]:
+        """
+        現在月のアノマリー情報に基づき、Gemini APIを用いてAIアノマリー診断ワンポイント解説を生成 (#298)
+        """
+        cache_key = f"anomaly_month_{month}"
+        api_key = self.policy_manager.get_effective_api_key()
+        if not api_key:
+            return {
+                "error": True,
+                "error_code": "NO_API_KEY",
+                "message": "Google AI Studio の APIキーが設定されていません。「⚙️ 投資方針設定」から APIキー を設定してください。"
+            }
+
+        config = self.policy_manager.load_config()
+        selected_model = config.get("selected_model", "gemini-flash-latest")
+        if selected_model not in ["gemini-flash-latest", "gemini-flash-lite-latest"]:
+            selected_model = "gemini-flash-latest"
+
+        now = time.time()
+        if not force and cache_key in self._cache:
+            cached_entry = self._cache[cache_key]
+            if (now - cached_entry["timestamp"]) < self.DEFAULT_TTL_SECONDS and cached_entry["model"] == selected_model:
+                res = dict(cached_entry["result"])
+                res["is_cached"] = True
+                res["diagnosed_at"] = cached_entry["diagnosed_at_str"]
+                return res
+
+        system_instruction = (
+            "あなたは日本株およびグローバル株式市場の季節的傾向・アノマリーに精通したプロの投資アナリストです。"
+            "提供された月別アノマリーデータに基づき、個人投資家が今月意識すべき相場動向と心構え、注意点を具体的かつ簡潔（200文字程度）にアドバイスしてください。"
+        )
+
+        user_content = f"""【対象月】: {month}月
+【アノマリータイトル】: {anomaly_info.get("title", "")}
+【傾向サマリー】: {anomaly_info.get("summary", "")}
+【リスクレベル】: {anomaly_info.get("risk_level", "")}
+【発生の背景・理由】: {", ".join(anomaly_info.get("reasons", []))}
+【立ち回り指針】: {anomaly_info.get("actions", "")}
+
+上記の{month}月のアノマリーに基づき、個人投資家に向けた今月の立ち回りワンポイント解説（200文字程度）を生成してください。"""
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key}"
+        payload = {
+            "contents": [{"parts": [{"text": user_content}]}],
+            "systemInstruction": {"parts": [{"text": system_instruction}]},
+            "generationConfig": {
+                "temperature": 0.3,
+                "maxOutputTokens": 300
+            }
+        }
+
+        try:
+            resp = requests.post(url, json=payload, timeout=20)
+            if resp.status_code != 200:
+                logger.error(f"Gemini API error for anomaly diagnosis: {resp.status_code} - {resp.text}")
+                return {"error": True, "message": f"Gemini APIエラー ({resp.status_code}): アノマリー診断を生成できませんでした"}
+
+            data = resp.json()
+            candidates = data.get("candidates", [])
+            if not candidates:
+                return {"error": True, "message": "AIからの応答が得られませんでした"}
+
+            commentary = candidates[0]["content"]["parts"][0]["text"].strip()
+            diagnosed_at_str = time.strftime("%H:%M", time.localtime(now))
+            result = {
+                "error": False,
+                "month": month,
+                "commentary": commentary,
+                "is_cached": False,
+                "diagnosed_at": diagnosed_at_str
+            }
+
+            with self._lock:
+                self._cache[cache_key] = {
+                    "result": result,
+                    "timestamp": now,
+                    "model": selected_model,
+                    "prompt_hash": "",
+                    "diagnosed_at_str": diagnosed_at_str,
+                    "last_accessed": now
+                }
+
+            return result
+        except Exception as e:
+            logger.error(f"Failed to generate anomaly LLM response: {e}")
+            return {"error": True, "message": f"AI診断の実行中にエラーが発生しました: {e}"}

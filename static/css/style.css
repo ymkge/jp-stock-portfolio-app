@@ -671,7 +671,30 @@ button {
     align-items: center;
 }
 
-/* --- シグナル用テーマ定義 (排他的適用) --- */
+/* 為替感応度バッジ */
+.badge-fx-export {
+    background-color: #fee2e2 !important;
+    color: #991b1b !important;
+    border: 1px solid #fca5a5 !important;
+}
+
+.badge-fx-domestic {
+    background-color: #dcfce7 !important;
+    color: #166534 !important;
+    border: 1px solid #86efac !important;
+}
+
+[data-theme="dark"] .badge-fx-export {
+    background-color: #450a0a !important;
+    color: #fca5a5 !important;
+    border: 1px solid #991b1b !important;
+}
+
+[data-theme="dark"] .badge-fx-domestic {
+    background-color: #052e16 !important;
+    color: #86efac !important;
+    border: 1px solid #166534 !important;
+}
 
 /* 売却：Lv2 ピークアウト (🔴) - 超高速閃光 */
 .theme-sell-lv2 {

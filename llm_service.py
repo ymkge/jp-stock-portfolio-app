@@ -301,6 +301,27 @@ class LLMDiagnosisService:
             else:
                 trend_info = "📈 75日線上推移 (良好)"
 
+        # リアルタイム為替情報およびレンジ情報の取得
+        fx_info_str = "N/A"
+        try:
+            from scraper import get_exchange_rate_detail
+            fx_detail = get_exchange_rate_detail("USDJPY=X")
+            if fx_detail and fx_detail.get("price"):
+                curr_fx = fx_detail["price"]
+                chg_fx = fx_detail.get("change_percent", "")
+                high_fx = fx_detail.get("high") or "N/A"
+                low_fx = fx_detail.get("low") or "N/A"
+                h52_fx = fx_detail.get("high_52w") or "N/A"
+                l52_fx = fx_detail.get("low_52w") or "N/A"
+                peak_diff = fx_detail.get("peak_diff_percent") or ""
+
+                range_str = f"当日: {low_fx}〜{high_fx}円 | 52週: {l52_fx}〜{h52_fx}円"
+                if peak_diff:
+                    range_str += f" (ピーク比: {peak_diff})"
+                fx_info_str = f"{curr_fx} 円 ({chg_fx}) / {range_str}"
+        except Exception as e:
+            logger.warning(f"Failed to fetch USDJPY details for prompt: {e}")
+
         prompt = f"""{policy_prompt}
 
 ---
@@ -322,12 +343,13 @@ class LLMDiagnosisService:
 - 200日移動平均線 (MA200): {ma200_info}
 - 移動平均トレンド状態: {trend_info}
 - テクニカル材料出尽くし検知: {exhaustion_info}
+- リアルタイム為替環境 (USD/JPY): {fx_info_str}
 
 ---
 
 ## あなたのタスク
 上記「ユーザーの基本投資方針」に照らし合わせ、対象銘柄({code} {name})の適合度を分析してください。
-直近の業績動向（EPSや収益性）、配当維持能力（還元の盾）、および【75日・200日移動平均線との位置関係（上昇トレンド／押し目圏／長期下降トレンド）】と【材料出尽くし感（好材料出尽くし下落リスク / 悪材料アク抜け大底判定）やマクロ地政学・災害・米国市況ショックの影響度】を踏まえて投資判断を行ってください。
+直近の業績動向（EPSや収益性）、配当維持能力（還元の盾）、および【75日・200日移動平均線との位置関係（上昇トレンド／押し目圏／長期下降トレンド）】と【材料出尽くし感（好材料出尽くし下落リスク / 悪材料アク抜け大底判定）やマクロ地政学・災害・米国市況ショックの影響度】、ならびに【リアルタイムドル円レートおよび直近レンジ位置（為替影響: 輸出株の減益リスク／内需株の追い風）】を踏まえて投資判断を行ってください。
 ※重要: トレンドが「上昇トレンド」や「絶好の押し目圏」にある場合は、順張り・格安エントリーの観点から分析の確信度 (confidence_score) を高め(85〜95点)に算出して後押しし、長期下降トレンド下では慎重な確信度・立ち回りを提示してください。
 必ず以下のJSONフォーマットのみを出力してください。Markdownや他の余計な文言は一切含めないでください。
 

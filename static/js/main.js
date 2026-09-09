@@ -325,27 +325,50 @@ document.addEventListener('DOMContentLoaded', () => {
             const wowClass = getChangeClass(wow);
             const momClass = getChangeClass(mom);
 
-            const changesRowHtml = idx.is_future ? `
-                <div class="market-index-row" style="border-top: 1px dashed var(--border-color); justify-content: center;">
-                    <span style="color: var(--text-muted); font-style: italic; font-size: 0.72rem; line-height: 1.5;">
-                        ※ 当日推移のみ表示
-                    </span>
-                </div>
-            ` : `
-                <div class="market-index-row">
-                    <div class="market-index-item">
-                        <span class="change-label">前週比:</span>
-                        <span class="${wowClass} numeric" title="${wowDate ? '比較対象: ' + wowDate : ''}">${formatPercent(wow)}</span>
+            let changesRowHtml = '';
+            if (idx.is_fx || idx.code === 'USDJPY=X') {
+                const high = idx.high || '--';
+                const low = idx.low || '--';
+                const high52 = idx.high_52w || '--';
+                const low52 = idx.low_52w || '--';
+                const peakDiff = idx.peak_diff_percent ? ` (${idx.peak_diff_percent})` : '';
+
+                changesRowHtml = `
+                    <div class="market-index-row" style="border-top: 1px dashed var(--border-color); justify-content: center;" title="当日安値: ${low}円 〜 高値: ${high}円\n52週安値: ${low52}円 〜 高値: ${high52}円${peakDiff}">
+                        <span style="color: var(--text-muted); font-size: 0.72rem; line-height: 1.5;">
+                            52週: <strong style="color: var(--text-color);">${low52}~${high52}円</strong>${peakDiff}
+                        </span>
                     </div>
-                    <div class="market-index-item">
-                        <span class="change-label">前月比:</span>
-                        <span class="${momClass} numeric" title="${momDate ? '比較対象: ' + momDate : ''}">${formatPercent(mom)}</span>
+                `;
+            } else if (idx.is_future) {
+                changesRowHtml = `
+                    <div class="market-index-row" style="border-top: 1px dashed var(--border-color); justify-content: center;">
+                        <span style="color: var(--text-muted); font-style: italic; font-size: 0.72rem; line-height: 1.5;">
+                            ※ 当日推移のみ表示
+                        </span>
                     </div>
-                </div>
-            `;
+                `;
+            } else {
+                changesRowHtml = `
+                    <div class="market-index-row">
+                        <div class="market-index-item">
+                            <span class="change-label">前週比:</span>
+                            <span class="${wowClass} numeric" title="${wowDate ? '比較対象: ' + wowDate : ''}">${formatPercent(wow)}</span>
+                        </div>
+                        <div class="market-index-item">
+                            <span class="change-label">前月比:</span>
+                            <span class="${momClass} numeric" title="${momDate ? '比較対象: ' + momDate : ''}">${formatPercent(mom)}</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const cardTitle = (idx.is_fx || idx.code === 'USDJPY=X')
+                ? `当日安値: ${idx.low || '--'}円 〜 高値: ${idx.high || '--'}円\n52週安値: ${idx.low_52w || '--'}円 〜 高値: ${idx.high_52w || '--'}円${idx.peak_diff_percent ? '\n直近最高値比: ' + idx.peak_diff_percent : ''}`
+                : '';
 
             html += `
-                <a href="https://finance.yahoo.co.jp/quote/${idx.code}" target="_blank" class="market-index-link">
+                <a href="https://finance.yahoo.co.jp/quote/${idx.code}" target="_blank" class="market-index-link" title="${cardTitle}">
                     <div class="market-index-card">
                         <div class="market-index-header">
                             <span class="market-index-name">${idx.name}</span>
@@ -595,6 +618,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (jpStock.buy_signal) nameHtml += renderBuySignalBadge(jpStock.buy_signal, isDiamond);
             if (jpStock.sell_signal) nameHtml += renderSellSignalBadge(jpStock.sell_signal, isDiamond);
             if (jpStock.exhaustion_signal) nameHtml += renderExhaustionSignalBadge(jpStock.exhaustion_signal);
+            if (jpStock.fx_sensitivity) nameHtml += renderFxSensitivityBadge(jpStock.fx_sensitivity);
             if (jpStock.profit_taking_badge || jpStock.profit_taking_signal) nameHtml += renderProfitTakingBadge(jpStock);
             nameHtml += `<button class="btn-llm-diagnose" data-code="${jpStock.code}" data-asset-type="${jpStock.asset_type || 'jp_stock'}" title="${jpStock.name} (${jpStock.code}) の投資方針適合度をAI診断">🤖 AI診断</button>`;
             createCell(nameHtml + `</div>`);
@@ -864,6 +888,13 @@ document.addEventListener('DOMContentLoaded', () => {
         // 売却時はisDiamond属性があったとしても、アイコンに含める程度に留め、背景色はthemeClassに委ねる
         const label = (isDiamond ? '💎 ' : '') + signal.label;
         return `<span class="signal-badge-base ${themeClass}" title="${title}"><span class="signal-badge-text"><span class="buy-signal-icon-inner">${signal.icon}</span>${label}</span></span>`;
+    }
+
+    function renderFxSensitivityBadge(fxSensitivity) {
+        if (!fxSensitivity || !fxSensitivity.type || fxSensitivity.type === 'neutral') return '';
+        const badgeClass = fxSensitivity.type === 'export_risk' ? 'badge-fx-export' : 'badge-fx-domestic';
+        const title = fxSensitivity.description || '';
+        return `<span class="signal-badge-base ${badgeClass}" title="${title}"><span class="signal-badge-text">${fxSensitivity.icon} ${fxSensitivity.label}</span></span>`;
     }
 
     function renderExhaustionSignalBadge(signal) {

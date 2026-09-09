@@ -760,10 +760,102 @@ class IndexScraper(BaseScraper):
         return data
 
 @cached(TTLCache(maxsize=10, ttl=CACHE_TTL))
+def get_exchange_rate_detail(pair: str = 'USDJPY=X') -> Dict[str, Any]:
+    """
+    為替レートの現在値・前日比・高値/安値・52週高値/安値・ピーク差等の詳細を取得する。
+    """
+    result = {
+        "pair": pair,
+        "name": "ドル円" if "USDJPY" in pair else pair,
+        "price": None,
+        "change": None,
+        "change_percent": None,
+        "is_up": True,
+        "high": None,
+        "low": None,
+        "high_52w": None,
+        "low_52w": None,
+        "peak_diff_percent": None
+    }
+    try:
+        scraper = get_scraper('market_index')
+        data = scraper.fetch_data(pair)
+        if data and "error" not in data:
+            price_str = data.get("price")
+            if price_str:
+                result["price"] = str(price_str)
+                result["change"] = data.get("change", "0.0")
+                result["change_percent"] = data.get("change_percent", "0.0%")
+                try:
+                    chg_val = float(str(result["change"]).replace('+', '').replace(',', ''))
+                    result["is_up"] = chg_val >= 0
+                except (ValueError, TypeError):
+                    result["is_up"] = not str(result["change_percent"]).startswith('-')
+
+        # Yahoo! Finance HTML / Next.js JSON or yfinance fallback for high/low/52w
+        try:
+            res = requests.get(f"https://finance.yahoo.co.jp/quote/{pair}", headers=DEFAULT_HEADERS, timeout=5)
+            if res.status_code == 200:
+                html = res.text
+                if not result["price"]:
+                    m_price = re.search(r'\"counterCurrencyPrice\":([\d\.]+)', html) or re.search(r'\"price\":([\d\.]+)', html)
+                    if m_price:
+                        result["price"] = m_price.group(1)
+
+                m_high = re.search(r'\"highPrice\":\s*\"?([\d\.\,]+)\"?', html) or re.search(r'\"high\":\s*\"?([\d\.\,]+)\"?', html)
+                m_low = re.search(r'\"lowPrice\":\s*\"?([\d\.\,]+)\"?', html) or re.search(r'\"low\":\s*\"?([\d\.\,]+)\"?', html)
+                if m_high: result["high"] = m_high.group(1).replace(',', '')
+                if m_low: result["low"] = m_low.group(1).replace(',', '')
+
+                m_52high = re.search(r'\"highPrice52w\":\s*\"?([\d\.\,]+)\"?', html) or re.search(r'\"yearHigh\":\s*\"?([\d\.\,]+)\"?', html)
+                m_52low = re.search(r'\"lowPrice52w\":\s*\"?([\d\.\,]+)\"?', html) or re.search(r'\"yearLow\":\s*\"?([\d\.\,]+)\"?', html)
+                if m_52high: result["high_52w"] = m_52high.group(1).replace(',', '')
+                if m_52low: result["low_52w"] = m_52low.group(1).replace(',', '')
+        except Exception as ex:
+            logger.warning(f"HTML scraping for {pair} details failed: {ex}")
+
+        # yfinance fallback for 52-week range if missing
+        if not result["high_52w"] or not result["low_52w"]:
+            try:
+                yf_pair = "JPY=X" if pair == "USDJPY=X" else pair
+                ticker = yf.Ticker(yf_pair)
+                info = ticker.fast_info
+                if hasattr(info, "year_high") and info.year_high:
+                    result["high_52w"] = f"{float(info.year_high):.2f}"
+                if hasattr(info, "year_low") and info.year_low:
+                    result["low_52w"] = f"{float(info.year_low):.2f}"
+                if hasattr(info, "day_high") and info.day_high and not result["high"]:
+                    result["high"] = f"{float(info.day_high):.2f}"
+                if hasattr(info, "day_low") and info.day_low and not result["low"]:
+                    result["low"] = f"{float(info.day_low):.2f}"
+                if hasattr(info, "last_price") and info.last_price and not result["price"]:
+                    result["price"] = f"{float(info.last_price):.2f}"
+            except Exception as ex:
+                logger.warning(f"yfinance fallback for {pair} details failed: {ex}")
+
+        if result["price"] and result["high_52w"]:
+            try:
+                curr_p = float(result["price"])
+                high_52w = float(result["high_52w"])
+                if high_52w > 0:
+                    diff_pct = ((curr_p - high_52w) / high_52w) * 100.0
+                    result["peak_diff_percent"] = f"{diff_pct:+.1f}%"
+            except (ValueError, TypeError, ZeroDivisionError):
+                result["peak_diff_percent"] = None
+    except Exception as e:
+        logger.error(f"Error in get_exchange_rate_detail for {pair}: {e}")
+
+    return result
+
+@cached(TTLCache(maxsize=10, ttl=CACHE_TTL))
 def get_exchange_rate(pair: str = 'USDJPY=X') -> Optional[float]:
-    res = requests.get(f"https://finance.yahoo.co.jp/quote/{pair}", headers=DEFAULT_HEADERS)
-    m = re.search(r'\"counterCurrencyPrice\":([\d\.]+)', res.text)
-    return float(m.group(1)) if m else None
+    detail = get_exchange_rate_detail(pair)
+    if detail and detail.get("price"):
+        try:
+            return float(detail["price"])
+        except (ValueError, TypeError):
+            pass
+    return None
 
 _scraper_instances = {}
 def get_scraper(asset_type: str) -> BaseScraper:

@@ -303,6 +303,37 @@ def calculate_sell_signal(stock_data: dict) -> Optional[dict]:
         "reasons": reasons
     }
 
+def _categorize_industry_fx_sensitivity(industry: str) -> dict:
+    """
+    業種名から為替感受性（輸出感応度高 🚗 / 内需型 🛡️ / 中立）を判定する。
+    """
+    if not industry or industry in ["N/A", "--", ""]:
+        return {"type": "neutral", "label": "", "icon": "", "description": ""}
+
+    fx_config = get_config("fx_monitoring", {})
+    export_industries = fx_config.get("export_heavy_industries", [
+        "輸送用機器", "電気機器", "精密機器", "機械", "化学", "卸売業", "ガラス・土石製品", "ゴム製品"
+    ])
+    domestic_industries = fx_config.get("domestic_benefit_industries", [
+        "電力・ガス業", "陸運業", "空運業", "食料品", "小売業", "情報・通信業", "サービス業", "パルプ・紙", "倉庫・運輸関連業"
+    ])
+
+    if any(ind in industry for ind in export_industries):
+        return {
+            "type": "export_risk",
+            "label": "為替感応高",
+            "icon": "🚗",
+            "description": "輸出集中セクター。円高進行時に為替差損・業績下振れリスクに注意が必要です。"
+        }
+    if any(ind in industry for ind in domestic_industries):
+        return {
+            "type": "domestic_benefit",
+            "label": "内需型",
+            "icon": "🛡️",
+            "description": "内需主導セクター。為替変動の影響を受けにくく、円高時に原材料・燃料コスト低減の追い風が期待できます。"
+        }
+    return {"type": "neutral", "label": "", "icon": "", "description": ""}
+
 def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     """
     購入シグナル（注目フラグ）を判定する。
@@ -765,6 +796,9 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
                 merged_data["doe"] = "N/A"
         except Exception as e:
             merged_data["doe"] = "N/A"
+
+        # 為替感受性の判定 (輸出感応高 🚗 / 内需型 🛡️)
+        merged_data["fx_sensitivity"] = _categorize_industry_fx_sensitivity(merged_data.get("industry", ""))
 
         # シグナルの判定
         raw_sell = calculate_sell_signal(merged_data)
@@ -1605,17 +1639,38 @@ async def _get_processed_asset_data(request: Optional[Any] = None, force: bool =
                     except:
                         mom_percent = round((current_price - old_price) / old_price * 100, 2)
 
+            if code == "USDJPY=X" or "USD" in code or "ドル円" in market_indices_config[i]["name"]:
+                fx_detail = scraper.get_exchange_rate_detail(code)
+                if fx_detail:
+                    if fx_detail.get("price") and not idx_result.get("price"):
+                        idx_result["price"] = fx_detail.get("price")
+                    if fx_detail.get("change") and not idx_result.get("change"):
+                        idx_result["change"] = fx_detail.get("change")
+                    if fx_detail.get("change_percent") and not idx_result.get("change_percent"):
+                        idx_result["change_percent"] = fx_detail.get("change_percent")
+                    idx_result["high"] = fx_detail.get("high")
+                    idx_result["low"] = fx_detail.get("low")
+                    idx_result["high_52w"] = fx_detail.get("high_52w")
+                    idx_result["low_52w"] = fx_detail.get("low_52w")
+                    idx_result["peak_diff_percent"] = fx_detail.get("peak_diff_percent")
+
             market_indices_results.append({
                 "name": idx_result.get("name", market_indices_config[i]["name"]),
                 "code": code,
                 "price": idx_result.get("price"),
                 "change": idx_result.get("change"),
                 "change_percent": idx_result.get("change_percent"),
+                "high": idx_result.get("high"),
+                "low": idx_result.get("low"),
+                "high_52w": idx_result.get("high_52w"),
+                "low_52w": idx_result.get("low_52w"),
+                "peak_diff_percent": idx_result.get("peak_diff_percent"),
                 "wow_percent": wow_percent,
                 "wow_date": wow_date,
                 "mom_percent": mom_percent,
                 "mom_date": mom_date,
-                "is_future": "先物" in idx_result.get("name", market_indices_config[i]["name"]) or "Future" in idx_result.get("name", market_indices_config[i]["name"])
+                "is_future": "先物" in idx_result.get("name", market_indices_config[i]["name"]) or "Future" in idx_result.get("name", market_indices_config[i]["name"]),
+                "is_fx": code == "USDJPY=X" or "ドル円" in idx_result.get("name", market_indices_config[i]["name"])
             })
 
     success_count = sum(1 for r in scraped_results if r and "error" not in r)

@@ -1390,3 +1390,74 @@ def test_anomaly_manual_ai_trigger_issue307():
     assert "aiDiagnosisCache" in js_content
     # renderCurrentMonthTab 直下の自動 fetchAnomalyAiDiagnosis(currentSelectedMonth, false); が削除されていること
     assert "fetchAnomalyAiDiagnosis(currentSelectedMonth, false);" not in js_content
+
+
+def test_fx_sensitivity_and_realtime_usdjpy_issue309():
+    """案件 #309: リアルタイムドル円レート・52週レンジ取得、業種為替感応度判定、AI診断プロンプト動的注入のテスト"""
+    from app import app, _categorize_industry_fx_sensitivity
+    import scraper
+    from llm_service import LLMDiagnosisService
+    from investment_policy_manager import InvestmentPolicyManager
+    from fastapi.testclient import TestClient
+    from unittest.mock import patch
+
+    # 1. 業種為替感応度の判定テスト
+    export_res = _categorize_industry_fx_sensitivity("輸送用機器")
+    assert export_res["type"] == "export_risk"
+    assert export_res["label"] == "為替感応高"
+    assert export_res["icon"] == "🚗"
+
+    domestic_res = _categorize_industry_fx_sensitivity("電力・ガス業")
+    assert domestic_res["type"] == "domestic_benefit"
+    assert domestic_res["label"] == "内需型"
+    assert domestic_res["icon"] == "🛡️"
+
+    neutral_res = _categorize_industry_fx_sensitivity("N/A")
+    assert neutral_res["type"] == "neutral"
+
+    # 2. scraper.get_exchange_rate_detail の動作 & ゼロ除算・安全計算ガードの検証
+    mock_detail = {
+        "pair": "USDJPY=X",
+        "name": "ドル円",
+        "price": "152.34",
+        "change": "-0.45",
+        "change_percent": "-0.29%",
+        "is_up": False,
+        "high": "153.10",
+        "low": "151.80",
+        "high_52w": "161.95",
+        "low_52w": "139.50",
+        "peak_diff_percent": "-5.9%"
+    }
+    with patch("scraper.get_exchange_rate_detail", return_value=mock_detail):
+        detail_res = scraper.get_exchange_rate_detail("USDJPY=X")
+        assert detail_res["price"] == "152.34"
+        assert detail_res["high_52w"] == "161.95"
+        assert detail_res["peak_diff_percent"] == "-5.9%"
+
+    # 3. LLM プロンプトへのリアルタイム為替 ＋ レンジ情報の動的注入テスト
+    stock_data = {
+        "code": "7203",
+        "name": "トヨタ自動車",
+        "price": "2600",
+        "industry": "輸送用機器",
+        "asset_type": "jp_stock",
+        "per": "10.5",
+        "pbr": "1.1",
+        "roe": "12.0",
+        "yield": "3.5"
+    }
+    with patch("scraper.get_exchange_rate_detail", return_value=mock_detail):
+        llm_service = LLMDiagnosisService(InvestmentPolicyManager())
+        prompt_text = llm_service._build_prompt(stock_data, None, "投資方針")
+        assert "リアルタイム為替環境 (USD/JPY)" in prompt_text
+        assert "152.34 円" in prompt_text
+        assert "52週: 139.50〜161.95円" in prompt_text
+
+    # 4. CSS 内のバッジクラス定義検証
+    client = TestClient(app)
+    res_css = client.get("/static/css/style.css")
+    assert res_css.status_code == 200
+    assert ".badge-fx-export" in res_css.text
+    assert ".badge-fx-domestic" in res_css.text
+

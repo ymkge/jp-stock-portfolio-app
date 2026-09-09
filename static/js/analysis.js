@@ -664,6 +664,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (item.buy_signal) nameHtml += renderBuySignalBadge(item.buy_signal, isDiamond);
             if (item.sell_signal) nameHtml += renderSellSignalBadge(item.sell_signal, isDiamond);
             if (item.exhaustion_signal) nameHtml += renderExhaustionSignalBadge(item.exhaustion_signal);
+            if (item.fx_sensitivity) nameHtml += renderFxSensitivityBadge(item.fx_sensitivity);
             if (item.profit_taking_badge || item.profit_taking_signal) nameHtml += renderProfitTakingBadge(item);
             createCell(nameHtml);
             createCell(item.industry || 'N/A');
@@ -1596,6 +1597,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const title = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${signal.reasons.join('\n')}`;
         const label = (isDiamond ? '💎 ' : '') + signal.label;
         return `<span class="signal-badge-base ${themeClass}" title="${title}"><span class="signal-badge-text"><span class="buy-signal-icon-inner">${signal.icon}</span>${label}</span></span>`;
+    }
+
+    function renderFxSensitivityBadge(fxSensitivity) {
+        if (!fxSensitivity || !fxSensitivity.type || fxSensitivity.type === 'neutral') return '';
+        const badgeClass = fxSensitivity.type === 'export_risk' ? 'badge-fx-export' : 'badge-fx-domestic';
+        const title = fxSensitivity.description || '';
+        return `<span class="signal-badge-base ${badgeClass}" title="${title}"><span class="signal-badge-text">${fxSensitivity.icon} ${fxSensitivity.label}</span></span>`;
     }
 
     function renderExhaustionSignalBadge(signal) {

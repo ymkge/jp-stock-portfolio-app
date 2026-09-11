@@ -31,3 +31,6 @@ debug*
 # Temporary files
 tmp*
 *.tmp
+
+# Local private knowledge and notes (RAG)
+local_knowledge/

@@ -17,6 +17,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const tabNav = document.querySelector('.tab-nav');
     const darkModeToggle = document.getElementById('dark-mode-toggle');
 
+    let currentFilteredAssets = [];
+
     // --- 最近の銘柄ドロップダウン制御 ---
     if (recentStocksToggleBtn) {
         recentStocksToggleBtn.addEventListener('click', (e) => {
@@ -554,6 +556,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 );
             }
         }
+        currentFilteredAssets = filteredAssets;
         sortAssets(filteredAssets);
         if (activeTab === 'jp_stock') renderStockTable(filteredAssets);
         else if (activeTab === 'investment_trust') renderFundTable(filteredAssets);
@@ -1117,7 +1120,48 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    downloadCsvButton.addEventListener('click', () => { window.location.href = '/api/stocks/csv'; });
+    downloadCsvButton.addEventListener('click', async () => {
+        if (!currentFilteredAssets || currentFilteredAssets.length === 0) {
+            alert('該当する銘柄が存在しません。');
+            return;
+        }
+
+        const targetCodes = currentFilteredAssets.map(a => a.code);
+        try {
+            const response = await fetch('/api/stocks/csv', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ codes: targetCodes })
+            });
+
+            if (!response.ok) {
+                throw new Error(`サーバーエラー: ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            const disposition = response.headers.get('Content-Disposition');
+            let filename = `portfolio_${new Date().toISOString().replace(/[:.]/g, '').slice(0, 15)}.csv`;
+
+            if (disposition && disposition.includes('filename=')) {
+                const matches = disposition.match(/filename=["']?([^"';]+)["']?/);
+                if (matches && matches[1]) {
+                    filename = matches[1];
+                }
+            }
+
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error('CSVダウンロードエラー:', err);
+            alert(`CSVのダウンロードに失敗しました: ${err.message}`);
+        }
+    });
     filterInput.addEventListener('input', filterAndRender);
     industryFilter.addEventListener('change', filterAndRender);
     const industrySearch = document.getElementById('industry-search');

@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI, Request, HTTPException
+from fastapi import Depends, FastAPI, Request, HTTPException, Query
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 import io
 import os
@@ -130,6 +130,9 @@ class Asset(BaseModel):
 
 class StockCodesToDelete(BaseModel):
     codes: List[str]
+
+class CSVDownloadRequest(BaseModel):
+    codes: Optional[List[str]] = None
 
 class HoldingData(BaseModel):
     account_type: str
@@ -1774,12 +1777,26 @@ async def get_stocks(request: Request, force: bool = False, cooldown_check: None
     last_full_update_time = datetime.now()
     return {"data": processed_data, "metadata": metadata}
 
-@app.get("/api/stocks/csv")
-async def download_csv(cooldown_check: None = Depends(check_update_cooldown)):
+@app.api_route("/api/stocks/csv", methods=["GET", "POST"])
+async def download_csv(
+    req: Optional[CSVDownloadRequest] = None,
+    codes: Optional[str] = Query(None, description="カンマ区切りの銘柄コード"),
+    cooldown_check: None = Depends(check_update_cooldown)
+):
     global last_full_update_time
     data, _ = await _get_processed_asset_data()
     if not data:
         return StreamingResponse(io.StringIO(""), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=portfolio.csv"})
+
+    target_codes: Optional[List[str]] = None
+    if req and req.codes is not None:
+        target_codes = req.codes
+    elif codes:
+        target_codes = [c.strip() for c in codes.split(",") if c.strip()]
+
+    if target_codes is not None:
+        code_map = {str(item.get("code")): item for item in data if item.get("code")}
+        data = [code_map[c] for c in target_codes if c in code_map]
 
     csv_data = portfolio_manager.create_csv_data(data)
     filename = f"portfolio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"

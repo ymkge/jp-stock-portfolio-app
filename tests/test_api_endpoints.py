@@ -1461,3 +1461,63 @@ def test_fx_sensitivity_and_realtime_usdjpy_issue309():
     assert ".badge-fx-export" in res_css.text
     assert ".badge-fx-domestic" in res_css.text
 
+
+def test_csv_download_filtered_issue311():
+    """案件 #311: mainページでのフィルタ条件連動CSV出力 (POST/GET codesパラメータ絞り込み・ソート順保持・後方互換性) のテスト"""
+    from app import app
+    from fastapi.testclient import TestClient
+    from unittest.mock import patch, AsyncMock
+
+    client = TestClient(app)
+
+    # テスト用ダミー処理済みアセットデータ
+    mock_data = [
+        {"code": "7203", "name": "トヨタ自動車", "asset_type": "jp_stock", "price": 2500, "per": 10.5},
+        {"code": "9432", "name": "NTT", "asset_type": "jp_stock", "price": 170, "per": 11.2},
+        {"code": "9984", "name": "ソフトバンクグループ", "asset_type": "jp_stock", "price": 8500, "per": 15.0},
+    ]
+
+    with patch("app._get_processed_asset_data", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = (mock_data, {})
+
+        # 1. パラメータなし GET リクエスト (既存後方互換性: 全3件が出力されること)
+        res_get_all = client.get("/api/stocks/csv")
+        assert res_get_all.status_code == 200
+        text_all = res_get_all.text
+        assert "7203" in text_all
+        assert "9432" in text_all
+        assert "9984" in text_all
+
+        # 2. POST リクエストによる特定コード (7203, 9984) 絞り込みテスト
+        res_post_filtered = client.post("/api/stocks/csv", json={"codes": ["7203", "9984"]})
+        assert res_post_filtered.status_code == 200
+        text_post = res_post_filtered.text
+        assert "7203" in text_post
+        assert "9984" in text_post
+        assert "9432" not in text_post
+
+        # 3. GET クエリパラメータ (?codes=9432) による絞り込みテスト
+        res_get_param = client.get("/api/stocks/csv?codes=9432")
+        assert res_get_param.status_code == 200
+        text_param = res_get_param.text
+        assert "9432" in text_param
+        assert "7203" not in text_param
+        assert "9984" not in text_param
+
+        # 4. コードの配列順序保持 (画面ソート順) テスト
+        res_order = client.post("/api/stocks/csv", json={"codes": ["9984", "7203"]})
+        assert res_order.status_code == 200
+        text_order = res_order.text
+        pos_9984 = text_order.find("9984")
+        pos_7203 = text_order.find("7203")
+        assert pos_9984 != -1 and pos_7203 != -1
+        assert pos_9984 < pos_7203  # 9984 が 7203 より先に登場すること
+
+        # 5. 存在しないコード送信時の安全動作テスト (空CSVの返却)
+        res_invalid = client.post("/api/stocks/csv", json={"codes": ["999999"]})
+        assert res_invalid.status_code == 200
+        text_invalid = res_invalid.text
+        assert "999999" not in text_invalid
+        assert text_invalid == ""
+
+

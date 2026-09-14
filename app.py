@@ -1456,10 +1456,27 @@ async def _get_processed_asset_data(request: Optional[Any] = None, force: bool =
                             db_data["payout_ratio_history"] = []
 
                     threshold_time = get_cache_threshold_time(asset_type, now_jst, market_times)
-                    # 案件 #262: force=False 時はDBデータが存在すれば経過時間に関わらず0秒即時返却
-                    cached_data = db_data
-                    source = "DB"
-                    is_fresh = True
+                    if asset_type == 'market_index':
+                        # 市場指標はボード用の最重要指標のため、直近の市場基準時刻以降または直近60分以内のキャッシュのみ有効とする
+                        updated_at_str = db_data.get("_db_updated_at_jst")
+                        if updated_at_str:
+                            try:
+                                updated_at = datetime.fromisoformat(updated_at_str)
+                                if updated_at.tzinfo is None:
+                                    updated_at = updated_at.replace(tzinfo=history_manager.JST)
+                                else:
+                                    updated_at = updated_at.astimezone(history_manager.JST)
+                                if updated_at >= threshold_time or (now_jst - updated_at).total_seconds() < 3600:
+                                    cached_data = db_data
+                                    source = "DB"
+                                    is_fresh = True
+                            except ValueError:
+                                pass
+                    else:
+                        # 案件 #262: force=False 時はDBデータが存在すれば経過時間に関わらず0秒即時返却
+                        cached_data = db_data
+                        source = "DB"
+                        is_fresh = True
 
         # 鮮度が高いキャッシュがあれば、セマフォを確保して即座に返す (待機なし)
         if is_fresh and cached_data:
@@ -1645,17 +1662,22 @@ async def _get_processed_asset_data(request: Optional[Any] = None, force: bool =
             if code == "USDJPY=X" or "USD" in code or "ドル円" in market_indices_config[i]["name"]:
                 fx_detail = scraper.get_exchange_rate_detail(code)
                 if fx_detail:
-                    if fx_detail.get("price") and not idx_result.get("price"):
+                    if fx_detail.get("price"):
                         idx_result["price"] = fx_detail.get("price")
-                    if fx_detail.get("change") and not idx_result.get("change"):
+                    if fx_detail.get("change") is not None:
                         idx_result["change"] = fx_detail.get("change")
-                    if fx_detail.get("change_percent") and not idx_result.get("change_percent"):
+                    if fx_detail.get("change_percent") is not None:
                         idx_result["change_percent"] = fx_detail.get("change_percent")
                     idx_result["high"] = fx_detail.get("high")
                     idx_result["low"] = fx_detail.get("low")
                     idx_result["high_52w"] = fx_detail.get("high_52w")
                     idx_result["low_52w"] = fx_detail.get("low_52w")
                     idx_result["peak_diff_percent"] = fx_detail.get("peak_diff_percent")
+                    # 最新為替データをDBにも非破壊で保存
+                    try:
+                        history_manager.save_daily_data(code, 'market_index', idx_result)
+                    except Exception as e:
+                        logger.warning(f"Failed to save FX daily data for {code}: {e}")
 
             market_indices_results.append({
                 "name": idx_result.get("name", market_indices_config[i]["name"]),

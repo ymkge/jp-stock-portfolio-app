@@ -123,6 +123,7 @@
                     </div>
 
                     <div class="action-buttons">
+                        <button id="recommend-filtered-stocks-btn" class="btn-purple" title="現在絞り込まれている銘柄からAIがおすすめTop5を厳選">🤖 AIおすすめ5選</button>
                         <button id="download-csv-button" class="btn-success">CSV</button>
                         <button id="delete-selected-stocks-button" class="btn-danger" disabled>削除</button>
                     </div>
@@ -473,6 +474,45 @@
                     🤖 Gemini AIで今月を診断
                 </button>
                 <button type="button" id="btn-close-investment-anomaly-modal-footer" class="btn-secondary">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 絞り込み銘柄 AI購入推奨 Top 5 レポート モーダル (#313) -->
+    <div id="filtered-recommendation-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 900px; width: 95%;">
+            <div class="modal-header">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <h3 style="margin: 0; font-size: 1.25rem;">🤖 AI厳選！購入推奨銘柄 Top 5 レポート</h3>
+                    <span id="filtered-rec-target-badge" class="badge bg-info text-dark" style="font-size: 0.75rem;">絞り込み銘柄から抽出</span>
+                </div>
+                <button type="button" id="btn-close-filtered-rec-modal" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="filtered-rec-summary-box" class="preset-filter-bar mb-3" style="font-size: 0.85rem; padding: 10px 14px;">
+                    <!-- JSにて対象プリセット名・絞り込み件数などを描画 -->
+                </div>
+
+                <div id="filtered-rec-loading" class="text-center my-4 hidden">
+                    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
+                    <p class="mt-3 text-muted font-weight-bold">Gemini AI が投資方針と為替環境に最適な銘柄 Top 5 を分析中...</p>
+                    <p class="text-muted small">（パイプ区切り1行フォーマット適用により約75%トークン節約中）</p>
+                </div>
+
+                <div id="filtered-rec-results-container">
+                    <!-- JSにて Top 1〜5 カード・総評を描画 -->
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="d-flex gap-2">
+                    <button type="button" id="btn-copy-filtered-rec-report" class="btn-outline" style="font-size: 0.8rem; padding: 6px 12px;" title="レポートテキストをクリップボードにコピー">
+                        📋 レポートをコピー
+                    </button>
+                    <button type="button" id="btn-refresh-filtered-rec" class="btn-outline" style="font-size: 0.8rem; padding: 6px 12px;" title="再診断を実行">
+                        🔄 再診断
+                    </button>
+                </div>
+                <button type="button" id="btn-close-filtered-rec-modal-footer" class="btn-secondary">閉じる</button>
             </div>
         </div>
     </div>

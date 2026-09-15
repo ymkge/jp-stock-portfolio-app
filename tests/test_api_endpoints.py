@@ -1521,3 +1521,90 @@ def test_csv_download_filtered_issue311():
         assert text_invalid == ""
 
 
+def test_pipe_format_assets_conversion():
+    """パイプ区切り1行フォーマット (Pipe-Separated Compact Format) 変換のテスト (#313)"""
+    sample_assets = [
+        {
+            "code": "7203",
+            "name": "トヨタ自動車",
+            "industry": "輸送用機器",
+            "price": 2650,
+            "per": 10.2,
+            "pbr": 1.1,
+            "roe": 12.5,
+            "dividend_yield": 3.2,
+            "payout_ratio": 35.0,
+            "score": 4,
+            "buy_signal": {"level": 2}
+        },
+        {
+            "code": "9432",
+            "name": "NTT",
+            "industry": "情報・通信業",
+            "price": 150,
+            "per": 11.5,
+            "pbr": 1.3,
+            "roe": 14.0,
+            "dividend_yield": 3.5,
+            "payout_ratio": 40.0,
+            "score": 5,
+            "is_diamond": True
+        }
+    ]
+
+    pipe_text = llm_service_instance._format_assets_to_pipe_lines(sample_assets)
+    assert "コード|銘柄名|業種|" in pipe_text
+    assert "7203|トヨタ自動車|輸送用機器|2650円|PER:10.2|PBR:1.1|ROE:12.5%|利回り:3.2%|配当性向:35.0%|Score:4|🔥チャンス" in pipe_text
+    assert "9432|NTT|情報・通信業|150円|PER:11.5|PBR:1.3|ROE:14.0%|利回り:3.5%|配当性向:40.0%|Score:5|💎ダイヤモンド" in pipe_text
+
+
+@patch("portfolio_manager.save_portfolio")
+@patch("history_manager.save_daily_data")
+@patch("history_manager.save_snapshot")
+def test_api_filtered_recommendations(mock_save_snap, mock_save_daily, mock_save_port):
+    """絞り込み銘柄 AI購入推奨 Top 5 レポート API の正常系および異常系テスト (#313)"""
+    # 1. 空の codes 送信時の 400 エラー
+    res_empty = client.post("/api/ai-diagnosis/filtered-recommendations", json={"filtered_codes": []})
+    assert res_empty.status_code == 400
+
+    # 2. 正常系テスト (llm_service をモック化)
+    mock_llm_response = {
+        "error": False,
+        "preset_name": "🔥 買い場×適正配当",
+        "total_candidates": 2,
+        "recommendations": [
+            {
+                "rank": 1,
+                "code": "7203",
+                "name": "トヨタ自動車",
+                "industry": "輸送用機器",
+                "fit_score": 95,
+                "fit_stars": "★★★★★",
+                "rationale": "割安なPERと高いROE、トレンド反転の買い場シグナルが点灯。",
+                "risk_factor": "円高進行による輸出利益の圧迫リスク。",
+                "portfolio_advice": "長期での買い増し適期。"
+            }
+        ],
+        "overall_summary": "全体としてファンダメンタルズの優秀な割安銘柄が中心です。",
+        "is_cached": False,
+        "diagnosed_at": "20:00"
+    }
+
+    with patch.object(llm_service_instance, "diagnose_filtered_recommendations", return_value=mock_llm_response):
+        # AsyncMock を使用して (_get_processed_asset_data, metadata) タプルを返却
+        from unittest.mock import AsyncMock
+        with patch("app._get_processed_asset_data", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = ([{"code": "7203", "name": "トヨタ自動車", "score": 4}], {})
+            res = client.post("/api/ai-diagnosis/filtered-recommendations", json={
+                "filtered_codes": ["7203"],
+                "preset_name": "🔥 買い場×適正配当"
+            })
+            assert res.status_code == 200
+            data = res.json()
+            assert data["error"] is False
+            assert data["preset_name"] == "🔥 買い場×適正配当"
+            assert len(data["recommendations"]) == 1
+            assert data["recommendations"][0]["code"] == "7203"
+
+
+

@@ -2849,3 +2849,69 @@ def diagnose_market_anomaly(req: AnomalyLLMRequest):
         logger.error(f"Error in diagnose_market_anomaly: {e}")
         raise HTTPException(status_code=500, detail=f"アノマリーAI診断の実行に失敗しました: {str(e)}")
 
+
+class FilteredRecommendationRequest(BaseModel):
+    filtered_codes: List[str]
+    asset_type: str = "jp_stock"
+    preset_name: Optional[str] = None
+    force: bool = False
+
+
+@app.post("/api/ai-diagnosis/filtered-recommendations")
+async def get_filtered_recommendations(req: FilteredRecommendationRequest):
+    """絞り込み銘柄リストからユーザーの投資方針に合わせた購入推奨 Top 5 を Gemini AI で診断 (#313)"""
+    try:
+        if not req.filtered_codes:
+            raise HTTPException(status_code=400, detail="絞り込まれた銘柄コードリストが空です。")
+
+        # 処理済み銘柄データを取得
+        all_data, _ = await _get_processed_asset_data()
+        target_assets = [a for a in all_data if str(a.get("code")) in req.filtered_codes]
+
+        if not target_assets:
+            raise HTTPException(status_code=400, detail="該当する銘柄データが見つかりませんでした。")
+
+        # 事前ソート（購入注目シグナルレベル降順 ➔ 総合スコア降順）および最大30件制限
+        def get_sort_key(asset):
+            score = asset.get("score", 0)
+            sig_level = 0
+            if asset.get("buy_signal") and isinstance(asset["buy_signal"], dict):
+                sig_level = asset["buy_signal"].get("level", 0)
+            elif asset.get("is_diamond"):
+                sig_level = 3
+            return (sig_level, score)
+
+        target_assets.sort(key=get_sort_key, reverse=True)
+        top_assets = target_assets[:30]  # 最大30件に制限してトークン溢れを物理防止
+
+        # ドル円為替レート詳細の取得
+        usd_jpy_detail = None
+        try:
+            usd_jpy_detail = scraper.get_exchange_rate_detail("USDJPY=X")
+        except Exception as fe:
+            logger.warning(f"Failed to fetch exchange rate detail for AI recommendation: {fe}")
+
+        # ポートフォリオサマリー取得
+        summary = {}
+        try:
+            raw_portfolio = portfolio_manager.load_portfolio()
+            if raw_portfolio:
+                summary = portfolio_manager.calculate_holding_values(raw_portfolio, {})
+        except Exception as pe:
+            logger.warning(f"Failed to calculate portfolio summary for recommendation: {pe}")
+
+        res = llm_service_instance.diagnose_filtered_recommendations(
+            filtered_assets=top_assets,
+            preset_name=req.preset_name,
+            portfolio_summary=summary,
+            usd_jpy_rate_detail=usd_jpy_detail,
+            force=req.force
+        )
+
+        return res
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in get_filtered_recommendations: {e}")
+        raise HTTPException(status_code=500, detail=f"購入推奨AI診断の実行に失敗しました: {str(e)}")
+

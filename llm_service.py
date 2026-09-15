@@ -6,7 +6,7 @@ import threading
 import logging
 import requests
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from investment_policy_manager import InvestmentPolicyManager
 
 logger = logging.getLogger(__name__)
@@ -886,4 +886,203 @@ fit_levelの基準:
             return result
         except Exception as e:
             logger.error(f"Failed to generate anomaly LLM response: {e}")
+            return {"error": True, "message": f"AI診断の実行中にエラーが発生しました: {e}"}
+
+    def _format_assets_to_pipe_lines(self, assets: List[Dict[str, Any]]) -> str:
+        """
+        絞り込み銘柄リストをパイプ区切り1行フォーマット (Pipe-Separated Compact Format) に変換し、
+        Gemini API のプロンプト消費トークン数を約75%大幅削減する。
+        """
+        lines = []
+        lines.append("コード|銘柄名|業種|現在株価|PER|PBR|ROE|配当利回り|配当性向|総合スコア|シグナル")
+        for a in assets:
+            code = a.get("code", "")
+            name = a.get("name", "")
+            ind = a.get("industry") or "-"
+            price = f"{a.get('price', 0)}円" if a.get('price') else "-"
+            per = f"PER:{a.get('per')}" if a.get('per') not in (None, 'N/A', '--', '-') else "PER:-"
+            pbr = f"PBR:{a.get('pbr')}" if a.get('pbr') not in (None, 'N/A', '--', '-') else "PBR:-"
+            roe = f"ROE:{a.get('roe')}%" if a.get('roe') not in (None, 'N/A', '--', '-') else "ROE:-"
+            div = f"利回り:{a.get('dividend_yield')}%" if a.get('dividend_yield') not in (None, 'N/A', '--', '-') else "利回り:-"
+            payout = f"配当性向:{a.get('payout_ratio')}%" if a.get('payout_ratio') not in (None, 'N/A', '--', '-') else "配当性向:-"
+            score = f"Score:{a.get('score', 0)}"
+            
+            sig_label = "通常"
+            if a.get("buy_signal"):
+                bs = a["buy_signal"]
+                if isinstance(bs, dict):
+                    level = bs.get("level", 0)
+                    if level == 2:
+                        sig_label = "🔥チャンス"
+                    elif level == 1:
+                        sig_label = "✨注目"
+            elif a.get("is_diamond"):
+                sig_label = "💎ダイヤモンド"
+
+            line = f"{code}|{name}|{ind}|{price}|{per}|{pbr}|{roe}|{div}|{payout}|{score}|{sig_label}"
+            lines.append(line)
+        return "\n".join(lines)
+
+    def diagnose_filtered_recommendations(
+        self,
+        filtered_assets: List[Dict[str, Any]],
+        preset_name: Optional[str] = None,
+        portfolio_summary: Optional[Dict[str, Any]] = None,
+        usd_jpy_rate_detail: Optional[Dict[str, Any]] = None,
+        force: bool = False,
+        ttl_seconds: int = DEFAULT_TTL_SECONDS
+    ) -> Dict[str, Any]:
+        """
+        専用プリセット・フィルタ等で絞り込まれた銘柄群の中から、
+        ユーザーの投資方針および為替相場環境に合致する購入推奨銘柄 Top 5 を選定・診断する。
+        """
+        api_key = self.policy_manager.get_effective_api_key()
+        if not api_key:
+            return {
+                "error": True,
+                "error_code": "NO_API_KEY",
+                "message": "Google AI Studio の APIキーが設定されていません。「⚙️ 投資方針設定」から APIキー を入力するか、環境変数 GEMINI_API_KEY を設定してください。"
+            }
+
+        if not filtered_assets:
+            return {
+                "error": True,
+                "message": "分析対象の銘柄が存在しません。フィルタ条件を調整してください。"
+            }
+
+        config = self.policy_manager.load_config()
+        selected_model = config.get("selected_model", "gemini-flash-latest")
+        if selected_model not in ["gemini-flash-latest", "gemini-flash-lite-latest"]:
+            selected_model = "gemini-flash-latest"
+
+        policy_prompt = config.get("policy_prompt", "")
+        prompt_hash = self._get_prompt_hash(policy_prompt)
+        
+        # キャッシュキー作成
+        codes_str = "_".join(sorted([str(a.get("code", "")) for a in filtered_assets]))
+        cache_key_raw = f"filtered_rec_{codes_str}_{preset_name or ''}"
+        cache_key = hashlib.sha256(cache_key_raw.encode('utf-8')).hexdigest()[:24]
+
+        now = time.time()
+        if not force:
+            with self._lock:
+                cached_entry = self._cache.get(cache_key)
+                if cached_entry:
+                    is_expired = (now - cached_entry["timestamp"]) > ttl_seconds
+                    same_model = (cached_entry["model"] == selected_model)
+                    same_hash = (cached_entry["prompt_hash"] == prompt_hash)
+                    if not is_expired and same_model and same_hash:
+                        res = dict(cached_entry["result"])
+                        res["is_cached"] = True
+                        res["diagnosed_at"] = cached_entry["diagnosed_at_str"]
+                        return res
+
+        # パイプ区切り形式に圧縮
+        pipe_formatted_data = self._format_assets_to_pipe_lines(filtered_assets)
+
+        # 為替コンテキストテキスト
+        fx_text = ""
+        if usd_jpy_rate_detail and isinstance(usd_jpy_rate_detail, dict):
+            rate = usd_jpy_rate_detail.get("rate")
+            diff = usd_jpy_rate_detail.get("peak_diff_percent")
+            if rate is not None:
+                fx_text = f"【為替環境】 ドル円レート: {rate:.2f}円"
+                if diff is not None:
+                    fx_text += f" (直近高値比 {diff:+.1f}%)"
+
+        preset_info = f"【適用中フィルタ/プリセット】: {preset_name}\n" if preset_name else ""
+
+        system_instruction = (
+            "あなたはプロの日本株ポートフォリオマネージャーです。"
+            "提供されたパイプ区切り形式の銘柄データとユーザーの『投資方針』、為替相場コンテキストを照らし合わせ、"
+            "購入推奨度の最も高い銘柄を最大5つ厳選して順位付けし、構造化JSONフォーマットで回答してください。"
+        )
+
+        user_content = f"""{preset_info}{fx_text}
+
+【ユーザーの投資方針】:
+{policy_prompt if policy_prompt.strip() else '安定配当と割安性を重視し、中長期での資産成長を目指す。'}
+
+【分析対象銘柄データ (パイプ区切り1行フォーマット: コード|銘柄名|業種|現在株価|PER|PBR|ROE|配当利回り|配当性向|総合スコア|シグナル)】:
+{pipe_formatted_data}
+
+【回答フォーマット指示】:
+必ず以下の構造を持つ唯一の JSON オブジェクトのみを出力してください (Markdownコードブロック ```json ... ``` で包んで構いません):
+{{
+  "recommendations": [
+    {{
+      "rank": 1,
+      "code": "銘柄コード",
+      "name": "銘柄名",
+      "industry": "業種",
+      "fit_score": 95,
+      "fit_stars": "★★★★★",
+      "rationale": "選定理由・ファンダメンタルズ/テクニカルの強み (100文字程度)",
+      "risk_factor": "リスク・注意点 (60文字程度)",
+      "portfolio_advice": "組み入れ・購入のアドバイス (60文字程度)"
+    }}
+  ],
+  "overall_summary": "絞り込まれた銘柄群全体の傾向と投資方針に基づく総評 (150文字程度)"
+}}
+
+注意点:
+1. `recommendations` 配列には、最も投資方針に合致する優秀な銘柄を最大5つ、1位から順に含めてください (候補が5未満の場合はあるだけ)。
+2. `fit_score` は 0〜100 の数値、`fit_stars` は ★1〜5表記としてください。
+"""
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key}"
+        payload = {
+            "contents": [{"parts": [{"text": user_content}]}],
+            "systemInstruction": {"parts": [{"text": system_instruction}]},
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 2000
+            }
+        }
+
+        try:
+            resp = requests.post(url, json=payload, timeout=30)
+            if resp.status_code != 200:
+                logger.error(f"Gemini API error for filtered recommendations: {resp.status_code} - {resp.text}")
+                return {"error": True, "message": f"Gemini APIエラー ({resp.status_code}): 購入推奨レポートを生成できませんでした"}
+
+            data = resp.json()
+            candidates = data.get("candidates", [])
+            if not candidates:
+                return {"error": True, "message": "AIからの応答が得られませんでした"}
+
+            raw_text = candidates[0]["content"]["parts"][0]["text"].strip()
+            
+            # JSON パース
+            json_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', raw_text)
+            json_str = json_match.group(1) if json_match else raw_text
+            parsed_res = json.loads(json_str)
+
+            diagnosed_at_str = time.strftime("%H:%M", time.localtime(now))
+            result = {
+                "error": False,
+                "preset_name": preset_name,
+                "total_candidates": len(filtered_assets),
+                "recommendations": parsed_res.get("recommendations", []),
+                "overall_summary": parsed_res.get("overall_summary", ""),
+                "is_cached": False,
+                "diagnosed_at": diagnosed_at_str
+            }
+
+            with self._lock:
+                self._cache[cache_key] = {
+                    "result": result,
+                    "timestamp": now,
+                    "model": selected_model,
+                    "prompt_hash": prompt_hash,
+                    "diagnosed_at_str": diagnosed_at_str,
+                    "last_accessed": now
+                }
+
+            return result
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error in filtered recommendations: {e}, text: {raw_text}")
+            return {"error": True, "message": "AI応答のJSON解析に失敗しました。時間をおいて再試行してください。"}
+        except Exception as e:
+            logger.error(f"Failed to generate filtered recommendations LLM response: {e}")
             return {"error": True, "message": f"AI診断の実行中にエラーが発生しました: {e}"}

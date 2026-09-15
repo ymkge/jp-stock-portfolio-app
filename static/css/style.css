@@ -4422,3 +4422,110 @@ body.dark-mode .btn-clear-preset:hover,
     background-color: #334155;
     color: #f8fafc;
 }
+
+/* ==========================================
+   AI購入推奨銘柄 Top 5 レポート スタイル (#313)
+   ========================================== */
+.btn-purple {
+    background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+    color: #ffffff !important;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(109, 40, 217, 0.2);
+}
+
+.btn-purple:hover {
+    background: linear-gradient(135deg, #7c3aed, #5b21b6);
+    box-shadow: 0 4px 8px rgba(109, 40, 217, 0.35);
+    transform: translateY(-1px);
+}
+
+.recommendation-card {
+    background-color: var(--card-bg, #ffffff);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.recommendation-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.recommendation-card.rank-1 {
+    border: 2px solid #f59e0b;
+    box-shadow: 0 4px 14px rgba(245, 158, 11, 0.18);
+}
+
+.recommendation-card.rank-1 .card-header {
+    background: linear-gradient(90deg, rgba(254, 243, 199, 0.6), rgba(255, 255, 255, 0));
+}
+
+.recommendation-card.rank-2 {
+    border: 1.5px solid #94a3b8;
+}
+
+.recommendation-card.rank-2 .card-header {
+    background: linear-gradient(90deg, rgba(241, 245, 249, 0.7), rgba(255, 255, 255, 0));
+}
+
+.recommendation-card.rank-3 {
+    border: 1.5px solid #d97706;
+}
+
+.recommendation-card.rank-3 .card-header {
+    background: linear-gradient(90deg, rgba(254, 237, 213, 0.5), rgba(255, 255, 255, 0));
+}
+
+.rank-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 0.8rem;
+    color: #ffffff;
+}
+
+.rank-badge.rank-1 {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+
+.rank-badge.rank-2 {
+    background: linear-gradient(135deg, #94a3b8, #64748b);
+}
+
+.rank-badge.rank-3 {
+    background: linear-gradient(135deg, #d97706, #b45309);
+}
+
+.rank-badge.rank-4,
+.rank-badge.rank-5 {
+    background-color: #64748b;
+}
+
+[data-theme="dark"] .recommendation-card,
+body.dark-mode .recommendation-card,
+.dark-mode .recommendation-card {
+    background-color: #1e293b;
+    border-color: #334155;
+}
+
+[data-theme="dark"] .recommendation-card.rank-1,
+body.dark-mode .recommendation-card.rank-1,
+.dark-mode .recommendation-card.rank-1 {
+    border-color: #f59e0b;
+    background-color: #1e293b;
+}
+
+[data-theme="dark"] .recommendation-card.rank-1 .card-header,
+body.dark-mode .recommendation-card.rank-1 .card-header,
+.dark-mode .recommendation-card.rank-1 .card-header {
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.15), rgba(30, 41, 59, 0));
+}

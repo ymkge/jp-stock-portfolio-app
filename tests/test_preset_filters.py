@@ -39,3 +39,15 @@ class TestPresetFilters(unittest.TestCase):
         self.assertIn('&amp;', content)
         self.assertIn('&lt;', content)
         self.assertIn('&gt;', content)
+
+    def test_zero_item_feedback_in_main_js(self):
+        """main.js の AIおすすめ5選 で 0件時に alert を使わず showAlert とモーダル内案内を行うか静的検証"""
+        import os
+        js_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'js', 'main.js')
+        with open(js_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        # 素気ない alert('現在表示・... が存在しないこと
+        self.assertNotIn("alert('現在表示・絞り込まれている銘柄が存在しません。フィルタ条件を変更してください。')", content)
+        # 改善された showAlert トースト警告とモーダル内案内カードが含まれること
+        self.assertIn("showAlert('現在表示・絞り込まれている銘柄が0件のため、AI診断を実行できません。フィルタ条件を変更してください。', 'warning')", content)
+        self.assertIn('⚠️ 該当する銘柄が 0 件です', content)

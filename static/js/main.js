@@ -2199,8 +2199,254 @@ document.addEventListener('DOMContentLoaded', () => {
     initSyncStatusPolling();
 
     // 過去の免責バナー閉じる記憶キーの自動クリーンアップ (常時表示仕様 #288)
-    if (localStorage.getItem('disclaimer_banner_closed')) {
-        localStorage.removeItem('disclaimer_banner_closed');
+    localStorage.removeItem('disclaimer_agreed');
+
+    // --- 絞り込み銘柄 AI購入推奨 Top 5 レポート制御 (#313) ---
+    const recommendFilteredBtn = document.getElementById('recommend-filtered-stocks-btn');
+    const filteredRecModal = document.getElementById('filtered-recommendation-modal');
+    const filteredRecCloseBtn = document.getElementById('btn-close-filtered-rec-modal');
+    const filteredRecCloseFooterBtn = document.getElementById('btn-close-filtered-rec-modal-footer');
+    const filteredRecRefreshBtn = document.getElementById('btn-refresh-filtered-rec');
+    const filteredRecCopyBtn = document.getElementById('btn-copy-filtered-rec-report');
+    const filteredRecSummaryBox = document.getElementById('filtered-rec-summary-box');
+    const filteredRecLoading = document.getElementById('filtered-rec-loading');
+    const filteredRecResultsContainer = document.getElementById('filtered-rec-results-container');
+
+    let currentRecReportData = null;
+
+    function openFilteredRecModal() {
+        if (filteredRecModal) filteredRecModal.classList.remove('hidden');
+    }
+
+    function closeFilteredRecModal() {
+        if (filteredRecModal) filteredRecModal.classList.add('hidden');
+    }
+
+    if (filteredRecCloseBtn) filteredRecCloseBtn.addEventListener('click', closeFilteredRecModal);
+    if (filteredRecCloseFooterBtn) filteredRecCloseFooterBtn.addEventListener('click', closeFilteredRecModal);
+
+    async function fetchAndRenderFilteredRecommendations(force = false) {
+        let presetName = 'カスタム絞り込み';
+
+        if (activePresetId && QUICK_PRESETS[activePresetId]) {
+            const names = {
+                'quick-dip-payout': '🔥 買い場×適正配当',
+                'quick-bargain': '🎁 格安仕込み',
+                'quick-managed': '💼 保有株のみ'
+            };
+            presetName = names[activePresetId] || presetName;
+        } else if (activePresetId) {
+            const customPresets = getCustomPresets();
+            const found = customPresets.find(p => p.id === activePresetId);
+            if (found) presetName = `⭐ ${found.name}`;
+        }
+
+        if (!currentFilteredAssets || currentFilteredAssets.length === 0) {
+            showAlert('現在表示・絞り込まれている銘柄が0件のため、AI診断を実行できません。フィルタ条件を変更してください。', 'warning');
+            openFilteredRecModal();
+            if (filteredRecLoading) filteredRecLoading.classList.add('hidden');
+            if (filteredRecSummaryBox) {
+                filteredRecSummaryBox.innerHTML = `
+                    <span>🔍 対象銘柄数: <strong>0件</strong></span>
+                    <span class="preset-divider">|</span>
+                    <span>条件: <strong>${escapeHtml(presetName)}</strong></span>
+                `;
+            }
+            if (filteredRecResultsContainer) {
+                filteredRecResultsContainer.innerHTML = `
+                    <div class="alert alert-warning my-3 text-center p-4">
+                        <h5 class="fw-bold mb-2">⚠️ 該当する銘柄が 0 件です</h5>
+                        <p class="mb-0">現在のフィルタ条件（${escapeHtml(presetName)}）に合致する銘柄がポートフォリオ内に存在しません。<br>他のプリセットを選択するか、検索キーワード・フィルタ条件を変更して再試行してください。</p>
+                    </div>
+                `;
+            }
+            if (filteredRecCopyBtn) filteredRecCopyBtn.disabled = true;
+            return;
+        }
+
+        if (filteredRecCopyBtn) filteredRecCopyBtn.disabled = false;
+        const codes = currentFilteredAssets.map(a => String(a.code));
+
+        openFilteredRecModal();
+
+        if (filteredRecSummaryBox) {
+            filteredRecSummaryBox.innerHTML = `
+                <span>🔍 対象銘柄数: <strong>${codes.length}件</strong></span>
+                <span class="preset-divider">|</span>
+                <span>条件: <strong>${escapeHtml(presetName)}</strong></span>
+            `;
+        }
+
+        if (filteredRecLoading) filteredRecLoading.classList.remove('hidden');
+        if (filteredRecResultsContainer) filteredRecResultsContainer.innerHTML = '';
+
+        try {
+            const res = await fetch('/api/ai-diagnosis/filtered-recommendations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    filtered_codes: codes,
+                    asset_type: activeTab,
+                    preset_name: presetName,
+                    force: force
+                })
+            });
+
+            const data = await res.json();
+            if (filteredRecLoading) filteredRecLoading.classList.add('hidden');
+
+            if (!res.ok || data.error) {
+                if (data.error_code === 'NO_API_KEY') {
+                    if (filteredRecResultsContainer) {
+                        filteredRecResultsContainer.innerHTML = `
+                            <div class="alert alert-warning my-3 text-center">
+                                <h5>⚠️ APIキー未設定</h5>
+                                <p>${escapeHtml(data.message)}</p>
+                                <button type="button" class="btn btn-primary btn-sm mt-2" onclick="closeFilteredRecModal(); document.getElementById('btn-open-investment-policy-modal').click();">
+                                    ⚙️ 投資方針設定を開く
+                                </button>
+                            </div>
+                        `;
+                    }
+                    return;
+                }
+                throw new Error(data.message || 'AI購入推奨レポートの生成に失敗しました');
+            }
+
+            currentRecReportData = data;
+            renderFilteredRecommendationReport(data);
+
+        } catch (err) {
+            console.error('AI購入推奨診断エラー:', err);
+            if (filteredRecLoading) filteredRecLoading.classList.add('hidden');
+            if (filteredRecResultsContainer) {
+                filteredRecResultsContainer.innerHTML = `
+                    <div class="alert alert-danger my-3">
+                        ❌ エラー: ${escapeHtml(err.message)}
+                    </div>
+                `;
+            }
+        }
+    }
+
+    function renderFilteredRecommendationReport(data) {
+        if (!filteredRecResultsContainer) return;
+
+        const recs = data.recommendations || [];
+        const summary = data.overall_summary || '';
+
+        if (recs.length === 0) {
+            filteredRecResultsContainer.innerHTML = `
+                <div class="alert alert-info my-3 text-center">
+                    推薦条件に合致する銘柄が見つかりませんでした。
+                </div>
+            `;
+            return;
+        }
+
+        const rankBadges = ['🥇 1位', '🥈 2位', '🥉 3位', '4位', '5位'];
+        const rankClasses = ['rank-1', 'rank-2', 'rank-3', 'rank-4', 'rank-5'];
+
+        let cardsHtml = recs.map((item, idx) => {
+            const badge = rankBadges[idx] || `${item.rank || idx + 1}位`;
+            const rankClass = rankClasses[idx] || 'rank-5';
+            const fitStars = item.fit_stars || '★★★★☆';
+            const fitScore = item.fit_score !== undefined ? item.fit_score : 85;
+
+            return `
+                <div class="recommendation-card ${rankClass} mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="rank-badge ${rankClass}">${badge}</span>
+                            <h4 style="margin: 0; font-size: 1.1rem; font-weight: bold;">
+                                ${escapeHtml(item.name || item.code)}
+                                <small class="text-muted" style="font-size: 0.8rem;">(${escapeHtml(item.code)})</small>
+                            </h4>
+                            <span class="badge bg-secondary" style="font-size: 0.75rem;">${escapeHtml(item.industry || '')}</span>
+                        </div>
+                        <div class="fit-score-box text-end">
+                            <span class="fit-stars" style="color: #f59e0b; font-size: 0.95rem;">${escapeHtml(fitStars)}</span>
+                            <span class="badge bg-primary ms-1" style="font-size: 0.8rem;">適合度 ${fitScore}%</span>
+                        </div>
+                    </div>
+                    <div class="card-body" style="padding: 10px 14px;">
+                        <div class="rec-section mb-2">
+                            <strong class="text-success">💡 購入推奨の強み・根拠:</strong>
+                            <p style="margin: 2px 0 6px 0; font-size: 0.88rem; line-height: 1.45;">${escapeHtml(item.rationale || '')}</p>
+                        </div>
+                        <div class="rec-section mb-2">
+                            <strong class="text-warning">⚠️ リスク・注意点:</strong>
+                            <p style="margin: 2px 0 6px 0; font-size: 0.85rem; line-height: 1.45;">${escapeHtml(item.risk_factor || '')}</p>
+                        </div>
+                        ${item.portfolio_advice ? `
+                            <div class="rec-section">
+                                <strong class="text-info">📌 ポートフォリオ組入アドバイス:</strong>
+                                <p style="margin: 2px 0 0 0; font-size: 0.85rem; line-height: 1.45;">${escapeHtml(item.portfolio_advice)}</p>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        let overallHtml = '';
+        if (summary) {
+            overallHtml = `
+                <div class="alert alert-purple mt-3 mb-2" style="background: rgba(147, 51, 234, 0.08); border: 1px solid rgba(147, 51, 234, 0.25); border-radius: 8px; padding: 12px 16px;">
+                    <h5 style="margin: 0 0 6px 0; color: #7e22ce; font-size: 0.95rem; font-weight: bold;">📝 絞り込み銘柄群全体の総評</h5>
+                    <p style="margin: 0; font-size: 0.88rem; line-height: 1.5; color: var(--text-color);">${escapeHtml(summary)}</p>
+                </div>
+            `;
+        }
+
+        filteredRecResultsContainer.innerHTML = cardsHtml + overallHtml;
+    }
+
+    if (recommendFilteredBtn) {
+        recommendFilteredBtn.addEventListener('click', () => {
+            fetchAndRenderFilteredRecommendations(false);
+        });
+    }
+
+    if (filteredRecRefreshBtn) {
+        filteredRecRefreshBtn.addEventListener('click', () => {
+            fetchAndRenderFilteredRecommendations(true);
+        });
+    }
+
+    if (filteredRecCopyBtn) {
+        filteredRecCopyBtn.addEventListener('click', () => {
+            if (!currentRecReportData || !currentRecReportData.recommendations) {
+                alert('コピーするレポートがありません。');
+                return;
+            }
+
+            const data = currentRecReportData;
+            let text = `🤖 【AI厳選】購入推奨銘柄 Top 5 レポート\n`;
+            text += `対象プリセット/条件: ${data.preset_name || 'カスタム絞り込み'}\n`;
+            text += `分析対象数: ${data.total_candidates || 0}件\n`;
+            text += `----------------------------------------\n\n`;
+
+            (data.recommendations || []).forEach((item, idx) => {
+                text += `【${item.rank || idx + 1}位】 ${item.name} (${item.code}) / ${item.industry}\n`;
+                text += `適合度: ${item.fit_stars} (${item.fit_score}%)\n`;
+                text += `・根拠: ${item.rationale}\n`;
+                text += `・注意点: ${item.risk_factor}\n`;
+                if (item.portfolio_advice) text += `・アドバイス: ${item.portfolio_advice}\n`;
+                text += `\n`;
+            });
+
+            if (data.overall_summary) {
+                text += `■ 絞り込み総評:\n${data.overall_summary}\n`;
+            }
+
+            navigator.clipboard.writeText(text).then(() => {
+                showAlert('レポートテキストをクリップボードにコピーしました！', 'success');
+            }).catch(e => {
+                console.error('コピー失敗:', e);
+                alert('コピーに失敗しました。');
+            });
+        });
     }
 
     // --- 主要指数フィボナッチ参照モーダル制御 (#231) ---

@@ -4208,3 +4208,217 @@ body.dark-mode #anomaly-ai-commentary-card,
 .history-mom-summary .mom-value {
     font-weight: 600;
 }
+
+/* ==========================================
+   専用プリセットフィルタ スタイル (#312)
+   ========================================== */
+.preset-filter-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    background-color: var(--bg-hover-color, #f8fafc);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 8px;
+}
+
+[data-theme="dark"] .preset-filter-bar,
+body.dark-mode .preset-filter-bar,
+.dark-mode .preset-filter-bar {
+    background-color: rgba(30, 41, 59, 0.6);
+    border-color: #334155;
+}
+
+.preset-badges-group {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.preset-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted, #64748b);
+    white-space: nowrap;
+}
+
+.preset-divider {
+    color: var(--border-color, #cbd5e1);
+    margin: 0 4px;
+    font-size: 0.85rem;
+}
+
+.custom-presets-container {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.preset-badge-wrapper {
+    display: inline-flex;
+    align-items: center;
+    position: relative;
+}
+
+.preset-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    border: 1px solid var(--border-color, #cbd5e1);
+    background-color: var(--card-bg, #ffffff);
+    color: var(--text-color, #334155);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.preset-badge:hover {
+    border-color: var(--primary-color, #4f46e5);
+    color: var(--primary-color, #4f46e5);
+    background-color: rgba(79, 70, 229, 0.05);
+}
+
+.preset-badge.active {
+    background-color: var(--primary-color, #4f46e5) !important;
+    color: #ffffff !important;
+    border-color: var(--primary-color, #4f46e5) !important;
+    box-shadow: 0 2px 4px rgba(79, 70, 229, 0.25);
+    font-weight: 600;
+}
+
+[data-theme="dark"] .preset-badge,
+body.dark-mode .preset-badge,
+.dark-mode .preset-badge {
+    background-color: #1e293b;
+    border-color: #475569;
+    color: #cbd5e1;
+}
+
+[data-theme="dark"] .preset-badge:hover,
+body.dark-mode .preset-badge:hover,
+.dark-mode .preset-badge:hover {
+    border-color: #818cf8;
+    color: #818cf8;
+    background-color: rgba(99, 102, 241, 0.15);
+}
+
+[data-theme="dark"] .preset-badge.active,
+body.dark-mode .preset-badge.active,
+.dark-mode .preset-badge.active {
+    background-color: #6366f1 !important;
+    border-color: #6366f1 !important;
+    color: #ffffff !important;
+}
+
+.preset-badge-wrapper .preset-badge {
+    padding-right: 22px;
+}
+
+.preset-delete-btn {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 0.9rem;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 50%;
+    transition: color 0.15s ease;
+}
+
+.preset-delete-btn:hover {
+    color: #ef4444;
+}
+
+.preset-badge-wrapper .preset-badge.active + .preset-delete-btn {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.preset-badge-wrapper .preset-badge.active + .preset-delete-btn:hover {
+    color: #ffffff;
+}
+
+.preset-actions-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.btn-preset-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-save-preset {
+    background-color: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+
+.btn-save-preset:hover {
+    background-color: #dbeafe;
+    border-color: #93c5fd;
+}
+
+.btn-clear-preset {
+    background-color: #f1f5f9;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+}
+
+.btn-clear-preset:hover {
+    background-color: #e2e8f0;
+    color: #1e293b;
+}
+
+[data-theme="dark"] .btn-save-preset,
+body.dark-mode .btn-save-preset,
+.dark-mode .btn-save-preset {
+    background-color: rgba(30, 58, 138, 0.5);
+    color: #93c5fd;
+    border-color: #1e40af;
+}
+
+[data-theme="dark"] .btn-save-preset:hover,
+body.dark-mode .btn-save-preset:hover,
+.dark-mode .btn-save-preset:hover {
+    background-color: rgba(30, 58, 138, 0.8);
+    border-color: #2563eb;
+}
+
+[data-theme="dark"] .btn-clear-preset,
+body.dark-mode .btn-clear-preset,
+.dark-mode .btn-clear-preset {
+    background-color: #1e293b;
+    color: #94a3b8;
+    border-color: #475569;
+}
+
+[data-theme="dark"] .btn-clear-preset:hover,
+body.dark-mode .btn-clear-preset:hover,
+.dark-mode .btn-clear-preset:hover {
+    background-color: #334155;
+    color: #f8fafc;
+}

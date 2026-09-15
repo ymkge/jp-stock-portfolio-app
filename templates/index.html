@@ -77,6 +77,21 @@
                         <button class="tab-link" data-tab="us_stock">米国株式</button>
                     </div>
                     
+                    <div class="preset-filter-bar" id="preset-filter-bar">
+                        <div class="preset-badges-group">
+                            <span class="preset-label">プリセット:</span>
+                            <button type="button" class="preset-badge quick-preset" data-preset-id="quick-dip-payout" title="買い場 (反転狙い) × 適正配当 (20-60%)">🔥 買い場×適正配当</button>
+                            <button type="button" class="preset-badge quick-preset" data-preset-id="quick-bargain" title="格安 (じっくり仕込み)">🎁 格安仕込み</button>
+                            <button type="button" class="preset-badge quick-preset" data-preset-id="quick-managed" title="保有株のみ">💼 保有株のみ</button>
+                            <span class="preset-divider">|</span>
+                            <div id="custom-presets-container" class="custom-presets-container"></div>
+                        </div>
+                        <div class="preset-actions-group">
+                            <button type="button" id="save-preset-btn" class="btn-preset-action btn-save-preset" title="現在のフィルタ条件を保存">💾 条件保存</button>
+                            <button type="button" id="clear-filters-btn" class="btn-preset-action btn-clear-preset" title="すべてのフィルタを解除">🧹 リセット</button>
+                        </div>
+                    </div>
+                    
                     <div class="filter-controls main-filters">
                         <input type="text" id="filter-input" placeholder="コード/名称検索">
                         

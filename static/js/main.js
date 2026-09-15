@@ -1162,19 +1162,282 @@ document.addEventListener('DOMContentLoaded', () => {
             alert(`CSVのダウンロードに失敗しました: ${err.message}`);
         }
     });
-    filterInput.addEventListener('input', filterAndRender);
-    industryFilter.addEventListener('change', filterAndRender);
+    // --- プリセットフィルタ制御 ---
+    const QUICK_PRESETS = {
+        'quick-dip-payout': {
+            signal: 'strict-dip',
+            payoutRatio: '20-60',
+            targetTab: 'jp_stock'
+        },
+        'quick-bargain': {
+            signal: 'strict-low',
+            targetTab: 'jp_stock'
+        },
+        'quick-managed': {
+            showOnlyManaged: true
+        }
+    };
+
+    let activePresetId = null;
+
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function getCustomPresets() {
+        try {
+            const data = localStorage.getItem('custom_filter_presets_v1');
+            return data ? JSON.parse(data) : [];
+        } catch (e) {
+            console.error('カスタムプリセット読込エラー:', e);
+            return [];
+        }
+    }
+
+    function saveCustomPresets(presets) {
+        try {
+            localStorage.setItem('custom_filter_presets_v1', JSON.stringify(presets));
+        } catch (e) {
+            console.error('カスタムプリセット保存エラー:', e);
+        }
+    }
+
+    function renderCustomPresets() {
+        const container = document.getElementById('custom-presets-container');
+        if (!container) return;
+        const customPresets = getCustomPresets();
+        container.innerHTML = customPresets.map(preset => `
+            <div class="preset-badge-wrapper">
+                <button type="button" class="preset-badge custom-preset ${activePresetId === preset.id ? 'active' : ''}" data-preset-id="${preset.id}" title="${escapeHtml(preset.name)}">
+                    ⭐ ${escapeHtml(preset.name)}
+                </button>
+                <button type="button" class="preset-delete-btn" data-delete-id="${preset.id}" title="このプリセットを削除">&times;</button>
+            </div>
+        `).join('');
+    }
+
+    function updatePresetActiveStates(forcedId = undefined) {
+        if (forcedId !== undefined) {
+            activePresetId = forcedId;
+        } else {
+            // 現在の入力状態から一致するプリセットがあるかチェック
+            const currentSignal = signalFilter ? signalFilter.value : '';
+            const currentPayout = payoutRatioFilter ? payoutRatioFilter.value : '';
+            const currentManaged = showOnlyManagedAssetsCheckbox ? showOnlyManagedAssetsCheckbox.checked : false;
+            const currentFilterText = filterInput ? filterInput.value.trim() : '';
+            const currentIndustry = industryFilter ? industryFilter.value : '';
+
+            let matchedId = null;
+
+            // クイックプリセットチェック
+            for (const [id, target] of Object.entries(QUICK_PRESETS)) {
+                const matchSignal = (target.signal || '') === currentSignal;
+                const matchPayout = (target.payoutRatio || '') === currentPayout;
+                const matchManaged = !!target.showOnlyManaged === currentManaged;
+                const noText = !currentFilterText;
+                const noInd = !currentIndustry;
+
+                if (matchSignal && matchPayout && matchManaged && noText && noInd) {
+                    matchedId = id;
+                    break;
+                }
+            }
+
+            // カスタムプリセットチェック
+            if (!matchedId) {
+                const customPresets = getCustomPresets();
+                for (const p of customPresets) {
+                    const f = p.filter || {};
+                    if ((f.signal || '') === currentSignal &&
+                        (f.payoutRatio || '') === currentPayout &&
+                        !!f.showOnlyManaged === currentManaged &&
+                        (f.filterText || '') === currentFilterText &&
+                        (f.industry || '') === currentIndustry) {
+                        matchedId = p.id;
+                        break;
+                    }
+                }
+            }
+
+            activePresetId = matchedId;
+        }
+
+        // DOMの活性/非活性クラスの更新
+        document.querySelectorAll('.preset-badge').forEach(badge => {
+            if (badge.dataset.presetId === activePresetId) {
+                badge.classList.add('active');
+            } else {
+                badge.classList.remove('active');
+            }
+        });
+    }
+
+    function applyPreset(presetId) {
+        // すでにアクティブな場合はトグル解除（リセット）
+        if (activePresetId === presetId) {
+            clearAllFilters();
+            return;
+        }
+
+        let targetFilter = null;
+        let targetTab = null;
+
+        if (QUICK_PRESETS[presetId]) {
+            targetFilter = QUICK_PRESETS[presetId];
+            targetTab = targetFilter.targetTab;
+        } else {
+            const customPresets = getCustomPresets();
+            const found = customPresets.find(p => p.id === presetId);
+            if (found) {
+                targetFilter = found.filter;
+                targetTab = targetFilter.targetTab;
+            }
+        }
+
+        if (!targetFilter) return;
+
+        // タブ切り替えが必要な場合
+        if (targetTab && targetTab !== activeTab) {
+            const tabBtn = document.querySelector(`.tab-link[data-tab="${targetTab}"]`);
+            if (tabBtn) tabBtn.click();
+        }
+
+        // 各フィルタ値を反映
+        if (filterInput) filterInput.value = targetFilter.filterText || '';
+        if (industryFilter) industryFilter.value = targetFilter.industry || '';
+        const indSearch = document.getElementById('industry-search');
+        if (indSearch) indSearch.value = targetFilter.industrySearch || '';
+        if (signalFilter) signalFilter.value = targetFilter.signal || '';
+        if (payoutRatioFilter) payoutRatioFilter.value = targetFilter.payoutRatio || '';
+        if (showOnlyManagedAssetsCheckbox) showOnlyManagedAssetsCheckbox.checked = !!targetFilter.showOnlyManaged;
+
+        filterAndRender();
+        updatePresetActiveStates(presetId);
+    }
+
+    function clearAllFilters() {
+        if (filterInput) filterInput.value = '';
+        if (industryFilter) industryFilter.value = '';
+        const indSearch = document.getElementById('industry-search');
+        if (indSearch) indSearch.value = '';
+        if (signalFilter) signalFilter.value = '';
+        if (payoutRatioFilter) payoutRatioFilter.value = '';
+        if (showOnlyManagedAssetsCheckbox) showOnlyManagedAssetsCheckbox.checked = false;
+
+        filterAndRender();
+        updatePresetActiveStates(null);
+    }
+
+    function saveCurrentFilterAsPreset() {
+        const fText = filterInput ? filterInput.value.trim() : '';
+        const ind = industryFilter ? industryFilter.value : '';
+        const indSearch = document.getElementById('industry-search') ? document.getElementById('industry-search').value : '';
+        const sig = signalFilter ? signalFilter.value : '';
+        const pay = payoutRatioFilter ? payoutRatioFilter.value : '';
+        const managed = showOnlyManagedAssetsCheckbox ? showOnlyManagedAssetsCheckbox.checked : false;
+
+        if (!fText && !ind && !sig && !pay && !managed) {
+            alert('保存するフィルタ条件が指定されていません。何かフィルタを選択してから保存してください。');
+            return;
+        }
+
+        const presets = getCustomPresets();
+        if (presets.length >= 10) {
+            alert('カスタムプリセットは最大10個まで保存可能です。不要なプリセットを削除してください。');
+            return;
+        }
+
+        const presetName = prompt('保存するフィルタ条件の名称を入力してください:', 'マイ・フィルタ');
+        if (!presetName || !presetName.trim()) return;
+
+        const newPreset = {
+            id: 'custom_' + Date.now(),
+            name: presetName.trim(),
+            filter: {
+                filterText: fText,
+                industry: ind,
+                industrySearch: indSearch,
+                signal: sig,
+                payoutRatio: pay,
+                showOnlyManaged: managed,
+                targetTab: activeTab
+            }
+        };
+
+        presets.push(newPreset);
+        saveCustomPresets(presets);
+        renderCustomPresets();
+        updatePresetActiveStates(newPreset.id);
+        showAlert(`プリセット「${newPreset.name}」を保存しました`, 'success');
+    }
+
+    function deleteCustomPreset(id) {
+        let presets = getCustomPresets();
+        const target = presets.find(p => p.id === id);
+        if (!target || !confirm(`プリセット「${target.name}」を削除しますか？`)) return;
+
+        presets = presets.filter(p => p.id !== id);
+        saveCustomPresets(presets);
+        if (activePresetId === id) activePresetId = null;
+        renderCustomPresets();
+        updatePresetActiveStates();
+        showAlert('プリセットを削除しました', 'success');
+    }
+
+    // イベントリスナー初期化
+    const presetBar = document.getElementById('preset-filter-bar');
+    if (presetBar) {
+        renderCustomPresets();
+
+        presetBar.addEventListener('click', (e) => {
+            const badge = e.target.closest('.preset-badge');
+            if (badge) {
+                applyPreset(badge.dataset.presetId);
+                return;
+            }
+
+            const delBtn = e.target.closest('.preset-delete-btn');
+            if (delBtn) {
+                deleteCustomPreset(delBtn.dataset.deleteId);
+                return;
+            }
+
+            if (e.target.closest('#save-preset-btn')) {
+                saveCurrentFilterAsPreset();
+                return;
+            }
+
+            if (e.target.closest('#clear-filters-btn')) {
+                clearAllFilters();
+                return;
+            }
+        });
+    }
+
+    const onFilterChangeWithStateSync = () => {
+        filterAndRender();
+        updatePresetActiveStates();
+    };
+
+    filterInput.addEventListener('input', onFilterChangeWithStateSync);
+    industryFilter.addEventListener('change', onFilterChangeWithStateSync);
     const industrySearch = document.getElementById('industry-search');
     if (industrySearch) {
         industrySearch.addEventListener('input', function() {
             updateIndustryFilterOptions(this.value);
         });
     }
-    signalFilter.addEventListener('change', filterAndRender);
+    signalFilter.addEventListener('change', onFilterChangeWithStateSync);
     if (payoutRatioFilter) {
-        ['change', 'input'].forEach(evt => payoutRatioFilter.addEventListener(evt, filterAndRender));
+        ['change', 'input'].forEach(evt => payoutRatioFilter.addEventListener(evt, onFilterChangeWithStateSync));
     }
-    showOnlyManagedAssetsCheckbox.addEventListener('input', filterAndRender);
+    showOnlyManagedAssetsCheckbox.addEventListener('input', onFilterChangeWithStateSync);
     
     document.querySelectorAll('.select-all-assets').forEach(checkbox => checkbox.addEventListener('change', (e) => {
         document.querySelectorAll(`#portfolio-table-${e.target.dataset.assetType} .asset-checkbox:not(:disabled)`).forEach(cb => cb.checked = e.target.checked);

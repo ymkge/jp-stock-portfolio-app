@@ -2866,20 +2866,87 @@ async def get_filtered_recommendations(req: FilteredRecommendationRequest):
 
         # 処理済み銘柄データおよびサマリーを取得
         all_data, summary = await _get_processed_asset_data()
+
+        # ポートフォリオ全体の年間配当総額を集計し、各銘柄の配当構成比(dividend_contribution)および保有株数を算出
+        total_annual_div = 0.0
+        for item in all_data:
+            qty = 0
+            for h in item.get("holdings", []):
+                qty += float(h.get("quantity", 0) or 0)
+            raw_ann_div = item.get("annual_dividend", 0)
+            ann_div = 0.0
+            if raw_ann_div not in (None, 'N/A', '--', ''):
+                try:
+                    ann_div = float(str(raw_ann_div).replace(',', ''))
+                except (ValueError, TypeError):
+                    ann_div = 0.0
+            item["holding_quantity"] = qty
+            item["est_annual_div_total"] = qty * ann_div
+            total_annual_div += item["est_annual_div_total"]
+
+        for item in all_data:
+            if total_annual_div > 0 and item.get("est_annual_div_total", 0) > 0:
+                item["dividend_contribution"] = round((item["est_annual_div_total"] / total_annual_div) * 100, 2)
+            else:
+                item["dividend_contribution"] = 0.0
+
         target_assets = [a for a in all_data if str(a.get("code")) in req.filtered_codes]
 
         if not target_assets:
             raise HTTPException(status_code=400, detail="該当する銘柄データが見つかりませんでした。")
 
-        # 事前ソート（購入注目シグナルレベル降順 ➔ 総合スコア降順）および最大30件制限
+        # 個別銘柄診断基準 (DEFAULT_POLICY_PROMPT) を反映した多段事前ソート (#316)
         def get_sort_key(asset):
-            score = asset.get("score", 0)
+            # 1. 利回り階層 (Yield Tier: 3.5%以上はTier 3, 3.0-3.5%はTier 2, 3%未満はTier 1, 無配はTier 0)
+            raw_y = asset.get("dividend_yield") or asset.get("yield") or 0.0
+            try:
+                y_val = float(str(raw_y).replace('%', '').replace(',', ''))
+            except (ValueError, TypeError):
+                y_val = 0.0
+
+            if y_val >= 3.5:
+                yield_tier = 3  # 最優先 (必須条件適合)
+            elif y_val >= 3.0:
+                yield_tier = 2  # 準優先
+            elif y_val > 0.0:
+                yield_tier = 1  # 低利回り
+            else:
+                yield_tier = 0  # 無配 (Avoid)
+
+            # 2. 還元の盾ボーナス (DOE >= 3.5% または 連続増配 >= 5年)
+            has_shield = 0
+            raw_doe = asset.get("doe")
+            try:
+                doe_val = float(str(raw_doe).replace('%', '').replace(',', '')) if raw_doe not in (None, 'N/A', '--') else 0.0
+            except (ValueError, TypeError):
+                doe_val = 0.0
+            consec_years = asset.get("consecutive_increase_years", 0) or 0
+            if doe_val >= 3.5 or consec_years >= 5:
+                has_shield = 1
+
+            # 3. PBR過熱ペナルティ (PBR > 1.5倍 は過熱回避のため優先度を下げる)
+            raw_pbr = asset.get("pbr")
+            is_pbr_fair = 1
+            try:
+                pbr_val = float(str(raw_pbr).replace(',', '')) if raw_pbr not in (None, 'N/A', '--') else 1.0
+                if pbr_val > 1.5:
+                    is_pbr_fair = 0
+            except (ValueError, TypeError):
+                is_pbr_fair = 1
+
+            # 4. 配当比率の考慮 (既にポートフォリオ配当の15%以上を占める銘柄は過度な集中を抑制)
+            div_contrib = asset.get("dividend_contribution", 0.0) or 0.0
+            not_overconcentrated = 0 if div_contrib >= 15.0 else 1
+
+            # 5. シグナルレベル & 総合スコア
             sig_level = 0
             if asset.get("buy_signal") and isinstance(asset["buy_signal"], dict):
                 sig_level = asset["buy_signal"].get("level", 0)
             elif asset.get("is_diamond"):
                 sig_level = 3
-            return (sig_level, score)
+            score = asset.get("score", 0)
+
+            return (yield_tier, has_shield, not_overconcentrated, is_pbr_fair, sig_level, score)
 
         target_assets.sort(key=get_sort_key, reverse=True)
         top_assets = target_assets[:30]  # 最大30件に制限してトークン溢れを物理防止
@@ -2898,6 +2965,18 @@ async def get_filtered_recommendations(req: FilteredRecommendationRequest):
             usd_jpy_rate_detail=usd_jpy_detail,
             force=req.force
         )
+
+        # 各推薦銘柄に集計済み情報 (dividend_contribution, holding_quantity等) を直接マージ (#316)
+        if isinstance(res, dict) and "recommendations" in res:
+            asset_map = {str(a.get("code")): a for a in all_data}
+            for rec in res.get("recommendations", []):
+                c_code = str(rec.get("code", ""))
+                matched = asset_map.get(c_code, {})
+                rec["dividend_contribution"] = matched.get("dividend_contribution", 0.0)
+                rec["holding_quantity"] = matched.get("holding_quantity", 0)
+                rec["dividend_yield_val"] = matched.get("dividend_yield") or matched.get("yield")
+                rec["doe"] = matched.get("doe")
+                rec["consecutive_increase_years"] = matched.get("consecutive_increase_years", 0)
 
         return res
     except HTTPException as he:

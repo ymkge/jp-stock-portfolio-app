@@ -892,9 +892,10 @@ fit_levelの基準:
         """
         絞り込み銘柄リストをパイプ区切り1行フォーマット (Pipe-Separated Compact Format) に変換し、
         Gemini API のプロンプト消費トークン数を約75%大幅削減する。
+        #316: 個別銘柄診断基準に対応するため、DOE、連続増配年数、ポートフォリオ配当比率、保有株数を追加。
         """
         lines = []
-        lines.append("コード|銘柄名|業種|現在株価|PER|PBR|ROE|配当利回り|配当性向|総合スコア|シグナル")
+        lines.append("コード|銘柄名|業種|現在株価|PER|PBR|ROE|利回り|配当性向|DOE|増配年|配当比|保有株|スコア|シグナル")
         for a in assets:
             code = a.get("code", "")
             name = a.get("name", "")
@@ -903,10 +904,27 @@ fit_levelの基準:
             per = f"PER:{a.get('per')}" if a.get('per') not in (None, 'N/A', '--', '-') else "PER:-"
             pbr = f"PBR:{a.get('pbr')}" if a.get('pbr') not in (None, 'N/A', '--', '-') else "PBR:-"
             roe = f"ROE:{a.get('roe')}%" if a.get('roe') not in (None, 'N/A', '--', '-') else "ROE:-"
-            div = f"利回り:{a.get('dividend_yield')}%" if a.get('dividend_yield') not in (None, 'N/A', '--', '-') else "利回り:-"
-            payout = f"配当性向:{a.get('payout_ratio')}%" if a.get('payout_ratio') not in (None, 'N/A', '--', '-') else "配当性向:-"
+
+            raw_yield = a.get('dividend_yield') if a.get('dividend_yield') not in (None, 'N/A', '--', '-') else a.get('yield')
+            div = f"利回り:{raw_yield}%" if raw_yield not in (None, 'N/A', '--', '-', '') else "利回り:-"
+
+            payout = f"性向:{a.get('payout_ratio')}%" if a.get('payout_ratio') not in (None, 'N/A', '--', '-') else "性向:-"
+            doe = f"DOE:{a.get('doe')}%" if a.get('doe') not in (None, 'N/A', '--', '-') else "DOE:-"
+
+            consec = a.get('consecutive_increase_years')
+            consec_str = f"増配:{consec}年" if consec and consec > 0 else "増配:-"
+
+            div_contrib = a.get('dividend_contribution', 0.0) or 0.0
+            qty = a.get('holding_quantity', 0) or 0
+            if qty > 0 and div_contrib > 0:
+                div_contrib_str = f"配当比:{div_contrib:.1f}%"
+                qty_str = f"保有:{int(qty)}株"
+            else:
+                div_contrib_str = "配当比:0%(新規)"
+                qty_str = "保有:0株"
+
             score = f"Score:{a.get('score', 0)}"
-            
+
             sig_label = "通常"
             if a.get("buy_signal"):
                 bs = a["buy_signal"]
@@ -919,7 +937,7 @@ fit_levelの基準:
             elif a.get("is_diamond"):
                 sig_label = "💎ダイヤモンド"
 
-            line = f"{code}|{name}|{ind}|{price}|{per}|{pbr}|{roe}|{div}|{payout}|{score}|{sig_label}"
+            line = f"{code}|{name}|{ind}|{price}|{per}|{pbr}|{roe}|{div}|{payout}|{doe}|{consec_str}|{div_contrib_str}|{qty_str}|{score}|{sig_label}"
             lines.append(line)
         return "\n".join(lines)
 
@@ -957,7 +975,7 @@ fit_levelの基準:
 
         policy_prompt = config.get("policy_prompt", "")
         prompt_hash = self._get_prompt_hash(policy_prompt)
-        
+
         # キャッシュキー作成
         codes_str = "_".join(sorted([str(a.get("code", "")) for a in filtered_assets]))
         cache_key_raw = f"filtered_rec_{codes_str}_{preset_name or ''}"
@@ -993,18 +1011,31 @@ fit_levelの基準:
         preset_info = f"【適用中フィルタ/プリセット】: {preset_name}\n" if preset_name else ""
 
         system_instruction = (
-            "あなたはプロの日本株ポートフォリオマネージャーです。"
+            "あなたは厳格な定量的データと数式ロジックに基づいて株式分析を行う「インカムゲイン特化型・リスク管理専門アナリスト」です。"
             "提供されたパイプ区切り形式の銘柄データとユーザーの『投資方針』、為替相場コンテキストを照らし合わせ、"
+            "個別銘柄診断と同一の基準（配当利回り3.5%以上、還元の盾: DOE/連続増配、PBR過熱回避、ポートフォリオ配当集中防止）に適合する"
             "購入推奨度の最も高い銘柄を最大5つ厳選して順位付けし、構造化JSONフォーマットで回答してください。"
         )
 
         user_content = f"""{preset_info}{fx_text}
 
-【ユーザーの投資方針】:
-{policy_prompt if policy_prompt.strip() else '安定配当と割安性を重視し、中長期での資産成長を目指す。'}
+【ユーザーの基本投資方針と判定基準】:
+{policy_prompt if policy_prompt.strip() else 'インカムゲイン最大化を目指し、予想利回り3.5%以上、DOEや連続増配による還元の盾、PBR1.5倍以下の割安株を厳選する。'}
 
-【分析対象銘柄データ (パイプ区切り1行フォーマット: コード|銘柄名|業種|現在株価|PER|PBR|ROE|配当利回り|配当性向|総合スコア|シグナル)】:
+【分析対象銘柄データ (パイプ区切り1行フォーマット: コード|銘柄名|業種|現在株価|PER|PBR|ROE|利回り|配当性向|DOE|増配年|配当比|保有株|スコア|シグナル)】:
 {pipe_formatted_data}
+
+【厳格な選定・ランキング基準 (個別銘柄AI診断と同等基準)】:
+1. 【必須条件（配当水準）】:
+   - 予想配当利回り 3.5%〜4.0% 以上の銘柄を最優先してください。
+   - 利回り3.0%未満の低利回り銘柄や無配銘柄は、どれほど高スコアや買いシグナルであっても絶対に除外（Avoid）してください。
+2. 【還元の盾（最重要防衛網）】:
+   - DOE（3.5%以上下限）の明記、または連続増配（5〜10年以上）や累進配当などの「減配耐性」を最も高く評価し、最上位（コア枠）に選定してください。
+3. 【過熱感の排除】:
+   - PBR 1.5倍以下（理想は1.0倍割れ）を優先し、PBR 2.0倍超やPER 20倍超の高バリュエーション銘柄は評価を大幅に割り引いてください。
+4. 【ポートフォリオ配当比率（集中防止と新規分散）】:
+   - 既に保有していて「配当比（ポートフォリオ年間配当に占める割合）」が10%〜15%以上の銘柄は、配当集中リスクを避けるため順位を抑えてください。
+   - 「配当比:0%(新規)」の未保有銘柄、または低シェアの優良銘柄は、ポートフォリオの分散効果が高いとして優先的に推奨してください。
 
 【回答フォーマット指示】:
 必ず以下の構造を持つ唯一の JSON オブジェクトのみを出力してください (Markdownコードブロック ```json ... ``` で包んで構いません):
@@ -1015,18 +1046,21 @@ fit_levelの基準:
       "code": "銘柄コード",
       "name": "銘柄名",
       "industry": "業種",
+      "dividend_yield_str": "予想利回り (例: 4.2%)",
+      "shield_summary": "還元の盾の要約 (例: DOE 4.8% または 連続増配11年 または 累進配当)",
+      "role_badge": "枠組み (例: 【コア枠】新規分散 または 【高利回りブースター】 または 【コア枠】買い増し)",
       "fit_score": 95,
       "fit_stars": "★★★★★",
-      "rationale": "選定理由・ファンダメンタルズ/テクニカルの強み (100文字程度)",
+      "rationale": "選定理由・配当利回りや還元の盾、バリュエーションの強み (100文字程度)",
       "risk_factor": "リスク・注意点 (60文字程度)",
-      "portfolio_advice": "組み入れ・購入のアドバイス (60文字程度)"
+      "portfolio_advice": "配当比率や分散を踏まえた購入・組入アドバイス (60文字程度)"
     }}
   ],
   "overall_summary": "絞り込まれた銘柄群全体の傾向と投資方針に基づく総評 (150文字程度)"
 }}
 
 注意点:
-1. `recommendations` 配列には、最も投資方針に合致する優秀な銘柄を最大5つ、1位から順に含めてください (候補が5未満の場合はあるだけ)。
+1. `recommendations` 配列には、最も投資方針に合致する優秀な銘柄を最大5つ、1位から順に含めてください (基準適合が5未満の場合は適合するもののみ)。
 2. `fit_score` は 0〜100 の数値、`fit_stars` は ★1〜5表記としてください。
 """
 

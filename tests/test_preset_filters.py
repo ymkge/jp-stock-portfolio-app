@@ -97,3 +97,29 @@ class TestPresetFilters(unittest.TestCase):
         self.assertIn('class="rec-section-title rec-title-risk"', js)
         self.assertIn('class="rec-section-title rec-title-advice"', js)
         self.assertIn('class="rec-section-content"', js)
+
+    def test_recommendation_card_dividend_badges_and_criteria_css(self):
+        """style.css および main.js において配当利回り・還元の盾・配当比率バッジが定義・反映されているか検証 (#316)"""
+        import os
+        css_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'css', 'style.css')
+        with open(css_path, 'r', encoding='utf-8') as f:
+            css = f.read()
+
+        self.assertIn('.rec-badge-strip', css)
+        self.assertIn('.rec-mini-badge', css)
+        self.assertIn('.badge-yield', css)
+        self.assertIn('.badge-shield', css)
+        self.assertIn('.badge-role', css)
+        self.assertIn('.recommendation-card .card-header', css)
+        self.assertIn('.recommendation-card .fit-score-box', css)
+
+        js_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'js', 'main.js')
+        with open(js_path, 'r', encoding='utf-8') as f:
+            js = f.read()
+
+        self.assertIn('rec-badge-strip', js)
+        self.assertIn('badge-yield', js)
+        self.assertIn('badge-shield', js)
+        self.assertIn('配当シェア', js)
+        self.assertIn('新規分散枠', js)
+        self.assertIn('fit-score-box', js)

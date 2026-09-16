@@ -2363,21 +2363,60 @@ document.addEventListener('DOMContentLoaded', () => {
             const fitStars = item.fit_stars || '★★★★☆';
             const fitScore = item.fit_score !== undefined ? item.fit_score : 85;
 
+            // 銘柄データからの配当指標補完 (#316)
+            const matchedAsset = (currentFilteredAssets || []).find(a => String(a.code) === String(item.code));
+
+            const rawYield = item.dividend_yield_str || item.dividend_yield_val || (matchedAsset ? (matchedAsset.dividend_yield || matchedAsset.yield) : null);
+            const yieldBadge = rawYield ? `<span class="rec-mini-badge badge-yield">💰 利回り ${escapeHtml(String(rawYield).replace('%', ''))}%</span>` : '';
+
+            let shieldText = item.shield_summary;
+            if (!shieldText) {
+                const doe = item.doe || (matchedAsset ? matchedAsset.doe : null);
+                const consec = item.consecutive_increase_years || (matchedAsset ? matchedAsset.consecutive_increase_years : null);
+                if (doe && doe !== 'N/A' && doe !== '--') shieldText = `DOE ${doe}%`;
+                else if (consec && consec > 0) shieldText = `連続増配 ${consec}年`;
+            }
+            const shieldBadge = shieldText ? `<span class="rec-mini-badge badge-shield">🛡️ ${escapeHtml(shieldText)}</span>` : '';
+
+            const roleText = item.role_badge;
+            const roleBadge = roleText ? `<span class="rec-mini-badge badge-role">${escapeHtml(roleText)}</span>` : '';
+
+            let contribBadge = '';
+            const holdingQty = (item.holding_quantity !== undefined) ? item.holding_quantity : (matchedAsset ? matchedAsset.holding_quantity : 0);
+            const contribVal = (item.dividend_contribution !== undefined) ? item.dividend_contribution : (matchedAsset ? matchedAsset.dividend_contribution : undefined);
+
+            if (holdingQty > 0 || (contribVal !== undefined && contribVal > 0)) {
+                const displayContrib = (contribVal !== undefined && contribVal !== null) ? Number(contribVal).toFixed(1) : '0.0';
+                contribBadge = `<span class="rec-mini-badge">📊 配当シェア ${displayContrib}%</span>`;
+            } else {
+                contribBadge = `<span class="rec-mini-badge">✨ 新規分散枠</span>`;
+            }
+
             return `
                 <div class="recommendation-card ${rankClass} mb-3">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="rank-badge ${rankClass}">${badge}</span>
-                            <h4 style="margin: 0; font-size: 1.0rem; font-weight: bold;">
-                                ${escapeHtml(item.name || item.code)}
-                                <small class="text-muted" style="font-size: 0.8rem;">(${escapeHtml(item.code)})</small>
-                            </h4>
-                            <span class="badge bg-secondary" style="font-size: 0.75rem;">${escapeHtml(item.industry || '')}</span>
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center w-100 flex-wrap gap-2">
+                            <div class="d-flex align-items-center gap-2 flex-grow-1" style="min-width: 0;">
+                                <span class="rank-badge ${rankClass}">${badge}</span>
+                                <h4 class="text-truncate" style="margin: 0; font-size: 1.0rem; font-weight: bold;">
+                                    ${escapeHtml(item.name || item.code)}
+                                    <small class="text-muted" style="font-size: 0.8rem;">(${escapeHtml(item.code)})</small>
+                                </h4>
+                                <span class="badge bg-secondary flex-shrink-0" style="font-size: 0.75rem;">${escapeHtml(item.industry || '')}</span>
+                            </div>
+                            <div class="fit-score-box text-end flex-shrink-0">
+                                <span class="fit-stars" style="color: #f59e0b; font-size: 0.95rem;">${escapeHtml(fitStars)}</span>
+                                <span class="badge bg-primary ms-1" style="font-size: 0.8rem;">適合度 ${fitScore}%</span>
+                            </div>
                         </div>
-                        <div class="fit-score-box text-end">
-                            <span class="fit-stars" style="color: #f59e0b; font-size: 0.95rem;">${escapeHtml(fitStars)}</span>
-                            <span class="badge bg-primary ms-1" style="font-size: 0.8rem;">適合度 ${fitScore}%</span>
-                        </div>
+                        ${(roleBadge || yieldBadge || shieldBadge || contribBadge) ? `
+                            <div class="rec-badge-strip">
+                                ${roleBadge}
+                                ${yieldBadge}
+                                ${shieldBadge}
+                                ${contribBadge}
+                            </div>
+                        ` : ''}
                     </div>
                     <div class="card-body" style="padding: 8px 14px 10px 14px;">
                         <div class="rec-section">
@@ -2439,6 +2478,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             (data.recommendations || []).forEach((item, idx) => {
                 text += `【${item.rank || idx + 1}位】 ${item.name} (${item.code}) / ${item.industry}\n`;
+                if (item.role_badge) text += `枠組み: ${item.role_badge}\n`;
+                if (item.dividend_yield_str) text += `配当利回り: ${item.dividend_yield_str}\n`;
+                if (item.shield_summary) text += `還元の盾: ${item.shield_summary}\n`;
                 text += `適合度: ${item.fit_stars} (${item.fit_score}%)\n`;
                 text += `・根拠: ${item.rationale}\n`;
                 text += `・注意点: ${item.risk_factor}\n`;

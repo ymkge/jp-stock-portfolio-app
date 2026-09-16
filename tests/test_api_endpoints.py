@@ -1534,6 +1534,10 @@ def test_pipe_format_assets_conversion():
             "roe": 12.5,
             "dividend_yield": 3.2,
             "payout_ratio": 35.0,
+            "doe": 3.8,
+            "consecutive_increase_years": 4,
+            "dividend_contribution": 5.5,
+            "holding_quantity": 20,
             "score": 4,
             "buy_signal": {"level": 2}
         },
@@ -1547,15 +1551,19 @@ def test_pipe_format_assets_conversion():
             "roe": 14.0,
             "dividend_yield": 3.5,
             "payout_ratio": 40.0,
+            "doe": None,
+            "consecutive_increase_years": 12,
+            "dividend_contribution": 0.0,
+            "holding_quantity": 0,
             "score": 5,
             "is_diamond": True
         }
     ]
 
     pipe_text = llm_service_instance._format_assets_to_pipe_lines(sample_assets)
-    assert "コード|銘柄名|業種|" in pipe_text
-    assert "7203|トヨタ自動車|輸送用機器|2650円|PER:10.2|PBR:1.1|ROE:12.5%|利回り:3.2%|配当性向:35.0%|Score:4|🔥チャンス" in pipe_text
-    assert "9432|NTT|情報・通信業|150円|PER:11.5|PBR:1.3|ROE:14.0%|利回り:3.5%|配当性向:40.0%|Score:5|💎ダイヤモンド" in pipe_text
+    assert "コード|銘柄名|業種|現在株価|PER|PBR|ROE|利回り|配当性向|DOE|増配年|配当比|保有株|スコア|シグナル" in pipe_text
+    assert "7203|トヨタ自動車|輸送用機器|2650円|PER:10.2|PBR:1.1|ROE:12.5%|利回り:3.2%|性向:35.0%|DOE:3.8%|増配:4年|配当比:5.5%|保有:20株|Score:4|🔥チャンス" in pipe_text
+    assert "9432|NTT|情報・通信業|150円|PER:11.5|PBR:1.3|ROE:14.0%|利回り:3.5%|性向:40.0%|DOE:-|増配:12年|配当比:0%(新規)|保有:0株|Score:5|💎ダイヤモンド" in pipe_text
 
 
 @patch("portfolio_manager.save_portfolio")
@@ -1575,9 +1583,9 @@ def test_api_filtered_recommendations(mock_save_snap, mock_save_daily, mock_save
         "recommendations": [
             {
                 "rank": 1,
-                "code": "7203",
-                "name": "トヨタ自動車",
-                "industry": "輸送用機器",
+                "code": "2222",
+                "name": "優良高配当株",
+                "industry": "建設業",
                 "fit_score": 95,
                 "fit_stars": "★★★★★",
                 "rationale": "割安なPERと高いROE、トレンド反転の買い場シグナルが点灯。",
@@ -1590,21 +1598,51 @@ def test_api_filtered_recommendations(mock_save_snap, mock_save_daily, mock_save
         "diagnosed_at": "20:00"
     }
 
-    with patch.object(llm_service_instance, "diagnose_filtered_recommendations", return_value=mock_llm_response):
+    with patch.object(llm_service_instance, "diagnose_filtered_recommendations", return_value=mock_llm_response) as mock_diag:
         # AsyncMock を使用して (_get_processed_asset_data, metadata) タプルを返却
         from unittest.mock import AsyncMock
+        mock_assets = [
+            # 銘柄A: 低利回り (1.5%), PBR過熱 (2.5), 買いシグナルあり
+            {"code": "1111", "name": "低利回り株", "dividend_yield": 1.5, "pbr": 2.5, "score": 5, "buy_signal": {"level": 2}, "holdings": []},
+            # 銘柄B: 高利回り (4.2%), DOE 4.0%, 連続増配6年, PBR 0.9 (還元の盾)
+            {"code": "2222", "name": "優良高配当株", "dividend_yield": 4.2, "doe": 4.0, "consecutive_increase_years": 6, "pbr": 0.9, "score": 4, "annual_dividend": 100, "holdings": [{"quantity": 10}]},
+            # 銘柄C: 中利回り (3.2%), PBR 1.1
+            {"code": "3333", "name": "中利回り株", "dividend_yield": 3.2, "doe": None, "consecutive_increase_years": 0, "pbr": 1.1, "score": 4, "annual_dividend": 50, "holdings": [{"quantity": 20}]}
+        ]
         with patch("app._get_processed_asset_data", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = ([{"code": "7203", "name": "トヨタ自動車", "score": 4}], {})
+            mock_get.return_value = (mock_assets, {})
             res = client.post("/api/ai-diagnosis/filtered-recommendations", json={
-                "filtered_codes": ["7203"],
+                "filtered_codes": ["1111", "2222", "3333"],
                 "preset_name": "🔥 買い場×適正配当"
             })
             assert res.status_code == 200
             data = res.json()
             assert data["error"] is False
             assert data["preset_name"] == "🔥 買い場×適正配当"
-            assert len(data["recommendations"]) == 1
-            assert data["recommendations"][0]["code"] == "7203"
+
+            # mock_diag に渡された filtered_assets のソート順序を検証 (#316)
+            passed_assets = mock_diag.call_args[1]["filtered_assets"]
+            assert len(passed_assets) == 3
+            # 最優先（Tier 3: 4.2%かつ還元の盾）の 2222 が1位に来ること
+            assert passed_assets[0]["code"] == "2222"
+            # 次に Tier 2 (3.2%) の 3333 が来ること
+            assert passed_assets[1]["code"] == "3333"
+            # 低利回り (1.5%) の 1111 はシグナルがあっても3位に降格されること
+            assert passed_assets[2]["code"] == "1111"
+
+            # 配当構成比 (dividend_contribution) が計算されていること (2222: 10株*100円=1000円, 3333: 20株*50円=1000円 -> 各50%)
+            assert passed_assets[0]["dividend_contribution"] == 50.0
+            assert passed_assets[1]["dividend_contribution"] == 50.0
+            assert passed_assets[2]["dividend_contribution"] == 0.0
+
+            # レスポンス内の各 recommendation に dividend_contribution や holding_quantity がマージされていること (#316)
+            rec_0 = data["recommendations"][0]
+            assert rec_0.get("dividend_contribution") == 50.0
+            assert rec_0.get("holding_quantity") == 10
+            assert rec_0.get("dividend_yield_val") == 4.2
+            assert rec_0.get("doe") == 4.0
+            assert rec_0.get("consecutive_increase_years") == 6
+
 
 
 

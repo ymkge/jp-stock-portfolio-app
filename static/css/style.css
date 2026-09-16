@@ -4529,3 +4529,99 @@ body.dark-mode .recommendation-card.rank-1 .card-header,
 .dark-mode .recommendation-card.rank-1 .card-header {
     background: linear-gradient(90deg, rgba(245, 158, 11, 0.15), rgba(30, 41, 59, 0));
 }
+
+[data-theme="dark"] .recommendation-card.rank-2,
+body.dark-mode .recommendation-card.rank-2,
+.dark-mode .recommendation-card.rank-2 {
+    border-color: #64748b;
+    background-color: #1e293b;
+}
+
+[data-theme="dark"] .recommendation-card.rank-2 .card-header,
+body.dark-mode .recommendation-card.rank-2 .card-header,
+.dark-mode .recommendation-card.rank-2 .card-header {
+    background: linear-gradient(90deg, rgba(148, 163, 184, 0.18), rgba(30, 41, 59, 0));
+}
+
+[data-theme="dark"] .recommendation-card.rank-3,
+body.dark-mode .recommendation-card.rank-3,
+.dark-mode .recommendation-card.rank-3 {
+    border-color: #b45309;
+    background-color: #1e293b;
+}
+
+[data-theme="dark"] .recommendation-card.rank-3 .card-header,
+body.dark-mode .recommendation-card.rank-3 .card-header,
+.dark-mode .recommendation-card.rank-3 .card-header {
+    background: linear-gradient(90deg, rgba(217, 119, 6, 0.18), rgba(30, 41, 59, 0));
+}
+
+[data-theme="dark"] .recommendation-card .card-header,
+body.dark-mode .recommendation-card .card-header,
+.dark-mode .recommendation-card .card-header {
+    background: rgba(30, 41, 59, 0.4);
+}
+
+/* AI購入推奨レポート用 タイポグラフィ・レイアウト最適化 (#315) */
+.rec-section {
+    margin-bottom: 6px;
+}
+
+.rec-section:last-child {
+    margin-bottom: 0;
+}
+
+.rec-section-title {
+    font-size: 0.80rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 2px;
+}
+
+.rec-section-content {
+    font-size: 0.83rem;
+    line-height: 1.42;
+    margin: 0;
+    color: var(--text-color, #1e293b);
+}
+
+/* ライトモードでのセクション見出しアクセントカラー */
+.rec-title-strength {
+    color: #047857; /* Emerald 700 */
+}
+
+.rec-title-risk {
+    color: #b45309; /* Amber 700 */
+}
+
+.rec-title-advice {
+    color: #0369a1; /* Sky 700 */
+}
+
+/* ダークモードでのセクション見出しアクセントカラー (WCAG AAA適合) */
+[data-theme="dark"] .rec-title-strength,
+body.dark-mode .rec-title-strength,
+.dark-mode .rec-title-strength {
+    color: #34d399; /* Emerald 400 */
+}
+
+[data-theme="dark"] .rec-title-risk,
+body.dark-mode .rec-title-risk,
+.dark-mode .rec-title-risk {
+    color: #fbbf24; /* Amber 400 */
+}
+
+[data-theme="dark"] .rec-title-advice,
+body.dark-mode .rec-title-advice,
+.dark-mode .rec-title-advice {
+    color: #38bdf8; /* Sky 400 */
+}
+
+[data-theme="dark"] .rec-section-content,
+body.dark-mode .rec-section-content,
+.dark-mode .rec-section-content {
+    color: #e2e8f0;
+}

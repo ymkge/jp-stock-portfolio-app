@@ -38,20 +38,33 @@
 4. **実装ステップ**: 段階的な作業手順と設計方針
 5. **検証計画**: 実行する自動テスト (`PYTHONPATH=. pytest`) や手動での具体的なUI/動作確認手順
 
-### 作業完了・修正時のウォークスルー作成およびGitコミットコマンド提示義務 (Mandatory Walkthrough & Git Commands) [厳守]
+### 作業完了・修正時のウォークスルー作成およびGit操作コマンド提示義務 (Mandatory Walkthrough & Git Commands) [厳守]
 機能追加やバグ修正、UI改善などいかなるコード変更・修正を行った場合も、GitHub Issue等への記録・履歴管理用として、**必ず「不具合の原因」「具体的な対策・修正内容」「自動テストおよび検証結果」を網羅したウォークスルー資料 (`walkthrough.md`) を作成・更新する**こと。
 
-さらに、ウォークスルーの作成・提示直後に、ユーザーがそのままコピー＆ペーストしてGit共有を行えるよう、必ず以下の形式でコピペ可能なGit操作コマンドを提示すること。
+さらに、開発の安全性とコード品質維持のため、**「Issue単位のトピックブランチ作成 ➔ プッシュ ➔ プルリクエスト作成 ➔ 検証・mainマージ ➔ ブランチ削除」** の GitHub Flow を標準ワークフローとして適用する。
 
 > [!IMPORTANT]
 > **GitHub Issue 自動クローズ防止規約 [厳守]**
-> ユーザーが手動でIssueへの計画・ウォークスルー等のコメント投稿を行ってから手動Close管理を行っているため、コミットメッセージに `fix #`, `fixes #`, `close #`, `closes #`, `resolve #` などの **自動Closeキーワードを絶対に使用してはならない**。
+> ユーザーが手動でIssueへの計画・ウォークスルー等のコメント投稿を行ってから手動Close管理を行っているため、コミットメッセージやPRタイトルに `fix #`, `fixes #`, `close #`, `closes #`, `resolve #` などの **自動Closeキーワードを絶対に使用してはならない**。
 > 必ず `feat: ... (#issue-no)` や `update: ... (#issue-no)`, `ref: ... (#issue-no)` などの非クローズキーワードを使用すること。
 
+#### 標準ブランチ・PR運用フロー（コピペ用コマンド提示形式）:
 ```bash
+# 1. Issue単位のトピックブランチを作成して切り替え（作業開始時またはコミット前）
+git checkout -b feature/{issue-no}-{概要}
+
+# 2. 変更をステージング・コミット
 git add {対象モジュール}
-git commit -m "feat: {対応概要を手短にわかりやすく} (#issue-no)"
-git push
+git commit -m "feat: {対応概要を手短にわかりやすく} (#{issue-no})"
+
+# 3. トピックブランチをリモートへプッシュ（PR作成用URLが表示されます）
+git push -u origin feature/{issue-no}-{概要}
+
+# 4. GitHub上でPull Requestを作成・検証後にmainへマージ
+# 5. マージ完了後のローカル・ブランチのクリーンアップ
+git checkout main
+git pull origin main
+git branch -d feature/{issue-no}-{概要}
 ```
 
 ---

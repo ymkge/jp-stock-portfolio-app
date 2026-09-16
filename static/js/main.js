@@ -2224,6 +2224,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (filteredRecCloseBtn) filteredRecCloseBtn.addEventListener('click', closeFilteredRecModal);
     if (filteredRecCloseFooterBtn) filteredRecCloseFooterBtn.addEventListener('click', closeFilteredRecModal);
+    if (filteredRecModal) {
+        filteredRecModal.addEventListener('click', (e) => {
+            if (e.target === filteredRecModal) closeFilteredRecModal();
+        });
+    }
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && filteredRecModal && !filteredRecModal.classList.contains('hidden')) {
+            closeFilteredRecModal();
+        }
+    });
 
     async function fetchAndRenderFilteredRecommendations(force = false) {
         let presetName = 'カスタム絞り込み';
@@ -2358,7 +2368,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <div class="d-flex align-items-center gap-2">
                             <span class="rank-badge ${rankClass}">${badge}</span>
-                            <h4 style="margin: 0; font-size: 1.1rem; font-weight: bold;">
+                            <h4 style="margin: 0; font-size: 1.0rem; font-weight: bold;">
                                 ${escapeHtml(item.name || item.code)}
                                 <small class="text-muted" style="font-size: 0.8rem;">(${escapeHtml(item.code)})</small>
                             </h4>
@@ -2369,19 +2379,19 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span class="badge bg-primary ms-1" style="font-size: 0.8rem;">適合度 ${fitScore}%</span>
                         </div>
                     </div>
-                    <div class="card-body" style="padding: 10px 14px;">
-                        <div class="rec-section mb-2">
-                            <strong class="text-success">💡 購入推奨の強み・根拠:</strong>
-                            <p style="margin: 2px 0 6px 0; font-size: 0.88rem; line-height: 1.45;">${escapeHtml(item.rationale || '')}</p>
+                    <div class="card-body" style="padding: 8px 14px 10px 14px;">
+                        <div class="rec-section">
+                            <div class="rec-section-title rec-title-strength">💡 購入推奨の強み・根拠:</div>
+                            <p class="rec-section-content">${escapeHtml(item.rationale || '')}</p>
                         </div>
-                        <div class="rec-section mb-2">
-                            <strong class="text-warning">⚠️ リスク・注意点:</strong>
-                            <p style="margin: 2px 0 6px 0; font-size: 0.85rem; line-height: 1.45;">${escapeHtml(item.risk_factor || '')}</p>
+                        <div class="rec-section">
+                            <div class="rec-section-title rec-title-risk">⚠️ リスク・注意点:</div>
+                            <p class="rec-section-content">${escapeHtml(item.risk_factor || '')}</p>
                         </div>
                         ${item.portfolio_advice ? `
                             <div class="rec-section">
-                                <strong class="text-info">📌 ポートフォリオ組入アドバイス:</strong>
-                                <p style="margin: 2px 0 0 0; font-size: 0.85rem; line-height: 1.45;">${escapeHtml(item.portfolio_advice)}</p>
+                                <div class="rec-section-title rec-title-advice">📌 ポートフォリオ組入アドバイス:</div>
+                                <p class="rec-section-content">${escapeHtml(item.portfolio_advice)}</p>
                             </div>
                         ` : ''}
                     </div>

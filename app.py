@@ -2864,8 +2864,8 @@ async def get_filtered_recommendations(req: FilteredRecommendationRequest):
         if not req.filtered_codes:
             raise HTTPException(status_code=400, detail="絞り込まれた銘柄コードリストが空です。")
 
-        # 処理済み銘柄データを取得
-        all_data, _ = await _get_processed_asset_data()
+        # 処理済み銘柄データおよびサマリーを取得
+        all_data, summary = await _get_processed_asset_data()
         target_assets = [a for a in all_data if str(a.get("code")) in req.filtered_codes]
 
         if not target_assets:
@@ -2890,15 +2890,6 @@ async def get_filtered_recommendations(req: FilteredRecommendationRequest):
             usd_jpy_detail = scraper.get_exchange_rate_detail("USDJPY=X")
         except Exception as fe:
             logger.warning(f"Failed to fetch exchange rate detail for AI recommendation: {fe}")
-
-        # ポートフォリオサマリー取得
-        summary = {}
-        try:
-            raw_portfolio = portfolio_manager.load_portfolio()
-            if raw_portfolio:
-                summary = portfolio_manager.calculate_holding_values(raw_portfolio, {})
-        except Exception as pe:
-            logger.warning(f"Failed to calculate portfolio summary for recommendation: {pe}")
 
         res = llm_service_instance.diagnose_filtered_recommendations(
             filtered_assets=top_assets,

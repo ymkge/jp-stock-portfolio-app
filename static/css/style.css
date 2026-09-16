@@ -4625,3 +4625,75 @@ body.dark-mode .rec-section-content,
 .dark-mode .rec-section-content {
     color: #e2e8f0;
 }
+
+/* 配当利回り・還元の盾・配当比率ミニバッジ (#316) */
+.rec-badge-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 5px;
+    align-items: center;
+}
+
+.rec-mini-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.05);
+    color: var(--text-color, #334155);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.rec-mini-badge.badge-yield {
+    background-color: rgba(16, 185, 129, 0.12);
+    color: #047857;
+    border-color: rgba(16, 185, 129, 0.25);
+}
+
+.rec-mini-badge.badge-shield {
+    background-color: rgba(59, 130, 246, 0.12);
+    color: #1d4ed8;
+    border-color: rgba(59, 130, 246, 0.25);
+}
+
+.rec-mini-badge.badge-role {
+    background-color: rgba(147, 51, 234, 0.12);
+    color: #7e22ce;
+    border-color: rgba(147, 51, 234, 0.25);
+}
+
+[data-theme="dark"] .rec-mini-badge,
+body.dark-mode .rec-mini-badge,
+.dark-mode .rec-mini-badge {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #cbd5e1;
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .rec-mini-badge.badge-yield,
+body.dark-mode .rec-mini-badge.badge-yield,
+.dark-mode .rec-mini-badge.badge-yield {
+    background-color: rgba(52, 211, 153, 0.15);
+    color: #34d399;
+    border-color: rgba(52, 211, 153, 0.3);
+}
+
+[data-theme="dark"] .rec-mini-badge.badge-shield,
+body.dark-mode .rec-mini-badge.badge-shield,
+.dark-mode .rec-mini-badge.badge-shield {
+    background-color: rgba(96, 165, 250, 0.15);
+    color: #60a5fa;
+    border-color: rgba(96, 165, 250, 0.3);
+}
+
+[data-theme="dark"] .rec-mini-badge.badge-role,
+body.dark-mode .rec-mini-badge.badge-role,
+.dark-mode .rec-mini-badge.badge-role {
+    background-color: rgba(192, 132, 252, 0.15);
+    color: #c084fc;
+    border-color: rgba(192, 132, 252, 0.3);
+}

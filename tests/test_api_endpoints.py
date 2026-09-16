@@ -1583,9 +1583,9 @@ def test_api_filtered_recommendations(mock_save_snap, mock_save_daily, mock_save
         "recommendations": [
             {
                 "rank": 1,
-                "code": "7203",
-                "name": "トヨタ自動車",
-                "industry": "輸送用機器",
+                "code": "2222",
+                "name": "優良高配当株",
+                "industry": "建設業",
                 "fit_score": 95,
                 "fit_stars": "★★★★★",
                 "rationale": "割安なPERと高いROE、トレンド反転の買い場シグナルが点灯。",
@@ -1634,6 +1634,15 @@ def test_api_filtered_recommendations(mock_save_snap, mock_save_daily, mock_save
             assert passed_assets[0]["dividend_contribution"] == 50.0
             assert passed_assets[1]["dividend_contribution"] == 50.0
             assert passed_assets[2]["dividend_contribution"] == 0.0
+
+            # レスポンス内の各 recommendation に dividend_contribution や holding_quantity がマージされていること (#316)
+            rec_0 = data["recommendations"][0]
+            assert rec_0.get("dividend_contribution") == 50.0
+            assert rec_0.get("holding_quantity") == 10
+            assert rec_0.get("dividend_yield_val") == 4.2
+            assert rec_0.get("doe") == 4.0
+            assert rec_0.get("consecutive_increase_years") == 6
+
 
 
 

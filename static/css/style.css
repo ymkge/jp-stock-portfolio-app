@@ -4458,6 +4458,24 @@ body.dark-mode .btn-clear-preset:hover,
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
+.recommendation-card .card-header {
+    height: auto !important;
+    min-height: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px;
+    padding: 12px 14px 10px 14px;
+    border-bottom: 1px solid var(--border-color, #e2e8f0);
+    box-sizing: border-box;
+    overflow: visible;
+}
+
+.recommendation-card .fit-score-box {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
 .recommendation-card.rank-1 {
     border: 2px solid #f59e0b;
     box-shadow: 0 4px 14px rgba(245, 158, 11, 0.18);

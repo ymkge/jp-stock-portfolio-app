@@ -110,6 +110,8 @@ class TestPresetFilters(unittest.TestCase):
         self.assertIn('.badge-yield', css)
         self.assertIn('.badge-shield', css)
         self.assertIn('.badge-role', css)
+        self.assertIn('.recommendation-card .card-header', css)
+        self.assertIn('.recommendation-card .fit-score-box', css)
 
         js_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'js', 'main.js')
         with open(js_path, 'r', encoding='utf-8') as f:
@@ -120,3 +122,4 @@ class TestPresetFilters(unittest.TestCase):
         self.assertIn('badge-shield', js)
         self.assertIn('配当シェア', js)
         self.assertIn('新規分散枠', js)
+        self.assertIn('fit-score-box', js)

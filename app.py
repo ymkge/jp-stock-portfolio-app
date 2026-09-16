@@ -2966,6 +2966,18 @@ async def get_filtered_recommendations(req: FilteredRecommendationRequest):
             force=req.force
         )
 
+        # 各推薦銘柄に集計済み情報 (dividend_contribution, holding_quantity等) を直接マージ (#316)
+        if isinstance(res, dict) and "recommendations" in res:
+            asset_map = {str(a.get("code")): a for a in all_data}
+            for rec in res.get("recommendations", []):
+                c_code = str(rec.get("code", ""))
+                matched = asset_map.get(c_code, {})
+                rec["dividend_contribution"] = matched.get("dividend_contribution", 0.0)
+                rec["holding_quantity"] = matched.get("holding_quantity", 0)
+                rec["dividend_yield_val"] = matched.get("dividend_yield") or matched.get("yield")
+                rec["doe"] = matched.get("doe")
+                rec["consecutive_increase_years"] = matched.get("consecutive_increase_years", 0)
+
         return res
     except HTTPException as he:
         raise he

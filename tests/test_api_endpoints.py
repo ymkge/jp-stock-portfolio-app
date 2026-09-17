@@ -1644,5 +1644,70 @@ def test_api_filtered_recommendations(mock_save_snap, mock_save_daily, mock_save
             assert rec_0.get("consecutive_increase_years") == 6
 
 
+def test_get_summary_before_outlier_defensive_filter():
+    """Issue #320: get_summary_before が極端な低額外れ値(min_market_value未満)をスキップし健全な過去データを返すことを検証"""
+    import sqlite3
+    from history_manager import get_summary_before
+    import history_manager
+
+    # インメモリDBで検証 (本番DBは完全保護)
+    test_conn = sqlite3.connect(":memory:")
+    test_conn.row_factory = sqlite3.Row
+    c = test_conn.cursor()
+    c.execute("""
+        CREATE TABLE portfolio_summary_history (
+            snapshot_date TEXT PRIMARY KEY,
+            snapshot_month TEXT,
+            total_market_value REAL,
+            total_profit_loss REAL,
+            total_dividend REAL,
+            updated_at_jst TEXT
+        )
+    """)
+    # 正常データ (8/16: 2500万円)
+    c.execute("INSERT INTO portfolio_summary_history VALUES ('2026-08-16', '2026-08', 25000000.0, 6000000.0, 550000.0, '2026-08-16 18:00:00')")
+    # 汚染ダミーデータ (8/19: 25万円)
+    c.execute("INSERT INTO portfolio_summary_history VALUES ('2026-08-19', '2026-08', 250000.0, 50000.0, 0.0, '2026-08-19 18:00:00')")
+    test_conn.commit()
+
+    with patch("sqlite3.connect", return_value=test_conn):
+        # 8/19以前を検索時、25万円のレコードはスキップされ、8/16の健全レコードが返ること
+        res = get_summary_before("2026-08-19", min_market_value=1000000.0)
+        assert res is not None
+        assert res["snapshot_date"] == "2026-08-16"
+        assert res["total_market_value"] == 25000000.0
+
+        # min_market_value を満たすものがない場合はフォールバックされること
+        res_fallback = get_summary_before("2026-08-19", min_market_value=30000000.0)
+        assert res_fallback is not None
+        assert res_fallback["snapshot_date"] == "2026-08-19"
+        assert res_fallback["total_market_value"] == 250000.0
+
+    test_conn.close()
+
+
+def test_restored_august_history_data_integrity():
+    """Issue #320: 復元された8月のスナップショットデータ(8/13, 8/18, 8/19, 8/21)が正常範囲であることを検証"""
+    import sqlite3
+
+    conn = sqlite3.connect("portfolio_history.db")
+    c = conn.cursor()
+    # 8/19 のサマリーデータが約2496万円であり、25万円のテストデータでないこと
+    row_819 = c.execute("SELECT total_market_value, total_profit_loss FROM portfolio_summary_history WHERE snapshot_date = '2026-08-19'").fetchone()
+    assert row_819 is not None
+    assert row_819[0] > 24000000.0, f"8/19の評価額が異常です: {row_819[0]}"
+    assert row_819[1] > 5000000.0, f"8/19の損益が異常です: {row_819[1]}"
+
+    # 明細件数が124件であること
+    cnt_819 = c.execute("SELECT COUNT(*) FROM portfolio_history WHERE snapshot_date = '2026-08-19'").fetchone()[0]
+    assert cnt_819 == 124
+
+    # 8/21 の明細件数が125件(四電工を含む)であること
+    cnt_821 = c.execute("SELECT COUNT(*) FROM portfolio_history WHERE snapshot_date = '2026-08-21'").fetchone()[0]
+    assert cnt_821 == 125
+    conn.close()
+
+
+
 
 

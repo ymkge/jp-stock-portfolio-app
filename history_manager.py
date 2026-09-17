@@ -485,9 +485,10 @@ def save_snapshot(portfolio_data: List[Dict[str, Any]]):
     except sqlite3.Error as e:
         logger.error(f"Failed to save snapshot: {e}")
 
-def get_summary_before(date_str: str) -> Optional[Dict[str, Any]]:
+def get_summary_before(date_str: str, min_market_value: float = 1000000.0) -> Optional[Dict[str, Any]]:
     """
-    指定された日付(date_str)以前で、最も新しいサマリーを取得する。
+    指定された日付(date_str)以前で、最も新しい有効なサマリーを取得する。
+    極端な外れ値（min_market_value未満）やテスト起因の異常データは自動的にスキップし、健全な過去データを探索する (#320)。
     """
     try:
         with sqlite3.connect(DB_FILE) as conn:
@@ -495,13 +496,24 @@ def get_summary_before(date_str: str) -> Optional[Dict[str, Any]]:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT * FROM portfolio_summary_history
-                WHERE snapshot_date <= ?
+                WHERE snapshot_date <= ? AND total_market_value >= ?
                 ORDER BY snapshot_date DESC
                 LIMIT 1
-            """, (date_str,))
+            """, (date_str, min_market_value))
             row = cursor.fetchone()
             if row:
                 return dict(row)
+
+            # min_market_value を満たすものがない場合は通常の最新1件へフォールバック
+            cursor.execute("""
+                SELECT * FROM portfolio_summary_history
+                WHERE snapshot_date <= ? AND total_market_value > 0
+                ORDER BY snapshot_date DESC
+                LIMIT 1
+            """, (date_str,))
+            fallback_row = cursor.fetchone()
+            if fallback_row:
+                return dict(fallback_row)
     except sqlite3.Error as e:
         logger.error(f"Failed to get summary before {date_str}: {e}")
     return None

@@ -1742,9 +1742,12 @@ def test_industry_daily_report_modal_ui_and_dark_mode_issue317():
     assert '[data-theme="dark"] .industry-ai-summary-card' in css_content
     assert 'body.dark-mode .industry-ai-summary-card' in css_content
     assert '.dark-mode .industry-ai-summary-card' in css_content
+    assert '.ind-ai-guide-card' in css_content
     assert '.industry-tab-btn' in css_content
     assert '.industry-row' in css_content
-    assert '.industry-bar' in css_content
+    assert '.ind-rate-badge' in css_content
+    assert '.ind-amount' in css_content
+    assert '.ind-bar' in css_content
 
     # 3. JS 関数の定義・呼び出し検証
     js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
@@ -1755,20 +1758,23 @@ def test_industry_daily_report_modal_ui_and_dark_mode_issue317():
     assert 'btnCloseIndustryDailyModal' in js_content
     assert 'renderIndustryDailyModalContent' in js_content
     assert 'fetchIndustryDailyAiSummary' in js_content
+    assert 'NO_API_KEY' in js_content
+    assert 'ind-rate-badge' in js_content
+    assert 'ind-amount' in js_content
 
 
 def test_api_industry_daily_summary_endpoint():
     """案件 #317: POST /api/ai-diagnosis/industry-daily-summary エンドポイントのテスト"""
     from fastapi.testclient import TestClient
-    from unittest.mock import patch, MagicMock
+    from unittest.mock import patch
     from app import app
 
     client = TestClient(app)
 
     mock_ai_result = {
-        "market_summary": "本日は日経平均が反発し、輸出ハイテク株が主導しました。",
-        "impact_summary": "保有ポートフォリオでは電気機器・機械セクターが好調に推移しました。",
-        "takeaway": "円安基調の恩恵を受けるセクターのホールドを継続。",
+        "market_trend_summary": "本日は日経平均が反発し、輸出ハイテク株が主導しました。",
+        "portfolio_impact_summary": "保有ポートフォリオでは電気機器・機械セクターが好調に推移しました。",
+        "key_takeaway": "円安基調の恩恵を受けるセクターのホールドを継続。",
         "is_cached": False,
         "diagnosed_at": "15:30"
     }
@@ -1790,10 +1796,36 @@ def test_api_industry_daily_summary_endpoint():
         resp = client.post("/api/ai-diagnosis/industry-daily-summary", json={"force": False})
         assert resp.status_code == 200
         data = resp.json()
-        assert data["market_summary"] == "本日は日経平均が反発し、輸出ハイテク株が主導しました。"
-        assert data["impact_summary"] == "保有ポートフォリオでは電気機器・機械セクターが好調に推移しました。"
-        assert data["takeaway"] == "円安基調の恩恵を受けるセクターのホールドを継続。"
+        assert data["market_trend_summary"] == "本日は日経平均が反発し、輸出ハイテク株が主導しました。"
+        assert data["portfolio_impact_summary"] == "保有ポートフォリオでは電気機器・機械セクターが好調に推移しました。"
+        assert data["key_takeaway"] == "円安基調の恩恵を受けるセクターのホールドを継続。"
         assert data["is_cached"] is False
+
+
+def test_api_industry_daily_summary_no_api_key():
+    """案件 #317: APIキー未設定時のレスポンス形式テスト"""
+    from fastapi.testclient import TestClient
+    from unittest.mock import patch
+    from app import app
+
+    client = TestClient(app)
+
+    no_api_key_result = {
+        "error": True,
+        "error_code": "NO_API_KEY",
+        "message": "Google AI Studio の APIキーが設定されていません。"
+    }
+
+    with patch("app._get_processed_asset_data", return_value=([], {"fetched_at": "2026-09-18T15:00:00"})), \
+         patch("app.scraper.get_exchange_rate", return_value=150.0), \
+         patch("app.llm_service_instance.diagnose_industry_daily_changes", return_value=no_api_key_result):
+
+        resp = client.post("/api/ai-diagnosis/industry-daily-summary", json={"force": False})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["error"] is True
+        assert data["error_code"] == "NO_API_KEY"
+
 
 
 

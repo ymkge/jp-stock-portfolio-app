@@ -1986,7 +1986,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (statsStrip) {
             const totalChange = data.total_daily_change_jpy || 0;
             const totalSign = totalChange > 0 ? '+' : '';
-            const totalClass = totalChange > 0 ? 'profit' : (totalChange < 0 ? 'loss' : '');
+            const totalValClass = totalChange > 0 ? 'ind-stat-gainer' : (totalChange < 0 ? 'ind-stat-loser' : '');
             const displayTotal = isAmountVisible
                 ? `${totalSign}${Math.round(totalChange).toLocaleString()}円`
                 : `<span class="masked-amount">${totalSign}••••••円</span>`;
@@ -1994,15 +1994,15 @@ document.addEventListener('DOMContentLoaded', () => {
             statsStrip.innerHTML = `
                 <div class="stat-pill total-pill">
                     <span class="stat-label">保有全体 本日増減:</span>
-                    <span class="stat-val ${totalClass}">${displayTotal}</span>
+                    <span class="stat-val ${totalValClass}">${displayTotal}</span>
                 </div>
                 <div class="stat-pill gainer-pill">
                     <span class="stat-label">📈 上昇:</span>
-                    <span class="stat-val text-success">${gainers.length} 業種</span>
+                    <span class="stat-val ind-stat-gainer">${gainers.length} 業種</span>
                 </div>
                 <div class="stat-pill loser-pill">
                     <span class="stat-label">📉 下落:</span>
-                    <span class="stat-val text-danger">${losers.length} 業種</span>
+                    <span class="stat-val ind-stat-loser">${losers.length} 業種</span>
                 </div>
                 <div class="stat-pill unchanged-pill">
                     <span class="stat-label">➖ 変わらず:</span>
@@ -2035,8 +2035,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const isGainer = chg > 0;
             const isLoser = chg < 0;
             const sign = isGainer ? '+' : '';
-            const colorClass = isGainer ? 'profit' : (isLoser ? 'loss' : '');
-            const barClass = isGainer ? 'industry-bar-gainer' : (isLoser ? 'industry-bar-loser' : 'industry-bar-neutral');
+            
+            // 専用クラスによるスタイリング分離 (グローバル .profit / .loss のベタ塗りを排除)
+            const rowClass = isGainer ? 'ind-row-gainer' : (isLoser ? 'ind-row-loser' : 'ind-row-neutral');
+            const rateBadgeClass = isGainer ? 'ind-rate-gainer' : (isLoser ? 'ind-rate-loser' : 'ind-rate-neutral');
+            const amountClass = isGainer ? 'ind-amount-gainer' : (isLoser ? 'ind-amount-loser' : 'ind-amount-neutral');
+            const barClass = isGainer ? 'ind-bar-gainer' : (isLoser ? 'ind-bar-loser' : 'ind-bar-neutral');
             const barWidth = Math.min(100, Math.round((Math.abs(chg) / maxAbs) * 100));
 
             const displayAmount = isAmountVisible
@@ -2044,19 +2048,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 : `<span class="masked-amount">${sign}••••••円</span>`;
 
             html += `
-                <div class="industry-row ${colorClass}">
+                <div class="industry-row ${rowClass}">
                     <div class="industry-row-header">
                         <div class="industry-name-col">
                             <span class="industry-name">${escapeHtml(item.industry)}</span>
                             <span class="industry-stock-count-badge">${item.stock_count || 1}銘柄</span>
                         </div>
                         <div class="industry-metrics-col">
-                            <span class="industry-rate-badge ${colorClass}">${sign}${rate.toFixed(2)}%</span>
-                            <span class="industry-amount ${colorClass}">${displayAmount}</span>
+                            <span class="ind-rate-badge ${rateBadgeClass}">${sign}${rate.toFixed(2)}%</span>
+                            <span class="ind-amount ${amountClass}">${displayAmount}</span>
                         </div>
                     </div>
-                    <div class="industry-bar-container">
-                        <div class="industry-bar ${barClass}" style="width: ${Math.max(barWidth, 3)}%;"></div>
+                    <div class="ind-bar-track">
+                        <div class="ind-bar ${barClass}" style="width: ${Math.max(barWidth, 2)}%;"></div>
                     </div>
                 </div>
             `;
@@ -2094,6 +2098,39 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await resp.json();
             industryDailyAiLoaded = true;
 
+            // エラー・APIキー未設定ハンドリング (#317)
+            if (data.error) {
+                if (data.error_code === 'NO_API_KEY') {
+                    aiBox.innerHTML = `
+                        <div class="ind-ai-guide-card">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <span style="font-size: 1.2rem;">💡</span>
+                                <strong style="font-size: 0.92rem;">Gemini APIキーを設定すると市況短評が利用できます</strong>
+                            </div>
+                            <p class="mb-2" style="font-size: 0.84rem; opacity: 0.9; line-height: 1.5;">
+                                Google AI Studio の APIキーを設定すると、本日のセクター動向と保有ポートフォリオへの影響をまとめたAI短評がここに表示されます。
+                            </p>
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="if(typeof openPolicyModal==='function') openPolicyModal(); else alert('画面上部の「投資方針」メニューからAPIキーを設定してください');">
+                                ⚙️ 投資方針設定を開く
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    aiBox.innerHTML = `
+                        <div class="alert alert-warning py-2 px-3 mb-0 d-flex justify-content-between align-items-center" style="font-size: 0.82rem;">
+                            <span>⚠️ AI短評の取得に失敗しました: ${escapeHtml(data.message || 'エラーが発生しました')}</span>
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="fetchIndustryDailyAiSummary(true)">再試行</button>
+                        </div>
+                    `;
+                }
+                return;
+            }
+
+            // バックエンドキー名のフォールバック抽出
+            const marketTrend = data.market_trend_summary || data.market_summary || '';
+            const portfolioImpact = data.portfolio_impact_summary || data.impact_summary || '';
+            const keyTakeaway = data.key_takeaway || data.takeaway || '';
+
             const cacheBadge = data.is_cached
                 ? `<span class="badge bg-secondary-subtle text-muted" style="font-size: 0.72rem;">⚡ キャッシュ (${data.diagnosed_at || ''})</span>`
                 : `<span class="badge bg-primary-subtle text-primary" style="font-size: 0.72rem;">🤖 リアルタイム診断 (${data.diagnosed_at || ''})</span>`;
@@ -2102,15 +2139,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="industry-ai-body">
                     <div class="industry-ai-section mb-2">
                         <div class="ai-section-title">🌐 マクロ市況とセクター動向</div>
-                        <div class="ai-section-text">${escapeHtml(data.market_summary || '')}</div>
+                        <div class="ai-section-text">${escapeHtml(marketTrend)}</div>
                     </div>
                     <div class="industry-ai-section mb-2">
                         <div class="ai-section-title">📊 保有ポートフォリオへの影響</div>
-                        <div class="ai-section-text">${escapeHtml(data.impact_summary || '')}</div>
+                        <div class="ai-section-text">${escapeHtml(portfolioImpact)}</div>
                     </div>
                     <div class="industry-ai-section">
                         <div class="ai-section-title">💡 本日のポイント・着眼点</div>
-                        <div class="ai-section-text fw-bold" style="color: var(--primary-color, #2563eb);">${escapeHtml(data.takeaway || '')}</div>
+                        <div class="ai-section-text fw-bold text-primary">${escapeHtml(keyTakeaway)}</div>
                     </div>
                     <div class="text-end mt-2">
                         ${cacheBadge}

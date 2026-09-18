@@ -1,4 +1,5 @@
 import os
+import json
 import time
 import pytest
 from unittest.mock import MagicMock, patch
@@ -658,6 +659,77 @@ def test_diagnose_anomaly_success_and_cache_issue298(policy_manager):
         assert res3.get("error") is False
         assert res3.get("is_cached") is False
         assert mock_post.call_count == 2
+
+
+def test_diagnose_industry_daily_changes_no_api_key(tmp_path):
+    """案件 #317: APIキー未設定時に diagnose_industry_daily_changes が NO_API_KEY を返却するか検証"""
+    test_file = os.path.join(tmp_path, "no_key_policy_317.json")
+    pm = InvestmentPolicyManager(filepath=test_file)
+    service = LLMDiagnosisService(policy_manager=pm)
+    
+    with patch.dict(os.environ, {}, clear=True):
+        res = service.diagnose_industry_daily_changes(daily_industry_data={})
+        assert res.get("error") is True
+        assert res.get("error_code") == "NO_API_KEY"
+
+
+def test_diagnose_industry_daily_changes_success_and_model_fallback(policy_manager):
+    """案件 #317: diagnose_industry_daily_changes の正常レスポンスとモデル取得フォールバックの検証"""
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    valid_json_response = json.dumps({
+        "market_trend_summary": "本日の市場はハイテク主導で上昇しました。",
+        "portfolio_impact_summary": "保有の情報通信株が全体を牽引しています。",
+        "key_takeaway": "堅調な推移が期待されます。"
+    })
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [{"text": valid_json_response}]
+                }
+            }
+        ]
+    }
+
+    dummy_industry_data = {
+        "gainers": [{"industry": "情報・通信業", "daily_change_jpy": 50000, "daily_change_rate": 1.25, "holding_count": 3}],
+        "losers": [],
+        "total_daily_change_jpy": 50000
+    }
+
+    with patch("requests.post", return_value=mock_response) as mock_post:
+        # 1. 正常系呼び出し
+        res1 = service.diagnose_industry_daily_changes(daily_industry_data=dummy_industry_data)
+        assert res1.get("error") is False
+        assert res1.get("market_trend_summary") == "本日の市場はハイテク主導で上昇しました。"
+        assert res1.get("portfolio_impact_summary") == "保有の情報通信株が全体を牽引しています。"
+        assert res1.get("key_takeaway") == "堅調な推移が期待されます。"
+        assert res1.get("is_cached") is False
+        assert mock_post.call_count == 1
+        # モデル名がURLに含まれていることを確認
+        call_url = mock_post.call_args[0][0]
+        assert "gemini-flash-latest" in call_url
+
+        # 2. キャッシュヒット
+        res2 = service.diagnose_industry_daily_changes(daily_industry_data=dummy_industry_data)
+        assert res2.get("error") is False
+        assert res2.get("is_cached") is True
+        assert mock_post.call_count == 1
+
+        # 3. policy_manager に get_selected_model がない旧オブジェクトでも二重防衛でフォールバック動作するか
+        dummy_pm = MagicMock(spec=["get_effective_api_key", "load_config"])  # get_selected_model を持たない
+        dummy_pm.get_effective_api_key.return_value = "dummy_key"
+        dummy_pm.load_config.return_value = {"selected_model": "invalid-model"}
+        service_fallback = LLMDiagnosisService(policy_manager=dummy_pm)
+        res3 = service_fallback.diagnose_industry_daily_changes(daily_industry_data=dummy_industry_data, force=True)
+        assert res3.get("error") is False
+        assert mock_post.call_count == 2
+        call_url2 = mock_post.call_args[0][0]
+        assert "gemini-flash-latest" in call_url2
 
 
 

@@ -2,6 +2,7 @@ import json
 import re
 import hashlib
 import time
+import copy
 import threading
 import logging
 import requests
@@ -1144,7 +1145,13 @@ fit_levelの基準:
 
         now = time.time()
         today_str = time.strftime("%Y-%m-%d", time.localtime(now))
-        selected_model = self.policy_manager.get_selected_model()
+        if hasattr(self.policy_manager, "get_selected_model"):
+            selected_model = self.policy_manager.get_selected_model()
+        else:
+            config = self.policy_manager.load_config()
+            selected_model = config.get("selected_model", "gemini-flash-latest")
+        if selected_model not in ["gemini-flash-latest", "gemini-flash-lite-latest"]:
+            selected_model = "gemini-flash-latest"
         cache_key = f"industry_daily_{today_str}_{selected_model}"
 
         # キャッシュの確認

@@ -229,3 +229,11 @@ class InvestmentPolicyManager:
             "selected_model": config.get("selected_model", "gemini-flash-latest"),
             "policy_prompt": config.get("policy_prompt", DEFAULT_POLICY_PROMPT)
         }
+
+    def get_selected_model(self) -> str:
+        """設定されたGeminiモデル（デフォルト: gemini-flash-latest）を取得"""
+        config = self.load_config()
+        model = config.get("selected_model", "gemini-flash-latest")
+        if model not in ["gemini-flash-latest", "gemini-flash-lite-latest"]:
+            return "gemini-flash-latest"
+        return model

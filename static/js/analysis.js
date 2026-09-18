@@ -2110,16 +2110,16 @@ document.addEventListener('DOMContentLoaded', () => {
                             <p class="mb-2" style="font-size: 0.84rem; opacity: 0.9; line-height: 1.5;">
                                 Google AI Studio の APIキーを設定すると、本日のセクター動向と保有ポートフォリオへの影響をまとめたAI短評がここに表示されます。
                             </p>
-                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="if(typeof openPolicyModal==='function') openPolicyModal(); else alert('画面上部の「投資方針」メニューからAPIキーを設定してください');">
+                            <button type="button" class="btn-outline" onclick="if(typeof openPolicyModal==='function') openPolicyModal(); else alert('画面上部の「投資方針」メニューからAPIキーを設定してください');">
                                 ⚙️ 投資方針設定を開く
                             </button>
                         </div>
                     `;
                 } else {
                     aiBox.innerHTML = `
-                        <div class="alert alert-warning py-2 px-3 mb-0 d-flex justify-content-between align-items-center" style="font-size: 0.82rem;">
+                        <div class="ind-ai-error-card">
                             <span>⚠️ AI短評の取得に失敗しました: ${escapeHtml(data.message || 'エラーが発生しました')}</span>
-                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="fetchIndustryDailyAiSummary(true)">再試行</button>
+                            <button type="button" class="btn-outline" onclick="fetchIndustryDailyAiSummary(true)">再試行</button>
                         </div>
                     `;
                 }
@@ -2157,9 +2157,9 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {
             console.error('Failed to fetch industry daily AI summary:', e);
             aiBox.innerHTML = `
-                <div class="alert alert-warning py-2 px-3 mb-0 d-flex justify-content-between align-items-center" style="font-size: 0.82rem;">
+                <div class="ind-ai-error-card">
                     <span>⚠️ AI短評の取得に失敗しました: ${escapeHtml(e.message)}</span>
-                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="fetchIndustryDailyAiSummary(true)">再試行</button>
+                    <button type="button" class="btn-outline" onclick="fetchIndustryDailyAiSummary(true)">再試行</button>
                 </div>
             `;
         } finally {

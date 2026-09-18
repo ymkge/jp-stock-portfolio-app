@@ -4835,6 +4835,34 @@ body.dark-mode .ind-ai-guide-card,
     color: #e2e8f0 !important;
 }
 
+/* AI短評 エラーカード（モーダル内インライン用 #317） */
+.ind-ai-error-card {
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text-color, #334155);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.84rem;
+}
+
+[data-theme="dark"] .ind-ai-error-card,
+body.dark-mode .ind-ai-error-card,
+.dark-mode .ind-ai-error-card {
+    background: rgba(245, 158, 11, 0.15) !important;
+    border-color: rgba(245, 158, 11, 0.4) !important;
+    color: #fde68a !important;
+}
+
+.ind-ai-error-card .btn-outline {
+    font-size: 0.78rem;
+    padding: 4px 10px;
+    white-space: nowrap;
+}
+
 /* 統計バッジストリップ */
 .industry-stats-strip {
     display: flex;

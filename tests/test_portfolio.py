@@ -546,4 +546,59 @@ def test_calculate_rankings_top20_issue274():
         assert monthly_res["month_gainers_top20"][19]["rank"] == 20
 
 
+def test_calculate_daily_industry_changes():
+    """案件 #317: 保有銘柄の本日の業種別資産増減集約の単体テスト"""
+    from portfolio_manager import calculate_daily_industry_changes
+
+    raw_holdings = [
+        # 輸送用機器: トヨタ (7203) 口座1 100株 + 口座2 100株 (前日比 +50円 ➔ 50 * 200 = +10,000円)
+        {"code": "7203", "name": "トヨタ", "industry": "輸送用機器", "asset_type": "jp_stock", "currency": "JPY", "quantity": 100, "change": 50.0, "market_value": 250000},
+        {"code": "7203", "name": "トヨタ", "industry": "輸送用機器", "asset_type": "jp_stock", "currency": "JPY", "quantity": 100, "change": 50.0, "market_value": 250000},
+        # 輸送用機器: ホンダ (7267) 100株 (前日比 +20円 ➔ +2,000円) ➔ 輸送用機器合計 +12,000円 (2銘柄)
+        {"code": "7267", "name": "ホンダ", "industry": "輸送用機器", "asset_type": "jp_stock", "currency": "JPY", "quantity": 100, "change": 20.0, "market_value": 150000},
+        # 情報・通信業: NTT (9432) 1000株 (前日比 -5円 ➔ -5,000円)
+        {"code": "9432", "name": "NTT", "industry": "情報・通信業", "asset_type": "jp_stock", "currency": "JPY", "quantity": 1000, "change": -5.0, "market_value": 150000},
+        # 電気機器 (米国株): AAPL 10株 (前日比 +5ドル, 為替150円 ➔ 5 * 10 * 150 = +7,500円)
+        {"code": "AAPL", "name": "Apple", "industry": "電気機器", "asset_type": "us_stock", "currency": "USD", "quantity": 10, "change": 5.0, "market_value": 300000},
+        # 投資信託: 100,000口 (基準価額前日比 +100円/10000口 ➔ 100/10000 * 100000 = +1,000円)
+        {"code": "IT_1", "name": "投信A", "industry": "投資信託", "asset_type": "investment_trust", "currency": "JPY", "quantity": 100000, "change": 100.0, "market_value": 200000},
+        # 変わらず銘柄: 銀行業 100株 (前日比 0円)
+        {"code": "8306", "name": "MUFG", "industry": "銀行業", "asset_type": "jp_stock", "currency": "JPY", "quantity": 100, "change": 0.0, "market_value": 120000},
+        # 無効データ: changeが欠損しているもの
+        {"code": "9999", "name": "欠損", "industry": "その他", "quantity": 100, "change": "N/A", "market_value": 50000},
+    ]
+
+    exchange_rates = {"JPY": 1.0, "USD": 150.0}
+
+    res = calculate_daily_industry_changes(raw_holdings, exchange_rates)
+
+    assert "industries" in res
+    assert "gainers" in res
+    assert "losers" in res
+    assert "unchanged" in res
+
+    # 上昇業種: 輸送用機器(+12,000円), 電気機器(+7,500円), 投資信託(+1,000円) ➔ 3業種
+    assert res["gainer_count"] == 3
+    assert len(res["gainers"]) == 3
+    assert res["gainers"][0]["industry"] == "輸送用機器"
+    assert res["gainers"][0]["daily_change_jpy"] == 12000.0
+    assert res["gainers"][0]["stock_count"] == 2  # 7203 (2口座分合算して1銘柄) + 7267 = 2銘柄
+
+    # 下落業種: 情報・通信業(-5,000円) ➔ 1業種
+    assert res["loser_count"] == 1
+    assert len(res["losers"]) == 1
+    assert res["losers"][0]["industry"] == "情報・通信業"
+    assert res["losers"][0]["daily_change_jpy"] == -5000.0
+    assert res["losers"][0]["stock_count"] == 1
+
+    # 変わらず: 銀行業(0円) ➔ 1業種
+    assert res["unchanged_count"] == 1
+    assert len(res["unchanged"]) == 1
+    assert res["unchanged"][0]["industry"] == "銀行業"
+
+    # 全体増減合計: 12000 + 7500 + 1000 - 5000 = 15,500円
+    assert res["total_daily_change_jpy"] == 15500.0
+
+
+
 

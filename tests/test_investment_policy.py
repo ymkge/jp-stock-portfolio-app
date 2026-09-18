@@ -84,3 +84,17 @@ def test_load_config_corrupted_file(policy_manager):
     assert "api_key" not in config
     assert config["selected_model"] == "gemini-flash-latest"
 
+def test_get_selected_model(policy_manager):
+    # デフォルト
+    assert policy_manager.get_selected_model() == "gemini-flash-latest"
+    
+    # 有効なモデルの保存と取得
+    policy_manager.save_config(selected_model="gemini-flash-lite-latest")
+    assert policy_manager.get_selected_model() == "gemini-flash-lite-latest"
+    
+    # 不正なモデル名のフォールバック検証
+    with open(policy_manager.filepath, "w", encoding="utf-8") as f:
+        import json
+        json.dump({"selected_model": "invalid-hacked-model"}, f)
+    assert policy_manager.get_selected_model() == "gemini-flash-latest"
+

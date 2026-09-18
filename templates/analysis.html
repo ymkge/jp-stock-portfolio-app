@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ポートフォリオ分析</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=3.2">
+    <link rel="stylesheet" href="/static/css/style.css?v=3.4">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         // テーマ表示の初期適用（チラつき防止）
@@ -61,6 +61,9 @@
                                 <span id="compare-date-label" class="text-muted" style="font-size: 0.8rem; font-weight: normal;"></span>
                             </div>
                             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button type="button" id="btn-open-industry-daily-modal" class="btn-ranking-trigger btn-industry-daily-trigger" title="保有銘柄における本日の業種別資産増減およびAI市況短評レポートを別画面で表示します">
+                                    📊 本日の業種別増減レポート
+                                </button>
                                 <button type="button" id="btn-open-profit-taking-modal" class="btn-ranking-trigger btn-profit-taking-trigger" title="配当10年分以上の含み益がある銘柄の利確・銘柄入替検討リストを別画面で表示します">
                                     💰 利確・銘柄入替検討リスト
                                 </button>
@@ -306,6 +309,59 @@
                 </div>
             </div>
 
+            <!-- 本日の業種別増減レポート モーダル (#317) -->
+            <div id="industry-daily-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-industry-daily-title">
+                <div class="modal-content large-modal" style="max-width: 800px;">
+                    <div class="modal-header">
+                        <h2 id="modal-industry-daily-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                            <span>📊 本日の業種別 資産増減レポート</span>
+                            <span class="badge bg-primary" style="font-size: 0.75rem;">当日比</span>
+                        </h2>
+                        <button type="button" id="btn-close-industry-daily-modal" class="modal-close">&times;</button>
+                    </div>
+                    <div class="modal-body" style="padding: 16px 20px;">
+                        <!-- AI市況要因短評 エリア -->
+                        <div id="industry-daily-ai-box" class="industry-ai-summary-card mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span style="font-size: 1.1rem;">🤖</span>
+                                    <span style="font-weight: bold; font-size: 0.95rem;">Gemini AI 本日のセクター動向短評</span>
+                                </div>
+                                <button type="button" id="btn-refresh-industry-ai" class="btn-outline" style="font-size: 0.75rem; padding: 2px 8px;" title="AI市況短評を再生成します">
+                                    🔄 再生成
+                                </button>
+                            </div>
+                            <div id="industry-daily-ai-content">
+                                <div class="text-center text-muted py-3">
+                                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                    AI市況短評を生成中...
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- サマリー統計バッジストリップ -->
+                        <div id="industry-daily-stats-strip" class="industry-stats-strip mb-3">
+                            <!-- JSで統計指標を描画 -->
+                        </div>
+
+                        <!-- タブ切り替えボタン -->
+                        <div class="industry-daily-tabs mb-3">
+                            <button type="button" id="tab-industry-all" class="industry-tab-btn active">すべて (<span id="count-ind-all">0</span>)</button>
+                            <button type="button" id="tab-industry-gainers" class="industry-tab-btn gainer-tab">📈 上昇業種 (<span id="count-ind-gainers">0</span>)</button>
+                            <button type="button" id="tab-industry-losers" class="industry-tab-btn loser-tab">📉 下落業種 (<span id="count-ind-losers">0</span>)</button>
+                        </div>
+
+                        <!-- 業種別増減一覧テーブル・リスト -->
+                        <div id="industry-daily-content" class="industry-daily-table-container">
+                            <!-- JSで業種別行を描画 -->
+                        </div>
+                    </div>
+                    <div class="modal-footer" style="padding-top: 15px; border-top: 1px solid var(--border-color, #e2e8f0); display: flex; justify-content: flex-end;">
+                        <button type="button" id="btn-close-industry-daily-modal-footer" class="btn-outline">閉じる</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- フッター免責事項領域 -->
             <footer class="app-disclaimer-footer">
                 <div class="footer-content">
@@ -418,6 +474,6 @@
     <script src="/static/js/stateManager.js?v=3.2"></script>
     <script src="/static/js/marketFibonacci.js?v=1.0"></script>
     <script src="/static/js/marketAnomaly.js?v=1.0"></script>
-    <script src="/static/js/analysis.js?v=3.3"></script>
+    <script src="/static/js/analysis.js?v=3.4"></script>
 </body>
 </html>

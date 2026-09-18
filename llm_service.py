@@ -2,6 +2,7 @@ import json
 import re
 import hashlib
 import time
+import copy
 import threading
 import logging
 import requests
@@ -24,6 +25,7 @@ class LLMDiagnosisService:
         self.policy_manager = policy_manager or InvestmentPolicyManager()
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._profit_taking_cache: Dict[str, Dict[str, Any]] = {}
+        self._industry_daily_cache: Dict[str, Dict[str, Any]] = {}
         self._lock = threading.Lock()
 
     def _get_prompt_hash(self, policy_prompt: str) -> str:
@@ -34,6 +36,7 @@ class LLMDiagnosisService:
         with self._lock:
             self._cache.clear()
             self._profit_taking_cache.clear()
+            self._industry_daily_cache.clear()
 
     def diagnose_stock(
         self, 
@@ -1120,3 +1123,145 @@ fit_levelの基準:
         except Exception as e:
             logger.error(f"Failed to generate filtered recommendations LLM response: {e}")
             return {"error": True, "message": f"AI診断の実行中にエラーが発生しました: {e}"}
+
+    def diagnose_industry_daily_changes(
+        self,
+        daily_industry_data: Dict[str, Any],
+        market_summary: Optional[Dict[str, Any]] = None,
+        force: bool = False,
+        ttl_seconds: int = DEFAULT_TTL_SECONDS
+    ) -> Dict[str, Any]:
+        """
+        保有銘柄の本日の業種別増減データをもとに、
+        Gemini AI によって市況要因とポートフォリオへの影響をまとめた短評レポートを生成する (#317)。
+        """
+        api_key = self.policy_manager.get_effective_api_key()
+        if not api_key:
+            return {
+                "error": True,
+                "error_code": "NO_API_KEY",
+                "message": "Google AI Studio の APIキーが設定されていません。「⚙️ 投資方針設定」から APIキー を入力するか、環境変数 GEMINI_API_KEY を設定してください。"
+            }
+
+        now = time.time()
+        today_str = time.strftime("%Y-%m-%d", time.localtime(now))
+        if hasattr(self.policy_manager, "get_selected_model"):
+            selected_model = self.policy_manager.get_selected_model()
+        else:
+            config = self.policy_manager.load_config()
+            selected_model = config.get("selected_model", "gemini-flash-latest")
+        if selected_model not in ["gemini-flash-latest", "gemini-flash-lite-latest"]:
+            selected_model = "gemini-flash-latest"
+        cache_key = f"industry_daily_{today_str}_{selected_model}"
+
+        # キャッシュの確認
+        if not force:
+            with self._lock:
+                entry = self._industry_daily_cache.get(cache_key)
+                if entry:
+                    if (now - entry["timestamp"]) < ttl_seconds:
+                        cached_result = copy.deepcopy(entry["result"])
+                        cached_result["is_cached"] = True
+                        return cached_result
+                    else:
+                        del self._industry_daily_cache[cache_key]
+
+        # プロンプトの組み立て
+        gainers = daily_industry_data.get("gainers", [])[:5]
+        losers = daily_industry_data.get("losers", [])[:5]
+        tot_change = daily_industry_data.get("total_daily_change_jpy", 0.0)
+        tot_sign = "+" if tot_change >= 0 else ""
+
+        gainers_text = "、".join([f"{g['industry']} (+{g['daily_change_jpy']:,.0f}円, {g['daily_change_rate']:+.2f}%)" for g in gainers]) if gainers else "なし"
+        losers_text = "、".join([f"{l['industry']} ({l['daily_change_jpy']:,.0f}円, {l['daily_change_rate']:+.2f}%)" for l in losers]) if losers else "なし"
+
+        market_info_text = ""
+        if market_summary and isinstance(market_summary, dict):
+            indices = market_summary.get("indices", {})
+            parts = []
+            if "N225" in indices:
+                parts.append(f"日経平均: {indices['N225'].get('price', '')} ({indices['N225'].get('change_percent', '')}%)")
+            if "TOPIX" in indices:
+                parts.append(f"TOPIX: {indices['TOPIX'].get('price', '')} ({indices['TOPIX'].get('change_percent', '')}%)")
+            if "USDJPY=X" in indices:
+                parts.append(f"ドル円: {indices['USDJPY=X'].get('price', '')}")
+            if parts:
+                market_info_text = f"【本日の市場参考データ】: " + " / ".join(parts)
+
+        prompt = f"""あなたは日本株に精通したプロのポートフォリオアナリストです。
+ユーザーが保有している銘柄群の本日の業種別資産増減データに基づき、本日のセクター市況の背景と、保有ポートフォリオへの影響を簡潔かつ的確に分析した短評レポートを作成してください。
+
+{market_info_text}
+
+【ユーザー保有ポートフォリオの本日の業種別変動データ】
+- 本日の保有資産全体の前日比増減額: {tot_sign}{tot_change:,.0f}円
+- 上昇を牽引した業種 TOP5: {gainers_text}
+- 軟調・下落した業種 TOP5: {losers_text}
+
+【分析・要約の指示】
+1. なぜ本日はこれらの業種が上昇・下落したのか（マクロ経済、為替、金利、市況テーマ、セクターローテーション等の客観的背景）。
+2. その業種動向がユーザーの保有ポートフォリオ全体にどのような影響（プラス要因・マイナス要因）を与えたのか。
+3. 長文にせず、簡潔で視認性の高い3〜4行程度の読みやすい日本語でまとめてください。
+
+【出力形式】
+必ず以下のキーを持つ有効なJSONオブジェクトのみを返してください。マークダウンの ```json ... ``` ブロックで囲んで構いません。
+{{
+  "market_trend_summary": "本日のセクター・市況動向のポイント（1行・50字程度）",
+  "portfolio_impact_summary": "保有ポートフォリオへの具体的な影響と要因の解説（2〜3行・150字程度）",
+  "key_takeaway": "本日の着眼点・一言まとめ（例: 半導体・電機が牽引し円高圧力を吸収 / 内需ディフェンシブが下支え等、30字以内）"
+}}
+"""
+
+        raw_text = ""
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key}"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "maxOutputTokens": 1024,
+                    "responseMimeType": "application/json"
+                }
+            }
+            headers = {"Content-Type": "application/json"}
+
+            resp = requests.post(url, headers=headers, json=payload, timeout=20)
+            if resp.status_code != 200:
+                logger.error(f"Gemini API error for industry daily summary: {resp.status_code} - {resp.text}")
+                return {"error": True, "message": f"Gemini APIエラー ({resp.status_code}): 市況短評を生成できませんでした"}
+
+            data = resp.json()
+            candidates = data.get("candidates", [])
+            if not candidates:
+                return {"error": True, "message": "AIからの応答が得られませんでした"}
+
+            raw_text = candidates[0]["content"]["parts"][0]["text"].strip()
+            json_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', raw_text)
+            json_str = json_match.group(1) if json_match else raw_text
+            parsed = json.loads(json_str)
+
+            diagnosed_at_str = time.strftime("%H:%M", time.localtime(now))
+            result = {
+                "error": False,
+                "market_trend_summary": parsed.get("market_trend_summary", ""),
+                "portfolio_impact_summary": parsed.get("portfolio_impact_summary", ""),
+                "key_takeaway": parsed.get("key_takeaway", ""),
+                "diagnosed_at": diagnosed_at_str,
+                "is_cached": False
+            }
+
+            with self._lock:
+                self._industry_daily_cache[cache_key] = {
+                    "result": result,
+                    "timestamp": now,
+                    "model": selected_model
+                }
+
+            return result
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error in industry daily summary: {e}, text: {raw_text}")
+            return {"error": True, "message": "AI応答の解析に失敗しました。再試行してください。"}
+        except Exception as e:
+            logger.error(f"Failed to generate industry daily summary LLM response: {e}")
+            return {"error": True, "message": f"AI短評の生成中にエラーが発生しました: {e}"}
+

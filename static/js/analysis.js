@@ -153,6 +153,52 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- 本日の業種別増減レポート モーダル開閉制御 (#317) ---
+    const btnOpenIndustryDailyModal = document.getElementById('btn-open-industry-daily-modal');
+    const industryDailyModal = document.getElementById('industry-daily-modal');
+    const btnCloseIndustryDailyModal = document.getElementById('btn-close-industry-daily-modal');
+    const btnCloseIndustryDailyModalFooter = document.getElementById('btn-close-industry-daily-modal-footer');
+    const btnRefreshIndustryAi = document.getElementById('btn-refresh-industry-ai');
+    let industryDailyAiLoaded = false;
+
+    if (btnOpenIndustryDailyModal && industryDailyModal) {
+        const openIndustryDailyModal = () => {
+            industryDailyModal.classList.remove('hidden');
+            industryDailyModal.style.display = 'flex';
+            if (fullAnalysisData && fullAnalysisData.daily_industry_changes) {
+                renderIndustryDailyModalContent();
+            }
+            if (!industryDailyAiLoaded) {
+                fetchIndustryDailyAiSummary(false);
+            }
+        };
+
+        const closeIndustryDailyModal = () => {
+            industryDailyModal.classList.add('hidden');
+            industryDailyModal.style.display = 'none';
+        };
+
+        btnOpenIndustryDailyModal.addEventListener('click', openIndustryDailyModal);
+        if (btnCloseIndustryDailyModal) btnCloseIndustryDailyModal.addEventListener('click', closeIndustryDailyModal);
+        if (btnCloseIndustryDailyModalFooter) btnCloseIndustryDailyModalFooter.addEventListener('click', closeIndustryDailyModal);
+
+        industryDailyModal.addEventListener('click', (e) => {
+            if (e.target === industryDailyModal) closeIndustryDailyModal();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !industryDailyModal.classList.contains('hidden')) {
+                closeIndustryDailyModal();
+            }
+        });
+
+        if (btnRefreshIndustryAi) {
+            btnRefreshIndustryAi.addEventListener('click', () => {
+                fetchIndustryDailyAiSummary(true);
+            });
+        }
+    }
+
     function getChartThemeColors() {
         const style = getComputedStyle(document.documentElement);
         return {
@@ -614,6 +660,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (fullAnalysisData && (fullAnalysisData.daily_change_rankings || fullAnalysisData.monthly_change_rankings)) {
             renderRankingModalContent();
+        }
+        if (fullAnalysisData && fullAnalysisData.daily_industry_changes) {
+            renderIndustryDailyModalContent();
         }
         updateSortHeaders();
     }
@@ -1544,6 +1593,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (fullAnalysisData.daily_change_rankings || fullAnalysisData.monthly_change_rankings) { 
                 renderRankingModalContent(); 
             }
+            if (fullAnalysisData.daily_industry_changes) {
+                renderIndustryDailyModalContent();
+            }
         } 
     });
     downloadAnalysisCsvButton.addEventListener('click', () => { window.location.href = '/api/portfolio/analysis/csv'; });
@@ -1867,6 +1919,255 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // グローバルへ公開
     window.openProfitTakingAiModal = openProfitTakingAiModal;
+
+    // --- 本日の業種別増減レポート モーダル描画＆AI短評ロジック (#317) ---
+    let currentIndustryTab = 'all'; // 'all', 'gainers', 'losers'
+
+    function renderIndustryDailyModalContent() {
+        const container = document.getElementById('industry-daily-content');
+        const statsStrip = document.getElementById('industry-daily-stats-strip');
+        const tabAllBtn = document.getElementById('tab-industry-all');
+        const tabGainersBtn = document.getElementById('tab-industry-gainers');
+        const tabLosersBtn = document.getElementById('tab-industry-losers');
+        const countAll = document.getElementById('count-ind-all');
+        const countGainers = document.getElementById('count-ind-gainers');
+        const countLosers = document.getElementById('count-ind-losers');
+
+        if (!container || !fullAnalysisData) return;
+
+        const data = fullAnalysisData.daily_industry_changes;
+        if (!data || !data.industries) {
+            container.innerHTML = '<div class="text-center text-muted py-4">本日の業種別増減データがありません。</div>';
+            return;
+        }
+
+        const industries = data.industries || [];
+        const gainers = data.gainers || [];
+        const losers = data.losers || [];
+        const unchanged = data.unchanged || [];
+
+        if (countAll) countAll.textContent = industries.length;
+        if (countGainers) countGainers.textContent = gainers.length;
+        if (countLosers) countLosers.textContent = losers.length;
+
+        // タブ切り替えリスナー (一度だけ設定)
+        if (tabAllBtn && !tabAllBtn.dataset.bound) {
+            tabAllBtn.dataset.bound = 'true';
+            tabAllBtn.onclick = () => {
+                currentIndustryTab = 'all';
+                tabAllBtn.classList.add('active');
+                if (tabGainersBtn) tabGainersBtn.classList.remove('active');
+                if (tabLosersBtn) tabLosersBtn.classList.remove('active');
+                renderIndustryDailyModalContent();
+            };
+        }
+        if (tabGainersBtn && !tabGainersBtn.dataset.bound) {
+            tabGainersBtn.dataset.bound = 'true';
+            tabGainersBtn.onclick = () => {
+                currentIndustryTab = 'gainers';
+                tabGainersBtn.classList.add('active');
+                if (tabAllBtn) tabAllBtn.classList.remove('active');
+                if (tabLosersBtn) tabLosersBtn.classList.remove('active');
+                renderIndustryDailyModalContent();
+            };
+        }
+        if (tabLosersBtn && !tabLosersBtn.dataset.bound) {
+            tabLosersBtn.dataset.bound = 'true';
+            tabLosersBtn.onclick = () => {
+                currentIndustryTab = 'losers';
+                tabLosersBtn.classList.add('active');
+                if (tabAllBtn) tabAllBtn.classList.remove('active');
+                if (tabGainersBtn) tabGainersBtn.classList.remove('active');
+                renderIndustryDailyModalContent();
+            };
+        }
+
+        // サマリー統計バッジストリップの描画
+        if (statsStrip) {
+            const totalChange = data.total_daily_change_jpy || 0;
+            const totalSign = totalChange > 0 ? '+' : '';
+            const totalValClass = totalChange > 0 ? 'ind-stat-gainer' : (totalChange < 0 ? 'ind-stat-loser' : '');
+            const displayTotal = isAmountVisible
+                ? `${totalSign}${Math.round(totalChange).toLocaleString()}円`
+                : `<span class="masked-amount">${totalSign}••••••円</span>`;
+
+            statsStrip.innerHTML = `
+                <div class="stat-pill total-pill">
+                    <span class="stat-label">保有全体 本日増減:</span>
+                    <span class="stat-val ${totalValClass}">${displayTotal}</span>
+                </div>
+                <div class="stat-pill gainer-pill">
+                    <span class="stat-label">📈 上昇:</span>
+                    <span class="stat-val ind-stat-gainer">${gainers.length} 業種</span>
+                </div>
+                <div class="stat-pill loser-pill">
+                    <span class="stat-label">📉 下落:</span>
+                    <span class="stat-val ind-stat-loser">${losers.length} 業種</span>
+                </div>
+                <div class="stat-pill unchanged-pill">
+                    <span class="stat-label">➖ 変わらず:</span>
+                    <span class="stat-val text-muted">${unchanged.length} 業種</span>
+                </div>
+            `;
+        }
+
+        // 表示対象リスト
+        let targetList = industries;
+        if (currentIndustryTab === 'gainers') targetList = gainers;
+        else if (currentIndustryTab === 'losers') targetList = losers;
+
+        if (targetList.length === 0) {
+            container.innerHTML = `
+                <div class="text-center text-muted py-4">
+                    該当する業種はありません。
+                </div>
+            `;
+            return;
+        }
+
+        // 最大絶対値（バーのスケール計算用）
+        const maxAbs = Math.max(...industries.map(x => Math.abs(x.daily_change_jpy || 0)), 1);
+
+        let html = '<div class="industry-daily-list">';
+        targetList.forEach(item => {
+            const chg = item.daily_change_jpy || 0;
+            const rate = item.daily_change_rate !== undefined ? item.daily_change_rate : 0;
+            const isGainer = chg > 0;
+            const isLoser = chg < 0;
+            const sign = isGainer ? '+' : '';
+            
+            // 専用クラスによるスタイリング分離 (グローバル .profit / .loss のベタ塗りを排除)
+            const rowClass = isGainer ? 'ind-row-gainer' : (isLoser ? 'ind-row-loser' : 'ind-row-neutral');
+            const rateBadgeClass = isGainer ? 'ind-rate-gainer' : (isLoser ? 'ind-rate-loser' : 'ind-rate-neutral');
+            const amountClass = isGainer ? 'ind-amount-gainer' : (isLoser ? 'ind-amount-loser' : 'ind-amount-neutral');
+            const barClass = isGainer ? 'ind-bar-gainer' : (isLoser ? 'ind-bar-loser' : 'ind-bar-neutral');
+            const barWidth = Math.min(100, Math.round((Math.abs(chg) / maxAbs) * 100));
+
+            const displayAmount = isAmountVisible
+                ? `${sign}${Math.round(chg).toLocaleString()}円`
+                : `<span class="masked-amount">${sign}••••••円</span>`;
+
+            html += `
+                <div class="industry-row ${rowClass}">
+                    <div class="industry-row-header">
+                        <div class="industry-name-col">
+                            <span class="industry-name">${escapeHtml(item.industry)}</span>
+                            <span class="industry-stock-count-badge">${item.stock_count || 1}銘柄</span>
+                        </div>
+                        <div class="industry-metrics-col">
+                            <span class="ind-rate-badge ${rateBadgeClass}">${sign}${rate.toFixed(2)}%</span>
+                            <span class="ind-amount ${amountClass}">${displayAmount}</span>
+                        </div>
+                    </div>
+                    <div class="ind-bar-track">
+                        <div class="ind-bar ${barClass}" style="width: ${Math.max(barWidth, 2)}%;"></div>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    async function fetchIndustryDailyAiSummary(force = false) {
+        const aiBox = document.getElementById('industry-daily-ai-content');
+        const refreshBtn = document.getElementById('btn-refresh-industry-ai');
+        if (!aiBox) return;
+
+        if (refreshBtn) refreshBtn.disabled = true;
+
+        aiBox.innerHTML = `
+            <div class="text-center text-muted py-3">
+                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                AIが本日のセクター市況短評を生成中...
+            </div>
+        `;
+
+        try {
+            const resp = await fetch('/api/ai-diagnosis/industry-daily-summary', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ force: force })
+            });
+
+            if (!resp.ok) {
+                const errData = await resp.json().catch(() => ({}));
+                throw new Error(errData.detail || `HTTP ${resp.status}`);
+            }
+
+            const data = await resp.json();
+            industryDailyAiLoaded = true;
+
+            // エラー・APIキー未設定ハンドリング (#317)
+            if (data.error) {
+                if (data.error_code === 'NO_API_KEY') {
+                    aiBox.innerHTML = `
+                        <div class="ind-ai-guide-card">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <span style="font-size: 1.2rem;">💡</span>
+                                <strong style="font-size: 0.92rem;">Gemini APIキーを設定すると市況短評が利用できます</strong>
+                            </div>
+                            <p class="mb-2" style="font-size: 0.84rem; opacity: 0.9; line-height: 1.5;">
+                                Google AI Studio の APIキーを設定すると、本日のセクター動向と保有ポートフォリオへの影響をまとめたAI短評がここに表示されます。
+                            </p>
+                            <button type="button" class="btn-outline" onclick="if(typeof openPolicyModal==='function') openPolicyModal(); else alert('画面上部の「投資方針」メニューからAPIキーを設定してください');">
+                                ⚙️ 投資方針設定を開く
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    aiBox.innerHTML = `
+                        <div class="ind-ai-error-card">
+                            <span>⚠️ AI短評の取得に失敗しました: ${escapeHtml(data.message || 'エラーが発生しました')}</span>
+                            <button type="button" class="btn-outline" onclick="fetchIndustryDailyAiSummary(true)">再試行</button>
+                        </div>
+                    `;
+                }
+                return;
+            }
+
+            // バックエンドキー名のフォールバック抽出
+            const marketTrend = data.market_trend_summary || data.market_summary || '';
+            const portfolioImpact = data.portfolio_impact_summary || data.impact_summary || '';
+            const keyTakeaway = data.key_takeaway || data.takeaway || '';
+
+            const cacheBadge = data.is_cached
+                ? `<span class="badge bg-secondary-subtle text-muted" style="font-size: 0.72rem;">⚡ キャッシュ (${data.diagnosed_at || ''})</span>`
+                : `<span class="badge bg-primary-subtle text-primary" style="font-size: 0.72rem;">🤖 リアルタイム診断 (${data.diagnosed_at || ''})</span>`;
+
+            aiBox.innerHTML = `
+                <div class="industry-ai-body">
+                    <div class="industry-ai-section mb-2">
+                        <div class="ai-section-title">🌐 マクロ市況とセクター動向</div>
+                        <div class="ai-section-text">${escapeHtml(marketTrend)}</div>
+                    </div>
+                    <div class="industry-ai-section mb-2">
+                        <div class="ai-section-title">📊 保有ポートフォリオへの影響</div>
+                        <div class="ai-section-text">${escapeHtml(portfolioImpact)}</div>
+                    </div>
+                    <div class="industry-ai-section">
+                        <div class="ai-section-title">💡 本日のポイント・着眼点</div>
+                        <div class="ai-section-text fw-bold text-primary">${escapeHtml(keyTakeaway)}</div>
+                    </div>
+                    <div class="text-end mt-2">
+                        ${cacheBadge}
+                    </div>
+                </div>
+            `;
+        } catch (e) {
+            console.error('Failed to fetch industry daily AI summary:', e);
+            aiBox.innerHTML = `
+                <div class="ind-ai-error-card">
+                    <span>⚠️ AI短評の取得に失敗しました: ${escapeHtml(e.message)}</span>
+                    <button type="button" class="btn-outline" onclick="fetchIndustryDailyAiSummary(true)">再試行</button>
+                </div>
+            `;
+        } finally {
+            if (refreshBtn) refreshBtn.disabled = false;
+        }
+    }
+    window.fetchIndustryDailyAiSummary = fetchIndustryDailyAiSummary;
+    window.renderIndustryDailyModalContent = renderIndustryDailyModalContent;
 
     function getHighlightClass(key, value, assetType) {
         if (assetType !== 'jp_stock' && assetType !== 'us_stock') return '';

@@ -2108,6 +2108,8 @@ async def get_portfolio_analysis(force: bool = False, cooldown_check: None = Dep
     # --- 資産変動ランキング (TOP10) を計算 (#261, #270) ---
     daily_change_rankings = portfolio_manager.calculate_daily_change_rankings(raw_holdings_list, exchange_rates)
     monthly_change_rankings = portfolio_manager.calculate_monthly_change_rankings(raw_holdings_list, exchange_rates)
+    # --- 本日の業種別資産増減サマリーを計算 (#317) ---
+    daily_industry_changes = portfolio_manager.calculate_daily_industry_changes(raw_holdings_list, exchange_rates)
     # --------------------------------------------------
 
     # --- 利確・銘柄入替検討リスト (profit_taking_candidates) の抽出 ✕ 口座横断合算 (#273 #277) ---
@@ -2159,6 +2161,7 @@ async def get_portfolio_analysis(force: bool = False, cooldown_check: None = Dep
         "holdings_list": holdings_list,
         "industry_breakdown": industry_breakdown,
         "industry_summary": industry_summary, # 追加
+        "daily_industry_changes": daily_industry_changes, # 追加 (#317)
         "account_type_breakdown": account_type_breakdown,
         "country_breakdown": country_breakdown,
         "total_annual_dividend": total_annual_dividend,
@@ -2984,4 +2987,64 @@ async def get_filtered_recommendations(req: FilteredRecommendationRequest):
     except Exception as e:
         logger.error(f"Error in get_filtered_recommendations: {e}")
         raise HTTPException(status_code=500, detail=f"購入推奨AI診断の実行に失敗しました: {str(e)}")
+
+
+class IndustryDailySummaryRequest(BaseModel):
+    force: bool = False
+
+
+@app.post("/api/ai-diagnosis/industry-daily-summary")
+async def get_industry_daily_summary(req: IndustryDailySummaryRequest):
+    """保有銘柄の本日の業種別増減データをもとにGemini AIで市況要因短評を生成 (#317)"""
+    try:
+        all_assets, metadata = await _get_processed_asset_data(force=False)
+        usd_jpy_rate = await asyncio.to_thread(scraper.get_exchange_rate, 'USDJPY=X')
+        exchange_rates = {
+            "JPY": 1.0,
+            "USD": usd_jpy_rate or 155.0
+        }
+
+        raw_holdings_list = []
+        for asset in all_assets:
+            if "error" in asset or not asset.get("holdings"):
+                continue
+            for holding in asset["holdings"]:
+                calculated = portfolio_manager.calculate_holding_values(
+                    asset, holding, exchange_rates, TAX_CONFIG
+                )
+                item = {**asset, **calculated}
+                if item.get("asset_type") == "investment_trust":
+                    item["industry"] = "投資信託"
+                elif "industry" not in item:
+                    item["industry"] = "その他"
+                raw_holdings_list.append(item)
+
+        daily_industry_data = portfolio_manager.calculate_daily_industry_changes(raw_holdings_list, exchange_rates)
+
+        # 市場サマリーの取得 (metadata.market_indices から抽出)
+        market_summary = None
+        if metadata and "market_indices" in metadata:
+            indices_map = {}
+            for idx in metadata["market_indices"]:
+                code = idx.get("code")
+                if code:
+                    indices_map[code] = idx
+                    if "998407" in code or "日経平均" in idx.get("name", ""):
+                        indices_map["N225"] = idx
+                    elif "TOPIX" in idx.get("name", ""):
+                        indices_map["TOPIX"] = idx
+            market_summary = {"indices": indices_map}
+
+        res = llm_service_instance.diagnose_industry_daily_changes(
+            daily_industry_data=daily_industry_data,
+            market_summary=market_summary,
+            force=req.force
+        )
+        return res
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in get_industry_daily_summary: {e}")
+        raise HTTPException(status_code=500, detail=f"業種別AI市況短評の生成に失敗しました: {str(e)}")
+
 

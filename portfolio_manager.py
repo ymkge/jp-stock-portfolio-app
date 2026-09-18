@@ -948,3 +948,107 @@ def calculate_monthly_change_rankings(
         "month_gainers_top10": gainers_sorted,
         "month_losers_top10": losers_sorted,
     }
+
+
+def calculate_daily_industry_changes(raw_holdings: List[Dict[str, Any]], exchange_rates: Dict[str, float]) -> Dict[str, Any]:
+    """
+    保有銘柄の当日資産増減（前日比）を業種ごとに集約し、
+    本日増減額、増減率(%)、銘柄数、上昇/下落サマリーを算出する (#317)。
+    """
+    industry_map: Dict[str, Dict[str, Any]] = {}
+    total_portfolio_daily_change_jpy = 0.0
+
+    for item in raw_holdings:
+        qty = float(item.get("quantity") or 0.0)
+        if qty <= 0:
+            continue
+
+        change_raw = item.get("change")
+        change_val = None
+        if isinstance(change_raw, (int, float)):
+            change_val = float(change_raw)
+        elif isinstance(change_raw, str):
+            c_str = change_raw.replace(',', '').replace('+', '').replace('円', '').replace('$', '').strip()
+            if c_str and c_str not in ['N/A', '---', '']:
+                try:
+                    change_val = float(c_str)
+                except ValueError:
+                    pass
+
+        if change_val is None:
+            continue
+
+        currency = item.get("currency", "JPY")
+        asset_type = item.get("asset_type", "jp_stock")
+        exchange_rate = exchange_rates.get(currency, 1.0)
+        market_value = float(item.get("market_value") or 0.0)
+
+        # 投資信託の基準価額（通常10,000口表示）の調整
+        if asset_type == "investment_trust":
+            change_per_unit_jpy = (change_val / 10000.0) * exchange_rate
+        else:
+            change_per_unit_jpy = change_val * exchange_rate
+
+        daily_change_jpy = change_per_unit_jpy * qty
+        industry = item.get("industry") or "その他"
+        if not industry.strip() or industry.strip() in ["N/A", "--", "-"]:
+            industry = "その他"
+
+        code = str(item.get("code") or "")
+
+        if industry not in industry_map:
+            industry_map[industry] = {
+                "industry": industry,
+                "daily_change_jpy": 0.0,
+                "market_value": 0.0,
+                "unique_codes": set()
+            }
+
+        industry_map[industry]["daily_change_jpy"] += daily_change_jpy
+        industry_map[industry]["market_value"] += market_value
+        if code:
+            industry_map[industry]["unique_codes"].add(code)
+
+        total_portfolio_daily_change_jpy += daily_change_jpy
+
+    industries_list = []
+    for ind, data in industry_map.items():
+        chg_jpy = round(data["daily_change_jpy"], 2)
+        mv = round(data["market_value"], 2)
+        prev_mv = mv - chg_jpy
+        if prev_mv > 0:
+            rate = round((chg_jpy / prev_mv) * 100.0, 2)
+        else:
+            rate = 0.0
+
+        industries_list.append({
+            "industry": ind,
+            "daily_change_jpy": chg_jpy,
+            "daily_change_rate": rate,
+            "market_value": mv,
+            "stock_count": len(data["unique_codes"])
+        })
+
+    # 上昇業種 (降順: プラスの大きい順)
+    gainers = sorted([x for x in industries_list if x["daily_change_jpy"] > 0], key=lambda x: x["daily_change_jpy"], reverse=True)
+    # 下落業種 (昇順: マイナスの大きい順)
+    losers = sorted([x for x in industries_list if x["daily_change_jpy"] < 0], key=lambda x: x["daily_change_jpy"])
+    # 変わらず
+    unchanged = [x for x in industries_list if x["daily_change_jpy"] == 0]
+
+    # 全業種 (増減額の絶対値が大きい順)
+    all_sorted = sorted(industries_list, key=lambda x: abs(x["daily_change_jpy"]), reverse=True)
+
+    return {
+        "industries": all_sorted,
+        "gainers": gainers,
+        "losers": losers,
+        "unchanged": unchanged,
+        "total_daily_change_jpy": round(total_portfolio_daily_change_jpy, 2),
+        "gainer_count": len(gainers),
+        "loser_count": len(losers),
+        "unchanged_count": len(unchanged),
+        "top_gainer_industry": gainers[0] if gainers else None,
+        "top_loser_industry": losers[0] if losers else None
+    }
+

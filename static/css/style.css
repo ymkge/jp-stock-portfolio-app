@@ -4715,3 +4715,366 @@ body.dark-mode .rec-mini-badge.badge-role,
     color: #c084fc;
     border-color: rgba(192, 132, 252, 0.3);
 }
+
+/* ==========================================================================
+   本日の業種別 資産増減レポート モーダル (#317)
+   ========================================================================== */
+
+/* 起動ボタン */
+.btn-industry-daily-trigger {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 4px rgba(99, 102, 241, 0.25) !important;
+}
+
+.btn-industry-daily-trigger:hover {
+    opacity: 0.92;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(99, 102, 241, 0.35) !important;
+}
+
+/* モーダル基本 & ダークモード (トリプルセレクタ) */
+[data-theme="dark"] #industry-daily-modal .modal-content,
+body.dark-mode #industry-daily-modal .modal-content,
+.dark-mode #industry-daily-modal .modal-content {
+    background-color: #111827 !important;
+    border: 1px solid #334155 !important;
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] #industry-daily-modal .modal-header,
+body.dark-mode #industry-daily-modal .modal-header,
+.dark-mode #industry-daily-modal .modal-header,
+[data-theme="dark"] #industry-daily-modal .modal-footer,
+body.dark-mode #industry-daily-modal .modal-footer,
+.dark-mode #industry-daily-modal .modal-footer {
+    border-color: #334155 !important;
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] #btn-close-industry-daily-modal,
+body.dark-mode #btn-close-industry-daily-modal,
+.dark-mode #btn-close-industry-daily-modal {
+    color: #cbd5e1 !important;
+}
+
+[data-theme="dark"] #btn-close-industry-daily-modal-footer,
+body.dark-mode #btn-close-industry-daily-modal-footer,
+.dark-mode #btn-close-industry-daily-modal-footer {
+    background-color: #334155 !important;
+    border: 1px solid #475569 !important;
+    color: #f8fafc !important;
+}
+
+[data-theme="dark"] #btn-close-industry-daily-modal-footer:hover,
+body.dark-mode #btn-close-industry-daily-modal-footer:hover,
+.dark-mode #btn-close-industry-daily-modal-footer:hover {
+    background-color: #475569 !important;
+    color: #ffffff !important;
+}
+
+/* AI市況要因短評 カード */
+.industry-ai-summary-card {
+    background-color: var(--card-bg, #f8fafc);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 10px;
+    padding: 14px 16px;
+    transition: all 0.2s ease;
+}
+
+[data-theme="dark"] .industry-ai-summary-card,
+body.dark-mode .industry-ai-summary-card,
+.dark-mode .industry-ai-summary-card {
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+    color: #f8fafc !important;
+}
+
+.industry-ai-section {
+    line-height: 1.6;
+}
+
+.ai-section-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #4f46e5;
+    margin-bottom: 3px;
+}
+
+[data-theme="dark"] .ai-section-title,
+body.dark-mode .ai-section-title,
+.dark-mode .ai-section-title {
+    color: #818cf8 !important;
+}
+
+.ai-section-text {
+    font-size: 0.84rem;
+    color: var(--text-color, #334155);
+}
+
+[data-theme="dark"] .ai-section-text,
+body.dark-mode .ai-section-text,
+.dark-mode .ai-section-text {
+    color: #cbd5e1 !important;
+}
+
+/* 統計バッジストリップ */
+.industry-stats-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.stat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    background-color: rgba(0, 0, 0, 0.03);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="dark"] .stat-pill,
+body.dark-mode .stat-pill,
+.dark-mode .stat-pill {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: #f8fafc !important;
+}
+
+.stat-pill .stat-label {
+    color: var(--text-muted, #64748b);
+    font-size: 0.78rem;
+}
+
+[data-theme="dark"] .stat-pill .stat-label,
+body.dark-mode .stat-pill .stat-label,
+.dark-mode .stat-pill .stat-label {
+    color: #94a3b8 !important;
+}
+
+.stat-pill .stat-val {
+    font-weight: 700;
+}
+
+.stat-pill.total-pill {
+    background-color: rgba(99, 102, 241, 0.08);
+    border-color: rgba(99, 102, 241, 0.2);
+}
+
+[data-theme="dark"] .stat-pill.total-pill,
+body.dark-mode .stat-pill.total-pill,
+.dark-mode .stat-pill.total-pill {
+    background-color: rgba(99, 102, 241, 0.15) !important;
+    border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* タブ切り替えボタン */
+.industry-daily-tabs {
+    display: flex;
+    gap: 6px;
+    border-bottom: 2px solid var(--border-color, #e2e8f0);
+    padding-bottom: 6px;
+}
+
+[data-theme="dark"] .industry-daily-tabs,
+body.dark-mode .industry-daily-tabs,
+.dark-mode .industry-daily-tabs {
+    border-color: #334155 !important;
+}
+
+.industry-tab-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-muted, #64748b);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+[data-theme="dark"] .industry-tab-btn,
+body.dark-mode .industry-tab-btn,
+.dark-mode .industry-tab-btn {
+    color: #94a3b8 !important;
+}
+
+.industry-tab-btn:hover {
+    background-color: rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] .industry-tab-btn:hover,
+body.dark-mode .industry-tab-btn:hover,
+.dark-mode .industry-tab-btn:hover {
+    background-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.industry-tab-btn.active {
+    background-color: #e0e7ff;
+    color: #4338ca;
+}
+
+[data-theme="dark"] .industry-tab-btn.active,
+body.dark-mode .industry-tab-btn.active,
+.dark-mode .industry-tab-btn.active {
+    background-color: #312e81 !important;
+    color: #c7d2fe !important;
+}
+
+.industry-tab-btn.gainer-tab.active {
+    background-color: #dcfce7;
+    color: #15803d;
+}
+
+[data-theme="dark"] .industry-tab-btn.gainer-tab.active,
+body.dark-mode .industry-tab-btn.gainer-tab.active,
+.dark-mode .industry-tab-btn.gainer-tab.active {
+    background-color: #14532d !important;
+    color: #86efac !important;
+}
+
+.industry-tab-btn.loser-tab.active {
+    background-color: #fee2e2;
+    color: #b91c1c;
+}
+
+[data-theme="dark"] .industry-tab-btn.loser-tab.active,
+body.dark-mode .industry-tab-btn.loser-tab.active,
+.dark-mode .industry-tab-btn.loser-tab.active {
+    background-color: #7f1d1d !important;
+    color: #fca5a5 !important;
+}
+
+/* 業種一覧コンテナ & 行カード */
+.industry-daily-table-container {
+    max-height: 420px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.industry-daily-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.industry-row {
+    background-color: var(--card-bg, #ffffff);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 8px;
+    padding: 10px 14px;
+    transition: background-color 0.15s ease;
+}
+
+[data-theme="dark"] .industry-row,
+body.dark-mode .industry-row,
+.dark-mode .industry-row {
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+.industry-row:hover {
+    background-color: rgba(0, 0, 0, 0.015);
+}
+
+[data-theme="dark"] .industry-row:hover,
+body.dark-mode .industry-row:hover,
+.dark-mode .industry-row:hover {
+    background-color: #243044 !important;
+}
+
+.industry-row-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.industry-name-col {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.industry-name {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text-color, #1e293b);
+}
+
+[data-theme="dark"] .industry-name,
+body.dark-mode .industry-name,
+.dark-mode .industry-name {
+    color: #f8fafc !important;
+}
+
+.industry-stock-count-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 12px;
+    background-color: rgba(0, 0, 0, 0.06);
+    color: var(--text-muted, #64748b);
+}
+
+[data-theme="dark"] .industry-stock-count-badge,
+body.dark-mode .industry-stock-count-badge,
+.dark-mode .industry-stock-count-badge {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    color: #cbd5e1 !important;
+}
+
+.industry-metrics-col {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.industry-rate-badge {
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.industry-amount {
+    font-size: 0.88rem;
+    font-weight: 700;
+    min-width: 90px;
+    text-align: right;
+}
+
+/* 増減プログレスバー */
+.industry-bar-container {
+    height: 5px;
+    width: 100%;
+    background-color: rgba(0, 0, 0, 0.04);
+    border-radius: 3px;
+    margin-top: 7px;
+    overflow: hidden;
+}
+
+[data-theme="dark"] .industry-bar-container,
+body.dark-mode .industry-bar-container,
+.dark-mode .industry-bar-container {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.industry-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.industry-bar.industry-bar-gainer {
+    background-color: #10b981;
+}
+
+.industry-bar.industry-bar-loser {
+    background-color: #ef4444;
+}
+
+.industry-bar.industry-bar-neutral {
+    background-color: #94a3b8;
+}

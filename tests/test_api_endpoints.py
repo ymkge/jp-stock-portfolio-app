@@ -1708,6 +1708,95 @@ def test_restored_august_history_data_integrity():
     conn.close()
 
 
+def test_industry_daily_report_modal_ui_and_dark_mode_issue317():
+    """案件 #317: 本日の業種別増減レポートモーダルのHTML要素、CSSトリプルセレクタ、JS制御の検証"""
+    import os
+
+    # 1. HTML構造検証
+    html_path = os.path.join(os.path.dirname(__file__), "..", "templates", "analysis.html")
+    with open(html_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
+
+    assert 'id="btn-open-industry-daily-modal"' in html_content
+    assert 'id="industry-daily-modal"' in html_content
+    assert 'id="btn-close-industry-daily-modal"' in html_content
+    assert 'id="btn-close-industry-daily-modal-footer"' in html_content
+    assert 'id="industry-daily-ai-box"' in html_content
+    assert 'id="industry-daily-ai-content"' in html_content
+    assert 'id="btn-refresh-industry-ai"' in html_content
+    assert 'id="industry-daily-stats-strip"' in html_content
+    assert 'id="tab-industry-all"' in html_content
+    assert 'id="tab-industry-gainers"' in html_content
+    assert 'id="tab-industry-losers"' in html_content
+    assert 'id="industry-daily-content"' in html_content
+
+    # 2. CSS ダークモードトリプルセレクタ検証
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        css_content = f.read()
+
+    assert '.btn-industry-daily-trigger' in css_content
+    assert '[data-theme="dark"] #industry-daily-modal .modal-content' in css_content
+    assert 'body.dark-mode #industry-daily-modal .modal-content' in css_content
+    assert '.dark-mode #industry-daily-modal .modal-content' in css_content
+    assert '[data-theme="dark"] .industry-ai-summary-card' in css_content
+    assert 'body.dark-mode .industry-ai-summary-card' in css_content
+    assert '.dark-mode .industry-ai-summary-card' in css_content
+    assert '.industry-tab-btn' in css_content
+    assert '.industry-row' in css_content
+    assert '.industry-bar' in css_content
+
+    # 3. JS 関数の定義・呼び出し検証
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    assert 'btnOpenIndustryDailyModal' in js_content
+    assert 'btnCloseIndustryDailyModal' in js_content
+    assert 'renderIndustryDailyModalContent' in js_content
+    assert 'fetchIndustryDailyAiSummary' in js_content
+
+
+def test_api_industry_daily_summary_endpoint():
+    """案件 #317: POST /api/ai-diagnosis/industry-daily-summary エンドポイントのテスト"""
+    from fastapi.testclient import TestClient
+    from unittest.mock import patch, MagicMock
+    from app import app
+
+    client = TestClient(app)
+
+    mock_ai_result = {
+        "market_summary": "本日は日経平均が反発し、輸出ハイテク株が主導しました。",
+        "impact_summary": "保有ポートフォリオでは電気機器・機械セクターが好調に推移しました。",
+        "takeaway": "円安基調の恩恵を受けるセクターのホールドを継続。",
+        "is_cached": False,
+        "diagnosed_at": "15:30"
+    }
+
+    with patch("app._get_processed_asset_data", return_value=([
+        {
+            "code": "7203",
+            "name": "トヨタ",
+            "industry": "輸送用機器",
+            "asset_type": "jp_stock",
+            "currency": "JPY",
+            "change": 50.0,
+            "holdings": [{"quantity": 100, "account_type": "特定"}]
+        }
+    ], {"fetched_at": "2026-09-18T15:00:00", "market_indices": [{"code": "998407.O", "name": "日経平均株価", "price": "38,000"}]})), \
+         patch("app.scraper.get_exchange_rate", return_value=150.0), \
+         patch("app.llm_service_instance.diagnose_industry_daily_changes", return_value=mock_ai_result):
+
+        resp = client.post("/api/ai-diagnosis/industry-daily-summary", json={"force": False})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["market_summary"] == "本日は日経平均が反発し、輸出ハイテク株が主導しました。"
+        assert data["impact_summary"] == "保有ポートフォリオでは電気機器・機械セクターが好調に推移しました。"
+        assert data["takeaway"] == "円安基調の恩恵を受けるセクターのホールドを継続。"
+        assert data["is_cached"] is False
+
+
+
 
 
 

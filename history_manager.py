@@ -315,10 +315,37 @@ def get_latest_metadata(code: str) -> Optional[Dict[str, Any]]:
         logger.error(f"Failed to get latest metadata for {code}: {e}")
     return None
 
+def get_latest_daily_data(code: str) -> Optional[Dict[str, Any]]:
+    """
+    指定された銘柄の最新のキャッシュデータをDB（daily_analysis）から取得する (#323)。
+    日付は不問で、最も新しい日付のレコードを1件取得する。
+    """
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT data_json, updated_at_jst FROM daily_analysis 
+                WHERE code = ?
+                ORDER BY date DESC
+                LIMIT 1
+            """, (code,))
+            row = cursor.fetchone()
+            if row:
+                data = json.loads(row["data_json"])
+                data["_db_updated_at_jst"] = row["updated_at_jst"]
+                return data
+    except (sqlite3.Error, json.JSONDecodeError) as e:
+        logger.error(f"Failed to get latest daily data for {code}: {e}")
+    return None
+
 def get_daily_data(code: str, date_str: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
-    指定された日付（デフォルトは当日JST）のキャッシュデータをDBから取得する。
+    指定された日付のキャッシュデータをDBから取得する。
+    date_str が未指定（デフォルト当日）の場合、当日データがDBに無ければ
+    最新の確定データ（get_latest_daily_data）へ安全にフォールバックする (#323)。
     """
+    is_default_today = (date_str is None)
     if not date_str:
         date_str = get_now_jst().strftime("%Y-%m-%d")
         
@@ -337,6 +364,12 @@ def get_daily_data(code: str, date_str: Optional[str] = None) -> Optional[Dict[s
                 return data
     except (sqlite3.Error, json.JSONDecodeError) as e:
         logger.error(f"Failed to get daily data for {code}: {e}")
+        return None
+
+    # 当日指定でデータが無かった場合（祝日・休場日など）、直近最新データへフォールバック
+    if is_default_today:
+        return get_latest_daily_data(code)
+
     return None
 
 def get_historical_data_before(code: str, date_str: str) -> Optional[Dict[str, Any]]:

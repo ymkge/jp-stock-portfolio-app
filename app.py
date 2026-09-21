@@ -22,36 +22,12 @@ from llm_service import LLMDiagnosisService
 import json
 import logging
 import sqlite3
-try:
-    import jpholiday
-except ImportError:
-    jpholiday = None
+from market_calendar import is_jp_market_holiday
 
 # --- ロギング設定 ---
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 # --------------------
-
-def is_jp_market_holiday(dt: datetime) -> bool:
-    """
-    指定された日が日本市場（東証）の休業日かどうかを判定する。
-    1. 土日判定
-    2. 国民の祝日判定 (jpholidayを使用)
-    3. 証券取引所特有の休日 (年末年始: 12/31, 1/2, 1/3)
-    """
-    # 1. 土日判定
-    if dt.weekday() >= 5:
-        return True
-    
-    # 2. 国民の祝日判定
-    if jpholiday and jpholiday.is_holiday(dt):
-        return True
-    
-    # 3. 証券取引所特有の休日 (1/1は祝日として上記で判定されるため、1/2, 1/3, 12/31を補完)
-    if (dt.month == 1 and dt.day in [2, 3]) or (dt.month == 12 and dt.day == 31):
-        return True
-        
-    return False
 
 # --- クールダウン設定 ---
 # 以前は過度なスクレイピングを防ぐために10分間の制限を設けていましたが、

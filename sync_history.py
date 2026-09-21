@@ -18,6 +18,7 @@ try:
     from scraper import JPStockScraper
     from portfolio_manager import load_portfolio
     from history_manager import init_db, JST
+    from market_calendar import is_jp_market_holiday
 except ImportError as e:
     print(f"Error: 必要なモジュールが見つかりません: {e}")
     sys.exit(1)
@@ -203,7 +204,7 @@ class HistorySyncTool:
             return None
 
     def get_target_date(self):
-        """JSTに基づき、あるべき最新の営業日（ターゲット日）を算出する"""
+        """JSTに基づき、あるべき最新の営業日（ターゲット日）を算出する (#323)"""
         now_jst = datetime.now(JST)
         
         # 市場確定時刻 (16:30) を過ぎているか判定
@@ -214,8 +215,8 @@ class HistorySyncTool:
             # 16:30前なら前日をターゲットにする
             target_dt -= timedelta(days=1)
             
-        # 週末（土日）の調整
-        while target_dt.weekday() >= 5: # 5=Sat, 6=Sun
+        # 土日および日本市場の祝日・年末年始を遡る
+        while is_jp_market_holiday(target_dt.date()):
             target_dt -= timedelta(days=1)
             
         return target_dt.strftime("%Y-%m-%d")

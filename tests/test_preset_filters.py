@@ -154,6 +154,7 @@ class TestPresetFilters(unittest.TestCase):
             css = f.read()
 
         self.assertIn('.theme-highlight-dip', css)
+        self.assertIn('.dip-targets-grid', css)
         self.assertIn('.dip-target-item', css)
         self.assertIn('.dip-target-badge', css)
         self.assertIn('.rec-mini-badge.badge-target-price', css)
@@ -165,6 +166,7 @@ class TestPresetFilters(unittest.TestCase):
             js = f.read()
 
         self.assertIn('theme-highlight-dip', js)
+        self.assertIn('dip-targets-grid', js)
         self.assertIn('dip_buying_analysis', js)
         self.assertIn('badge-target-price', js)
         self.assertIn('target_buy_price', js)
@@ -173,5 +175,5 @@ class TestPresetFilters(unittest.TestCase):
         with open(html_path, 'r', encoding='utf-8') as f:
             html = f.read()
 
-        self.assertIn('style.css?v=3.6', html)
-        self.assertIn('main.js?v=3.6', html)
+        self.assertIn('style.css?v=3.7', html)
+        self.assertIn('main.js?v=3.7', html)

@@ -2074,13 +2074,45 @@ document.addEventListener('DOMContentLoaded', () => {
                     【概算配当利回り】 ${data.estimated_yield} | 【S株購入目安】 ${data.recommended_shares}
                 </div>
 
+                <!-- フルワイド: 総合判定サマリー -->
+                <div class="llm-section-block theme-highlight-summary" style="margin-top: 10px;">
+                    <div class="llm-section-title">📌 総合判定サマリー</div>
+                    <div class="llm-text-content">${data.summary || '判定完了'}</div>
+                </div>
+
+                <!-- フルワイド: 下値メド・仕込みどき価格分析 (存在時) -->
+                ${data.dip_buying_analysis ? `
+                <div class="llm-section-block theme-highlight-dip">
+                    <div class="llm-section-title">🎯 下値メド・仕込みどき価格分析（買い下がりターゲット）</div>
+                    <div class="dip-targets-container">
+                        <div class="dip-targets-grid">
+                            <div class="dip-target-item dip-target-level1">
+                                <div class="dip-target-header">
+                                    <span class="dip-target-badge badge-l1">① 第1仕込みライン (押し目)</span>
+                                    <span class="dip-target-price">${escapeHtml(data.dip_buying_analysis.level1_price || '算出中')}</span>
+                                </div>
+                                <div class="dip-target-desc">${escapeHtml(data.dip_buying_analysis.level1_rationale || '直近の押し目水準および移動平均線サポートを分析中')}</div>
+                            </div>
+                            <div class="dip-target-item dip-target-level2">
+                                <div class="dip-target-header">
+                                    <span class="dip-target-badge badge-l2">② 第2岩盤ライン (大底圏)</span>
+                                    <span class="dip-target-price">${escapeHtml(data.dip_buying_analysis.level2_price || '算出中')}</span>
+                                </div>
+                                <div class="dip-target-desc">${escapeHtml(data.dip_buying_analysis.level2_rationale || 'PBR1.0倍解散価値および目標利回り水準を分析中')}</div>
+                            </div>
+                        </div>
+                        ${data.dip_buying_analysis.tactical_memo ? `
+                        <div class="dip-tactical-note">
+                            <strong>📝 ナンピン戦術メモ:</strong> ${escapeHtml(data.dip_buying_analysis.tactical_memo)}
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+                ` : ''}
+
+                <!-- 左右対称 3 vs 3 グリッド -->
                 <div class="llm-grid-container">
                     <div class="llm-column">
-                        <div class="llm-section-block theme-highlight-summary">
-                            <div class="llm-section-title">📌 総合判定サマリー</div>
-                            <div class="llm-text-content">${data.summary || '判定完了'}</div>
-                        </div>
-
                         <div class="llm-section-block">
                             <div class="llm-section-title">📊 直近の業績動向と収益力</div>
                             <div class="llm-text-content">${data.performance_summary || 'データなし'}</div>
@@ -2102,33 +2134,6 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="llm-section-title">🛡️ 「還元の盾」とバリュエーション評価</div>
                             <div class="llm-text-content">${data.shield_and_valuation || 'データなし'}</div>
                         </div>
-
-                        ${data.dip_buying_analysis ? `
-                        <div class="llm-section-block theme-highlight-dip">
-                            <div class="llm-section-title">🎯 下値メド・仕込みどき価格分析（買い下がりターゲット）</div>
-                            <div class="dip-targets-container">
-                                <div class="dip-target-item dip-target-level1">
-                                    <div class="dip-target-header">
-                                        <span class="dip-target-badge badge-l1">① 第1仕込みライン (押し目)</span>
-                                        <span class="dip-target-price">${escapeHtml(data.dip_buying_analysis.level1_price || '算出中')}</span>
-                                    </div>
-                                    <div class="dip-target-desc">${escapeHtml(data.dip_buying_analysis.level1_rationale || '直近の押し目水準および移動平均線サポートを分析中')}</div>
-                                </div>
-                                <div class="dip-target-item dip-target-level2">
-                                    <div class="dip-target-header">
-                                        <span class="dip-target-badge badge-l2">② 第2岩盤ライン (大底圏)</span>
-                                        <span class="dip-target-price">${escapeHtml(data.dip_buying_analysis.level2_price || '算出中')}</span>
-                                    </div>
-                                    <div class="dip-target-desc">${escapeHtml(data.dip_buying_analysis.level2_rationale || 'PBR1.0倍解散価値および目標利回り水準を分析中')}</div>
-                                </div>
-                                ${data.dip_buying_analysis.tactical_memo ? `
-                                <div class="dip-tactical-note">
-                                    <strong>📝 ナンピン戦術メモ:</strong> ${escapeHtml(data.dip_buying_analysis.tactical_memo)}
-                                </div>
-                                ` : ''}
-                            </div>
-                        </div>
-                        ` : ''}
 
                         <div class="llm-section-block">
                             <div class="llm-section-title">🏢 10年スパンの事業評価（強みとリスク）</div>

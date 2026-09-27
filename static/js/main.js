@@ -845,30 +845,48 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderBuySignalBadge(signal, isDiamond = false) {
         if (!signal) return '';
         const level = signal.level;
-        const isLong = signal.label.includes('長期調整');
+        const isLong = signal.label ? signal.label.includes('長期調整') : false;
+        // API返却フラグを最優先しつつ、未設定時もラベル・アイコンから判定可能な堅牢設計 (#229)
+        const isContrarian = signal.is_contrarian !== undefined
+            ? signal.is_contrarian
+            : ((signal.label && signal.label.includes('逆張り')) || (signal.icon && signal.icon.includes('⚡')));
         
         // 排他的に1つのテーマを選択するロジック (優先順位順)
         let themeClass = '';
         if (level === 0) {
             themeClass = 'theme-unreliable';
-        } else if (isDiamond && level === 2 && isLong) {
-            themeClass = 'theme-rainbow';
-        } else if (isDiamond && level === 2) {
-            themeClass = 'theme-gold';
-        } else if ((level === 2 && isLong) || (isDiamond && level === 1 && isLong)) {
-            themeClass = 'theme-silver';
-        } else if (isDiamond) {
-            themeClass = 'theme-diamond';
-        } else if (level === 2) {
-            themeClass = 'theme-buy-lv2';
-        } else if (level === 1) {
-            themeClass = 'theme-buy-lv1';
+        } else if (isContrarian) {
+            // 【逆張り専用テーマ分岐】最高峰ロイヤルゴールド（金色）は順張りのみとし、逆張りは警告・警戒色へ完全分離 (#229)
+            if (level === 2) {
+                // 逆張りチャンス（ダイヤモンド有無問わず）➔ ⚡ 稲妻アンバー（琥珀色・エレクトリックオレンジ）
+                themeClass = 'theme-contrarian-gold';
+            } else {
+                // 逆張り注目（Level 1 / 💎）➔ 🔮 ディープインディゴ（深海ブルー）
+                themeClass = 'theme-contrarian-diamond';
+            }
         } else {
-            themeClass = 'theme-unreliable';
+            // 【順張りテーマ分岐】既存のロイヤルゴールド・虹色・水色を100%維持
+            if (isDiamond && level === 2 && isLong) {
+                themeClass = 'theme-rainbow';
+            } else if (isDiamond && level === 2) {
+                themeClass = 'theme-gold'; // ★王道の高勝率順張りチャンスのみに限定
+            } else if ((level === 2 && isLong) || (isDiamond && level === 1 && isLong)) {
+                themeClass = 'theme-silver';
+            } else if (isDiamond) {
+                themeClass = 'theme-diamond';
+            } else if (level === 2) {
+                themeClass = 'theme-buy-lv2';
+            } else if (level === 1) {
+                themeClass = 'theme-buy-lv1';
+            } else {
+                themeClass = 'theme-unreliable';
+            }
         }
 
         const reliabilityNote = signal.is_unreliable ? `\n\n【注意】時系列データが不足しています。` : '';
-        const title = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + `【判定理由】\n${signal.reasons.join('\n')}` + reliabilityNote;
+        const title = (signal.recommended_action ? `【推奨アクション】\n${signal.recommended_action}\n\n` : '') + 
+                      (signal.current_status ? `【現在の状態】\n${signal.current_status}\n\n` : '') + 
+                      `【判定理由】\n${signal.reasons.join('\n')}` + reliabilityNote;
         return `<span class="signal-badge-base ${themeClass}" title="${title}"><span class="signal-badge-text"><span class="buy-signal-icon-inner">${signal.icon}</span>${signal.label}</span></span>`;
     }
 

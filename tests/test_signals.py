@@ -410,5 +410,77 @@ def test_frontend_filter_logic_simulation():
     assert simulate_strict_low_filter(asset_non_diamond) is False
 
 
+def test_calculate_buy_signal_contrarian_flag():
+    """案件 #229: calculate_buy_signal における is_contrarian フラグ判定の単体テスト"""
+    # 共通の優良ファンダメンタルズ設定 (スコア4点以上 -> ダイヤモンド)
+    base_stock = {
+        "asset_type": "jp_stock",
+        "score_details": {
+            "per": 1,
+            "pbr": 1,
+            "roe": 1,
+            "yield": 1,
+            "consecutive_increase": 0,
+            "payout_ratio": 1,
+            "is_reliable": True
+        },
+        "per": 10.0,
+        "pbr": 0.8,
+        "roe": 12.0,
+        "yield": 4.5,
+        "payout_ratio": 40.0,
+        "rsi_14": 25.0,  # 売られすぎ (Level 1)
+        "rci_26": -85.0
+    }
+
+    # 1. 順張りパターン: 株価(1050) > 75日線(1000)
+    stock_trend = {
+        **base_stock,
+        "price": 1050,
+        "ma75": 1000,
+        "ma25": 1020
+    }
+    sig_trend = calculate_buy_signal(stock_trend)
+    assert sig_trend is not None
+    assert sig_trend["is_contrarian"] is False
+    assert "順張り" in sig_trend["label"]
+    assert "⚡" not in sig_trend["icon"]
+
+    # 2. 逆張りパターン: 株価(950) < 75日線(1000)
+    stock_contrarian = {
+        **base_stock,
+        "price": 950,
+        "ma75": 1000,
+        "ma25": 960
+    }
+    sig_contrarian = calculate_buy_signal(stock_contrarian)
+    assert sig_contrarian is not None
+    assert sig_contrarian["is_contrarian"] is True
+    assert "逆張り" in sig_contrarian["label"]
+    assert "⚡" in sig_contrarian["icon"]
+
+    # 3. 判定不能パターン (重要データ欠損) での初期値保証
+    stock_missing = {
+        "asset_type": "jp_stock",
+        "score_details": {
+            "per": 0,
+            "pbr": 0,
+            "roe": 0,
+            "yield": 0,
+            "consecutive_increase": 0,
+            "payout_ratio": 0,
+            "is_reliable": False,
+            "missing_items": ["per", "yield"]
+        },
+        "price": None,
+        "per": None
+    }
+    sig_missing = calculate_buy_signal(stock_missing)
+    assert sig_missing is not None
+    assert sig_missing["level"] == 0
+    assert sig_missing["is_contrarian"] is False
+    assert sig_missing["icon"] == "🔘"
+
+
 
 

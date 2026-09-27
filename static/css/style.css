@@ -5292,3 +5292,155 @@ body.dark-mode .ind-bar.ind-bar-loser,
 .dark-mode .ind-bar.ind-bar-loser {
     background-color: #fb7185 !important;
 }
+
+/* ==========================================================================
+   案件 #303: AI診断 下値メド・仕込みどき価格分析 スタイル
+   ========================================================================== */
+
+/* 個別診断モーダル: 下値メドセクションブロック */
+.theme-highlight-dip {
+    border-left: 4px solid #0284c7 !important;
+    background: linear-gradient(135deg, rgba(2, 132, 199, 0.05) 0%, rgba(14, 165, 233, 0.02) 100%) !important;
+    border-top: 1px solid rgba(2, 132, 199, 0.15);
+    border-right: 1px solid rgba(2, 132, 199, 0.15);
+    border-bottom: 1px solid rgba(2, 132, 199, 0.15);
+}
+
+.dip-targets-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.dip-target-item {
+    background: var(--card-bg, #ffffff);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 6px;
+    padding: 8px 12px;
+}
+
+.dip-target-item.dip-target-level1 {
+    border-left: 3px solid #3b82f6;
+}
+
+.dip-target-item.dip-target-level2 {
+    border-left: 3px solid #10b981;
+}
+
+.dip-target-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.dip-target-badge {
+    font-size: 0.76rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.dip-target-badge.badge-l1 {
+    background-color: rgba(59, 130, 246, 0.12);
+    color: #1d4ed8;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.dip-target-badge.badge-l2 {
+    background-color: rgba(16, 185, 129, 0.12);
+    color: #047857;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.dip-target-price {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.dip-target-desc {
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--text-color, #334155);
+}
+
+.dip-tactical-note {
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px dashed rgba(245, 158, 11, 0.4);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--text-color, #334155);
+    margin-top: 2px;
+}
+
+/* おすすめ5選カード: 仕込み目安バッジ */
+.rec-mini-badge.badge-target-price {
+    background-color: rgba(14, 165, 233, 0.12);
+    color: #0284c7;
+    border: 1px solid rgba(14, 165, 233, 0.35);
+    font-weight: 700;
+}
+
+/* ダークモード対応 */
+[data-theme="dark"] .theme-highlight-dip,
+body.dark-mode .theme-highlight-dip,
+.dark-mode .theme-highlight-dip {
+    border-left: 4px solid #38bdf8 !important;
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.08) 0%, rgba(14, 165, 233, 0.03) 100%) !important;
+    border-color: rgba(56, 189, 248, 0.25) !important;
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.15);
+}
+
+[data-theme="dark"] .dip-target-item,
+body.dark-mode .dip-target-item,
+.dark-mode .dip-target-item {
+    background: rgba(30, 41, 59, 0.7);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .dip-target-badge.badge-l1,
+body.dark-mode .dip-target-badge.badge-l1,
+.dark-mode .dip-target-badge.badge-l1 {
+    background-color: rgba(59, 130, 246, 0.25);
+    color: #93c5fd;
+    border-color: rgba(59, 130, 246, 0.5);
+}
+
+[data-theme="dark"] .dip-target-badge.badge-l2,
+body.dark-mode .dip-target-badge.badge-l2,
+.dark-mode .dip-target-badge.badge-l2 {
+    background-color: rgba(16, 185, 129, 0.25);
+    color: #6ee7b7;
+    border-color: rgba(16, 185, 129, 0.5);
+}
+
+[data-theme="dark"] .dip-target-price,
+body.dark-mode .dip-target-price,
+.dark-mode .dip-target-price {
+    color: #f8fafc;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+[data-theme="dark"] .dip-tactical-note,
+body.dark-mode .dip-tactical-note,
+.dark-mode .dip-tactical-note {
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #fde68a;
+}
+
+[data-theme="dark"] .rec-mini-badge.badge-target-price,
+body.dark-mode .rec-mini-badge.badge-target-price,
+.dark-mode .rec-mini-badge.badge-target-price {
+    background-color: rgba(14, 165, 233, 0.25);
+    color: #38bdf8;
+    border-color: rgba(56, 189, 248, 0.5);
+    box-shadow: 0 0 6px rgba(56, 189, 248, 0.3);
+}

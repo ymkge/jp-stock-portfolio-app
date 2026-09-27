@@ -145,3 +145,33 @@ class TestPresetFilters(unittest.TestCase):
         self.assertIn('theme-contrarian-gold', js)
         self.assertIn('theme-contrarian-diamond', js)
         self.assertIn('is_contrarian', js)
+
+    def test_dip_buying_ui_and_css_styles(self):
+        """style.css, main.js, index.html において下値メド・仕込み目安のUIおよびダークモードが定義されているか検証 (#303)"""
+        import os
+        css_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'css', 'style.css')
+        with open(css_path, 'r', encoding='utf-8') as f:
+            css = f.read()
+
+        self.assertIn('.theme-highlight-dip', css)
+        self.assertIn('.dip-target-item', css)
+        self.assertIn('.dip-target-badge', css)
+        self.assertIn('.rec-mini-badge.badge-target-price', css)
+        self.assertIn('[data-theme="dark"] .theme-highlight-dip', css)
+        self.assertIn('[data-theme="dark"] .rec-mini-badge.badge-target-price', css)
+
+        js_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'js', 'main.js')
+        with open(js_path, 'r', encoding='utf-8') as f:
+            js = f.read()
+
+        self.assertIn('theme-highlight-dip', js)
+        self.assertIn('dip_buying_analysis', js)
+        self.assertIn('badge-target-price', js)
+        self.assertIn('target_buy_price', js)
+
+        html_path = os.path.join(os.path.dirname(__file__), '..', 'templates', 'index.html')
+        with open(html_path, 'r', encoding='utf-8') as f:
+            html = f.read()
+
+        self.assertIn('style.css?v=3.6', html)
+        self.assertIn('main.js?v=3.6', html)

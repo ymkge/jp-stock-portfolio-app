@@ -204,6 +204,136 @@ class LLMDiagnosisService:
                 "message": f"AI診断実行中に予期せぬエラーが発生しました: {str(e)}"
             }
 
+    def _calculate_downside_metrics(self, stock_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        案件 #303: 下値分析（仕込みどきの価格・安全網）用の定量的指標を算出する。
+        - 予想年間配当金 (DPS)
+        - 目標配当利回り（4.0%, 4.5%, 5.0%）に基づく逆算株価および現在株価との乖離率
+        - PBR 1.0倍水準（BPS・解散価値ライン）および現在株価との乖離率
+        - 75日線・200日線水準
+        ※無配・赤字・データ欠損時はゼロ除算を物理遮断する。
+        """
+        metrics: Dict[str, Any] = {
+            "dps": None,
+            "yield_40_price": None,
+            "yield_40_diff_pct": None,
+            "yield_45_price": None,
+            "yield_45_diff_pct": None,
+            "yield_50_price": None,
+            "yield_50_diff_pct": None,
+            "bps": None,
+            "bps_diff_pct": None,
+            "ma75_price": None,
+            "ma200_price": None,
+            "summary_text": ""
+        }
+
+        # 現在株価のパース
+        price_num = 0.0
+        raw_price = stock_data.get("price")
+        if raw_price not in [None, "", "N/A", "--"]:
+            try:
+                price_num = float(str(raw_price).replace(',', ''))
+            except (ValueError, TypeError):
+                price_num = 0.0
+
+        # 予想配当利回りのパース
+        raw_yield = stock_data.get("yield")
+        if raw_yield in [None, "", "N/A", "--"]:
+            raw_yield = stock_data.get("dividend_yield")
+        yield_pct = 0.0
+        if raw_yield not in [None, "", "N/A", "--"]:
+            try:
+                yield_pct = float(str(raw_yield).replace('%', '').replace(',', ''))
+            except (ValueError, TypeError):
+                yield_pct = 0.0
+
+        # 予想1株配当金 (DPS) の取得または逆算
+        dps_val = None
+        raw_dps = stock_data.get("dps") or stock_data.get("dividend")
+        if raw_dps not in [None, "", "N/A", "--"]:
+            try:
+                dps_val = float(str(raw_dps).replace(',', ''))
+            except (ValueError, TypeError):
+                dps_val = None
+
+        if (dps_val is None or dps_val <= 0) and price_num > 0 and yield_pct > 0:
+            dps_val = round(price_num * (yield_pct / 100.0), 2)
+
+        if dps_val and dps_val > 0:
+            metrics["dps"] = dps_val
+            # 利回り逆算株価 (4.0%, 4.5%, 5.0%)
+            y40 = round(dps_val / 0.040, 1)
+            y45 = round(dps_val / 0.045, 1)
+            y50 = round(dps_val / 0.050, 1)
+            metrics["yield_40_price"] = y40
+            metrics["yield_45_price"] = y45
+            metrics["yield_50_price"] = y50
+            if price_num > 0:
+                metrics["yield_40_diff_pct"] = round((y40 - price_num) / price_num * 100.0, 1)
+                metrics["yield_45_diff_pct"] = round((y45 - price_num) / price_num * 100.0, 1)
+                metrics["yield_50_diff_pct"] = round((y50 - price_num) / price_num * 100.0, 1)
+
+        # BPS (1株純資産・PBR1.0倍水準) の取得または逆算
+        raw_bps = stock_data.get("bps")
+        bps_val = None
+        if raw_bps not in [None, "", "N/A", "--"]:
+            try:
+                bps_val = float(str(raw_bps).replace(',', ''))
+            except (ValueError, TypeError):
+                bps_val = None
+
+        if (bps_val is None or bps_val <= 0) and price_num > 0:
+            raw_pbr = stock_data.get("pbr")
+            if raw_pbr not in [None, "", "N/A", "--"]:
+                try:
+                    pbr_num = float(str(raw_pbr).replace(',', ''))
+                    if pbr_num > 0:
+                        bps_val = round(price_num / pbr_num, 1)
+                except (ValueError, TypeError):
+                    bps_val = None
+
+        if bps_val and bps_val > 0:
+            metrics["bps"] = bps_val
+            if price_num > 0:
+                metrics["bps_diff_pct"] = round((bps_val - price_num) / price_num * 100.0, 1)
+
+        # 移動平均線
+        ma75_val = stock_data.get("moving_average_75") or stock_data.get("ma75")
+        if ma75_val not in [None, "", "N/A", "--"]:
+            try:
+                metrics["ma75_price"] = float(str(ma75_val).replace(',', ''))
+            except (ValueError, TypeError): pass
+
+        ma200_val = stock_data.get("moving_average_200") or stock_data.get("ma200")
+        if ma200_val not in [None, "", "N/A", "--"]:
+            try:
+                metrics["ma200_price"] = float(str(ma200_val).replace(',', ''))
+            except (ValueError, TypeError): pass
+
+        # プロンプト用のテキストブロックを構築
+        text_lines = []
+        if metrics["dps"]:
+            text_lines.append(f"  * 予想1株配当金 (DPS): 約 {metrics['dps']:,.1f} 円")
+            text_lines.append(f"  * 利回り4.0%換算株価: 約 {metrics['yield_40_price']:,.1f} 円 (現在比: {metrics['yield_40_diff_pct']:+.1f}%)")
+            text_lines.append(f"  * 利回り4.5%換算株価: 約 {metrics['yield_45_price']:,.1f} 円 (現在比: {metrics['yield_45_diff_pct']:+.1f}%)")
+            text_lines.append(f"  * 利回り5.0%換算株価: 約 {metrics['yield_50_price']:,.1f} 円 (現在比: {metrics['yield_50_diff_pct']:+.1f}%)")
+        else:
+            text_lines.append("  * 予想配当利回り逆算: 無配または配当未定のため算定対象外")
+
+        if metrics["bps"]:
+            text_lines.append(f"  * BPS (PBR1.0倍ライン・解散価値水準): 約 {metrics['bps']:,.1f} 円 (現在比: {metrics['bps_diff_pct']:+.1f}%)")
+        else:
+            text_lines.append("  * BPS (PBR1.0倍ライン): 純資産データなし")
+
+        if metrics["ma75_price"]:
+            text_lines.append(f"  * 75日移動平均線 (MA75): 約 {metrics['ma75_price']:,.1f} 円")
+        if metrics["ma200_price"]:
+            text_lines.append(f"  * 200日移動平均線 (MA200): 約 {metrics['ma200_price']:,.1f} 円")
+
+        metrics["summary_text"] = "\n".join(text_lines)
+        return metrics
+
     def _build_prompt(self, stock_data: Dict[str, Any], portfolio_summary: Optional[Dict[str, Any]], policy_prompt: str) -> str:
         code = stock_data.get("code", "")
         name = stock_data.get("name", "")
@@ -325,6 +455,9 @@ class LLMDiagnosisService:
         except Exception as e:
             logger.warning(f"Failed to fetch USDJPY details for prompt: {e}")
 
+        # 下値分析用の定量的指標を算出
+        downside_metrics = self._calculate_downside_metrics(stock_data)
+
         prompt = f"""{policy_prompt}
 
 ---
@@ -347,12 +480,15 @@ class LLMDiagnosisService:
 - 移動平均トレンド状態: {trend_info}
 - テクニカル材料出尽くし検知: {exhaustion_info}
 - リアルタイム為替環境 (USD/JPY): {fx_info_str}
+- 下値参考指標 (定量的安全網データ):
+{downside_metrics['summary_text']}
 
 ---
 
 ## あなたのタスク
 上記「ユーザーの基本投資方針」に照らし合わせ、対象銘柄({code} {name})の適合度を分析してください。
 直近の業績動向（EPSや収益性）、配当維持能力（還元の盾）、および【75日・200日移動平均線との位置関係（上昇トレンド／押し目圏／長期下降トレンド）】と【材料出尽くし感（好材料出尽くし下落リスク / 悪材料アク抜け大底判定）やマクロ地政学・災害・米国市況ショックの影響度】、ならびに【リアルタイムドル円レートおよび直近レンジ位置（為替影響: 輸出株の減益リスク／内需株の追い風）】を踏まえて投資判断を行ってください。
+また、本システム（S株ナンピン買い下がり）における【下値メド（第1仕込みライン・第2岩盤ライン）】を分析し、買い下がりターゲットとなる価格帯と利回り、下値支持の根拠を明示してください。
 ※重要: トレンドが「上昇トレンド」や「絶好の押し目圏」にある場合は、順張り・格安エントリーの観点から分析の確信度 (confidence_score) を高め(85〜95点)に算出して後押しし、長期下降トレンド下では慎重な確信度・立ち回りを提示してください。
 必ず以下のJSONフォーマットのみを出力してください。Markdownや他の余計な文言は一切含めないでください。
 
@@ -369,6 +505,13 @@ JSONフォーマットで回答を出力してください。キーは必ず以�
   "material_exhaustion_eval": "材料出尽くし（好材料出尽くし下落リスク / 悪材料アク抜け大底判定）およびマクロショック影響度のAI評価解説",
   "business_10y_eval": "10年スパンでの事業評価（ポジティブ要因・ネガティブ要因）",
   "tactical_advice": "本システム/S株ナンピンにおける具体的な立ち回りアドバイス",
+  "dip_buying_analysis": {{
+    "level1_price": "第1仕込み目安株価と利回り(例: 約2,450円 / 利回り4.1%)",
+    "level1_rationale": "第1仕込みラインの根拠(例: 75日線サポートおよび初期押し目打診買い水準)",
+    "level2_price": "第2岩盤目安株価と利回り(例: 約2,200円 / 利回り4.6%)",
+    "level2_rationale": "第2岩盤ラインの根拠(例: PBR1.0倍(BPS)および利回り○%到達による強固な大底サポート)",
+    "tactical_memo": "S株ナンピンにおける具体的な指値・買い下がり配分メモ"
+  }},
   "summary": "1〜2文による総合判定の簡潔な要約"
 }}
 fit_levelの基準:
@@ -385,6 +528,14 @@ fit_levelの基準:
         if match:
             cleaned = match.group(1).strip()
 
+        default_dip = {
+            "level1_price": "算出中",
+            "level1_rationale": "直近の押し目水準および移動平均線サポートを分析中",
+            "level2_price": "算出中",
+            "level2_rationale": "PBR1.0倍解散価値および目標利回り水準を分析中",
+            "tactical_memo": "時間分散・価格分散によるS株ナンピン買い下がりを推奨します。"
+        }
+
         try:
             data = json.loads(cleaned)
         except Exception:
@@ -400,6 +551,7 @@ fit_levelの基準:
                 "material_exhaustion_eval": "材料出尽くしおよび市場変動の解析を実行中です。",
                 "business_10y_eval": raw_text[:500],
                 "tactical_advice": "手動での最終確認を推奨します。",
+                "dip_buying_analysis": default_dip,
                 "summary": "AIからの応答フォーマットを調整しました。"
             }
 
@@ -416,6 +568,19 @@ fit_levelの基準:
         if confidence_score < 30 and data.get("summary"):
             confidence_score = 90
 
+        # dip_buying_analysis の安全な抽出と補完
+        dip_raw = data.get("dip_buying_analysis")
+        if isinstance(dip_raw, dict):
+            dip_analysis = {
+                "level1_price": str(dip_raw.get("level1_price") or default_dip["level1_price"]),
+                "level1_rationale": str(dip_raw.get("level1_rationale") or default_dip["level1_rationale"]),
+                "level2_price": str(dip_raw.get("level2_price") or default_dip["level2_price"]),
+                "level2_rationale": str(dip_raw.get("level2_rationale") or default_dip["level2_rationale"]),
+                "tactical_memo": str(dip_raw.get("tactical_memo") or default_dip["tactical_memo"])
+            }
+        else:
+            dip_analysis = default_dip
+
         return {
             "fit_level": fit_level,
             "confidence_score": confidence_score,
@@ -428,6 +593,7 @@ fit_levelの基準:
             "material_exhaustion_eval": str(data.get("material_exhaustion_eval", "テクニカル指標およびマクロ要因に基づく材料出尽くしリスクを分析済みです。")),
             "business_10y_eval": str(data.get("business_10y_eval", "データなし")),
             "tactical_advice": str(data.get("tactical_advice", "データなし")),
+            "dip_buying_analysis": dip_analysis,
             "summary": str(data.get("summary", "診断が完了しました。"))
         }
 
@@ -940,7 +1106,16 @@ fit_levelの基準:
             elif a.get("is_diamond"):
                 sig_label = "💎ダイヤモンド"
 
-            line = f"{code}|{name}|{ind}|{price}|{per}|{pbr}|{roe}|{div}|{payout}|{doe}|{consec_str}|{div_contrib_str}|{qty_str}|{score}|{sig_label}"
+            # 下値メド（利回り4.5%株価またはBPS）の事前算出
+            down_metrics = self._calculate_downside_metrics(a)
+            if down_metrics.get("yield_45_price"):
+                down_str = f"仕込:約{int(down_metrics['yield_45_price']):,}円"
+            elif down_metrics.get("bps"):
+                down_str = f"仕込:約{int(down_metrics['bps']):,}円"
+            else:
+                down_str = "仕込:-"
+
+            line = f"{code}|{name}|{ind}|{price}|{per}|{pbr}|{roe}|{div}|{payout}|{doe}|{consec_str}|{div_contrib_str}|{qty_str}|{score}|{sig_label}|{down_str}"
             lines.append(line)
         return "\n".join(lines)
 
@@ -1025,7 +1200,7 @@ fit_levelの基準:
 【ユーザーの基本投資方針と判定基準】:
 {policy_prompt if policy_prompt.strip() else 'インカムゲイン最大化を目指し、予想利回り3.5%以上、DOEや連続増配による還元の盾、PBR1.5倍以下の割安株を厳選する。'}
 
-【分析対象銘柄データ (パイプ区切り1行フォーマット: コード|銘柄名|業種|現在株価|PER|PBR|ROE|利回り|配当性向|DOE|増配年|配当比|保有株|スコア|シグナル)】:
+【分析対象銘柄データ (パイプ区切り1行フォーマット: コード|銘柄名|業種|現在株価|PER|PBR|ROE|利回り|配当性向|DOE|増配年|配当比|保有株|スコア|シグナル|仕込目安)】:
 {pipe_formatted_data}
 
 【厳格な選定・ランキング基準 (個別銘柄AI診断と同等基準)】:
@@ -1050,6 +1225,7 @@ fit_levelの基準:
       "name": "銘柄名",
       "industry": "業種",
       "dividend_yield_str": "予想利回り (例: 4.2%)",
+      "target_buy_price": "仕込み目標株価 (例: 約2,450円 / 利回り4.5%水準)",
       "shield_summary": "還元の盾の要約 (例: DOE 4.8% または 連続増配11年 または 累進配当)",
       "role_badge": "枠組み (例: 【コア枠】新規分散 または 【高利回りブースター】 または 【コア枠】買い増し)",
       "fit_score": 95,
@@ -1095,12 +1271,28 @@ fit_levelの基準:
             json_str = json_match.group(1) if json_match else raw_text
             parsed_res = json.loads(json_str)
 
+            # target_buy_price の安全なフォールバック補完
+            recs = parsed_res.get("recommendations", [])
+            for r in recs:
+                if not r.get("target_buy_price"):
+                    matched = next((a for a in filtered_assets if str(a.get("code")) == str(r.get("code"))), None)
+                    if matched:
+                        dm = self._calculate_downside_metrics(matched)
+                        if dm.get("yield_45_price"):
+                            r["target_buy_price"] = f"約{int(dm['yield_45_price']):,}円 (利回り4.5%)"
+                        elif dm.get("bps"):
+                            r["target_buy_price"] = f"約{int(dm['bps']):,}円 (PBR1.0倍)"
+                        else:
+                            r["target_buy_price"] = "現在値近辺で打診買い"
+                    else:
+                        r["target_buy_price"] = "現在値近辺で打診買い"
+
             diagnosed_at_str = time.strftime("%H:%M", time.localtime(now))
             result = {
                 "error": False,
                 "preset_name": preset_name,
                 "total_candidates": len(filtered_assets),
-                "recommendations": parsed_res.get("recommendations", []),
+                "recommendations": recs,
                 "overall_summary": parsed_res.get("overall_summary", ""),
                 "is_cached": False,
                 "diagnosed_at": diagnosed_at_str

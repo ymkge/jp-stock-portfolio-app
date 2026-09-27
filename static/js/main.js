@@ -2103,6 +2103,33 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="llm-text-content">${data.shield_and_valuation || 'データなし'}</div>
                         </div>
 
+                        ${data.dip_buying_analysis ? `
+                        <div class="llm-section-block theme-highlight-dip">
+                            <div class="llm-section-title">🎯 下値メド・仕込みどき価格分析（買い下がりターゲット）</div>
+                            <div class="dip-targets-container">
+                                <div class="dip-target-item dip-target-level1">
+                                    <div class="dip-target-header">
+                                        <span class="dip-target-badge badge-l1">① 第1仕込みライン (押し目)</span>
+                                        <span class="dip-target-price">${escapeHtml(data.dip_buying_analysis.level1_price || '算出中')}</span>
+                                    </div>
+                                    <div class="dip-target-desc">${escapeHtml(data.dip_buying_analysis.level1_rationale || '直近の押し目水準および移動平均線サポートを分析中')}</div>
+                                </div>
+                                <div class="dip-target-item dip-target-level2">
+                                    <div class="dip-target-header">
+                                        <span class="dip-target-badge badge-l2">② 第2岩盤ライン (大底圏)</span>
+                                        <span class="dip-target-price">${escapeHtml(data.dip_buying_analysis.level2_price || '算出中')}</span>
+                                    </div>
+                                    <div class="dip-target-desc">${escapeHtml(data.dip_buying_analysis.level2_rationale || 'PBR1.0倍解散価値および目標利回り水準を分析中')}</div>
+                                </div>
+                                ${data.dip_buying_analysis.tactical_memo ? `
+                                <div class="dip-tactical-note">
+                                    <strong>📝 ナンピン戦術メモ:</strong> ${escapeHtml(data.dip_buying_analysis.tactical_memo)}
+                                </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                        ` : ''}
+
                         <div class="llm-section-block">
                             <div class="llm-section-title">🏢 10年スパンの事業評価（強みとリスク）</div>
                             <div class="llm-text-content">${data.business_10y_eval || 'データなし'}</div>
@@ -2410,6 +2437,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 contribBadge = `<span class="rec-mini-badge">✨ 新規分散枠</span>`;
             }
 
+            const targetBuyBadge = item.target_buy_price ? `<span class="rec-mini-badge badge-target-price">🎯 仕込み目安: ${escapeHtml(item.target_buy_price)}</span>` : '';
+
             return `
                 <div class="recommendation-card ${rankClass} mb-3">
                     <div class="card-header">
@@ -2427,12 +2456,13 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <span class="badge bg-primary ms-1" style="font-size: 0.8rem;">適合度 ${fitScore}%</span>
                             </div>
                         </div>
-                        ${(roleBadge || yieldBadge || shieldBadge || contribBadge) ? `
+                        ${(roleBadge || yieldBadge || shieldBadge || contribBadge || targetBuyBadge) ? `
                             <div class="rec-badge-strip">
                                 ${roleBadge}
                                 ${yieldBadge}
                                 ${shieldBadge}
                                 ${contribBadge}
+                                ${targetBuyBadge}
                             </div>
                         ` : ''}
                     </div>
@@ -2498,6 +2528,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 text += `【${item.rank || idx + 1}位】 ${item.name} (${item.code}) / ${item.industry}\n`;
                 if (item.role_badge) text += `枠組み: ${item.role_badge}\n`;
                 if (item.dividend_yield_str) text += `配当利回り: ${item.dividend_yield_str}\n`;
+                if (item.target_buy_price) text += `仕込み目安: ${item.target_buy_price}\n`;
                 if (item.shield_summary) text += `還元の盾: ${item.shield_summary}\n`;
                 text += `適合度: ${item.fit_stars} (${item.fit_score}%)\n`;
                 text += `・根拠: ${item.rationale}\n`;

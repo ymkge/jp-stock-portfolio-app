@@ -732,6 +732,152 @@ def test_diagnose_industry_daily_changes_success_and_model_fallback(policy_manag
         assert "gemini-flash-latest" in call_url2
 
 
+def test_calculate_downside_metrics_normal():
+    """案件 #303: 有配・黒字銘柄における下値参考指標の正常系算出テスト"""
+    service = LLMDiagnosisService()
+    stock_data = {
+        "price": 2000,
+        "yield": 4.0,  # 予想配当利回り 4.0% -> 予想DPS = 80円
+        "pbr": 0.8,
+        "bps": 2500,
+        "moving_average_75": 1950,
+        "moving_average_200": 1900
+    }
+    metrics = service._calculate_downside_metrics(stock_data)
+
+    assert metrics["dps"] == 80.0
+    assert metrics["yield_40_price"] == 2000.0
+    assert metrics["yield_40_diff_pct"] == 0.0
+    assert metrics["yield_45_price"] == round(80.0 / 0.045, 1)  # 1777.8
+    assert metrics["yield_50_price"] == 1600.0
+    assert metrics["bps"] == 2500.0
+    assert metrics["bps_diff_pct"] == 25.0
+    assert metrics["ma75_price"] == 1950.0
+    assert metrics["ma200_price"] == 1900.0
+    assert "利回り4.5%換算株価" in metrics["summary_text"]
+    assert "BPS (PBR1.0倍ライン" in metrics["summary_text"]
+
+
+def test_calculate_downside_metrics_zero_and_missing_data():
+    """案件 #303: 無配・赤字・データ欠損時におけるゼロ除算・例外防止テスト"""
+    service = LLMDiagnosisService()
+    # 1. 無配・株価0円・データ欠損
+    stock_empty = {
+        "price": 0,
+        "yield": 0,
+        "pbr": None,
+        "bps": None
+    }
+    metrics_empty = service._calculate_downside_metrics(stock_empty)
+    assert metrics_empty["dps"] is None
+    assert metrics_empty["yield_40_price"] is None
+    assert metrics_empty["bps"] is None
+    assert "算定対象外" in metrics_empty["summary_text"]
+
+    # 2. BPSが未指定だがPBRから逆算可能な場合
+    stock_pbr = {
+        "price": 1000,
+        "yield": "3.5%",
+        "pbr": 2.0
+    }
+    metrics_pbr = service._calculate_downside_metrics(stock_pbr)
+    assert metrics_pbr["dps"] == 35.0
+    assert metrics_pbr["bps"] == 500.0  # 1000 / 2.0
+    assert metrics_pbr["bps_diff_pct"] == -50.0
+
+
+def test_diagnose_stock_with_dip_buying(policy_manager):
+    """案件 #303: 個別銘柄診断における dip_buying_analysis のパーステスト"""
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    mock_llm_response = {
+        "fit_level": "fit",
+        "confidence_score": 90,
+        "decision_label": "【強い買い（コア）】",
+        "estimated_yield": "約4.2%",
+        "recommended_shares": "約4株",
+        "shield_and_valuation": "DOE4.0%下限、PBR0.9倍。",
+        "performance_summary": "好調なEPS推移。",
+        "trend_analysis": "75日線上で押し目形成中。",
+        "material_exhaustion_eval": "材料出尽くし懸念なし。",
+        "business_10y_eval": "安定したストックビジネス。",
+        "tactical_advice": "1回あたり4株目安でナンピン買い下がり。",
+        "dip_buying_analysis": {
+            "level1_price": "約2,450円 (利回り4.1%)",
+            "level1_rationale": "75日線サポートおよび初期押し目打診買い水準",
+            "level2_price": "約2,200円 (利回り4.6%)",
+            "level2_rationale": "PBR1.0倍(BPS)および利回り4.6%到達による強固な大底サポート",
+            "tactical_memo": "2,450円で初期打診、2,200円でロットを倍増して買い下がり。"
+        },
+        "summary": "高配当かつ強固な下値支持を持つコア銘柄。"
+    }
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "candidates": [{"content": {"parts": [{"text": json.dumps(mock_llm_response)}]}}]
+    }
+
+    with patch("requests.post", return_value=mock_resp):
+        res = service.diagnose_stock({"code": "7164", "name": "全国保証", "price": 2500, "yield": 4.0}, force=True)
+        assert res.get("error") is not True
+        assert "dip_buying_analysis" in res
+        dip = res["dip_buying_analysis"]
+        assert "2,450円" in dip["level1_price"]
+        assert "2,200円" in dip["level2_price"]
+        assert "75日線サポート" in dip["level1_rationale"]
+        assert "ロットを倍増" in dip["tactical_memo"]
+
+
+def test_diagnose_stock_missing_dip_buying_fallback(policy_manager):
+    """案件 #303: レスポンスに dip_buying_analysis が欠落していた場合のフォールバック補完テスト"""
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    # dip_buying_analysis がない旧形式レスポンス
+    mock_old_response = {
+        "fit_level": "fit",
+        "confidence_score": 88,
+        "decision_label": "【買い】",
+        "summary": "旧形式の診断結果。"
+    }
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "candidates": [{"content": {"parts": [{"text": json.dumps(mock_old_response)}]}}]
+    }
+
+    with patch("requests.post", return_value=mock_resp):
+        res = service.diagnose_stock({"code": "7164", "name": "全国保証"}, force=True)
+        assert res.get("error") is not True
+        assert "dip_buying_analysis" in res
+        dip = res["dip_buying_analysis"]
+        assert dip["level1_price"] == "算出中"
+        assert dip["level2_price"] == "算出中"
+        assert "ナンピン" in dip["tactical_memo"]
+
+
+def test_format_assets_to_pipe_lines_with_dip_metrics():
+    """案件 #303: おすすめ5選用パイプフォーマットに下値目安が含まれているか検証"""
+    service = LLMDiagnosisService()
+    assets = [
+        {
+            "code": "7164",
+            "name": "全国保証",
+            "industry": "その他金融業",
+            "price": 2500,
+            "per": 12.0,
+            "pbr": 0.9,
+            "roe": 12.5,
+            "yield": 4.0,  # DPS = 100円 -> 4.5%株価は約2,222円
+            "score": 12
+        }
+    ]
+    pipe_text = service._format_assets_to_pipe_lines(assets)
+    assert "7164" in pipe_text
+    assert "仕込:約2,222円" in pipe_text
+
+
 
 
 

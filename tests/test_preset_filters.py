@@ -123,3 +123,25 @@ class TestPresetFilters(unittest.TestCase):
         self.assertIn('配当シェア', js)
         self.assertIn('新規分散枠', js)
         self.assertIn('fit-score-box', js)
+
+    def test_contrarian_signal_themes_and_styles(self):
+        """style.css および main.js において逆張り専用シグナルテーマが定義・反映されているか検証 (#229)"""
+        import os
+        css_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'css', 'style.css')
+        with open(css_path, 'r', encoding='utf-8') as f:
+            css = f.read()
+
+        self.assertIn('.theme-contrarian-gold', css)
+        self.assertIn('.theme-contrarian-diamond', css)
+        self.assertIn('.dark-mode .theme-contrarian-gold', css)
+        self.assertIn('.dark-mode .theme-contrarian-diamond', css)
+        self.assertIn('[data-theme="dark"] .theme-contrarian-gold', css)
+        self.assertIn('[data-theme="dark"] .theme-contrarian-diamond', css)
+
+        js_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'js', 'main.js')
+        with open(js_path, 'r', encoding='utf-8') as f:
+            js = f.read()
+
+        self.assertIn('theme-contrarian-gold', js)
+        self.assertIn('theme-contrarian-diamond', js)
+        self.assertIn('is_contrarian', js)

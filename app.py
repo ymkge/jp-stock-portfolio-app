@@ -338,6 +338,7 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
         return {
             "level": 0,
             "is_diamond": False,
+            "is_contrarian": False,
             "is_unreliable": True,
             "icon": "🔘",
             "label": "判定不能",
@@ -442,7 +443,7 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
         # スコアは高いがテクニカル指標が取れないためにレベル1にならない場合も「判定不能」を検討
         if not is_reliable:
             return {
-                "level": 0, "is_diamond": is_diamond, "is_unreliable": True,
+                "level": 0, "is_diamond": is_diamond, "is_contrarian": False, "is_unreliable": True,
                 "icon": "🔘", "label": "判定不能",
                 "recommended_action": "テクニカル指標の一部が取得できませんでした。",
                 "current_status": f"ファンダメンタルズは良好ですが、以下の指標が欠損しています: {', '.join(missing_items)}",
@@ -574,6 +575,7 @@ def calculate_buy_signal(stock_data: dict) -> Optional[dict]:
     return {
         "level": level,
         "is_diamond": is_diamond,
+        "is_contrarian": is_contrarian,
         "is_unreliable": not is_reliable,
         "icon": icon,
         "label": label,

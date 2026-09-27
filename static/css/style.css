@@ -824,6 +824,59 @@ button {
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4) !important;
 }
 
+/* 購入：逆張りチャンス (⚡ 稲妻アンバー / 琥珀色) - 高速閃光 (#229 改善版) */
+.theme-contrarian-gold {
+    background: linear-gradient(45deg, #a04000, #c0392b, #d35400, #a04000) !important;
+    border: 1px solid #b33900 !important;
+}
+.theme-contrarian-gold .signal-badge-text {
+    color: #ffffff !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9) !important;
+    font-weight: 800 !important;
+}
+.theme-contrarian-gold::after {
+    background: linear-gradient(
+        110deg,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.2) 40%,
+        rgba(255, 255, 255, 0.35) 50%,
+        rgba(255, 255, 255, 0.2) 60%,
+        rgba(255, 255, 255, 0) 100%
+    ) !important;
+    animation: shimmer-effect 2.0s infinite linear;
+}
+
+/* 購入：逆張り注目 (🔮 ディープインディゴ / 深海ブルー) - 落ち着いた深海光 (#229) */
+.theme-contrarian-diamond {
+    background: linear-gradient(45deg, #1f2d3d, #2c3e50, #3d566e, #1f2d3d) !important;
+    border: 1px solid #4b6584 !important;
+}
+.theme-contrarian-diamond .signal-badge-text {
+    color: #ffffff !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8) !important;
+    font-weight: bold !important;
+}
+.theme-contrarian-diamond::after {
+    animation: shimmer-effect 2.5s infinite linear;
+}
+
+/* ダークモード時の輪郭・発光・文字視認性強化 (#229) */
+[data-theme="dark"] .theme-contrarian-gold,
+:root.dark-mode .theme-contrarian-gold,
+body.dark-mode .theme-contrarian-gold,
+.dark-mode .theme-contrarian-gold {
+    border-color: #f39c12 !important;
+    box-shadow: 0 0 8px rgba(243, 156, 18, 0.6) !important;
+}
+
+[data-theme="dark"] .theme-contrarian-diamond,
+:root.dark-mode .theme-contrarian-diamond,
+body.dark-mode .theme-contrarian-diamond,
+.dark-mode .theme-contrarian-diamond {
+    border-color: #5dade2 !important;
+    box-shadow: 0 0 8px rgba(93, 173, 226, 0.55) !important;
+}
+
 /* --- アニメーション定義 (GPU加速・物理移動) --- */
 @keyframes shimmer-effect {
     0% { transform: translateX(-100%); }

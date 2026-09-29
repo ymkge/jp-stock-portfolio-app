@@ -204,6 +204,88 @@ class LLMDiagnosisService:
                 "message": f"AI診断実行中に予期せぬエラーが発生しました: {str(e)}"
             }
 
+    def _calculate_portfolio_cap_metrics(
+        self, 
+        portfolio_summary: Optional[Dict[str, Any]], 
+        price_num: float
+    ) -> Dict[str, Any]:
+        """
+        案件 #304: 100銘柄分散投資ポリシーに基づく1銘柄あたりの購入上限目安を算出する。
+        - ポートフォリオ総評価額（total_market_value）を基準
+        - コア枠（高い安全性）: 最大3%程度まで
+        - サテライト枠（高リスク・条件付き）: 1〜2%程度まで
+        - 小規模ポートフォリオ保護: 1%: 最低2万円, 2%: 最低3万円, 3%: 最低5万円の下限保証
+        - 現在株価に基づく上限株数換算（最低1株保証）
+        - 総評価額未取得時の多層フォールバック（DB履歴 ➔ デフォルト300万円）
+        """
+        total_val = 0.0
+        if portfolio_summary and isinstance(portfolio_summary, dict):
+            try:
+                raw_val = (
+                    portfolio_summary.get("total_market_value") or 
+                    portfolio_summary.get("total_assets") or 
+                    portfolio_summary.get("total_value") or 0.0
+                )
+                total_val = float(str(raw_val).replace(',', ''))
+            except (ValueError, TypeError):
+                total_val = 0.0
+
+        is_fallback = False
+        if total_val <= 0:
+            # DB履歴 (portfolio_summary_history) から最新レコードを取得
+            try:
+                import sqlite3
+                import history_manager
+                with sqlite3.connect(history_manager.DB_FILE) as conn:
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT total_market_value FROM portfolio_summary_history
+                        WHERE total_market_value > 0
+                        ORDER BY snapshot_date DESC LIMIT 1
+                    """)
+                    row = cursor.fetchone()
+                    if row and row["total_market_value"]:
+                        total_val = float(row["total_market_value"])
+            except Exception as dbe:
+                logger.debug(f"Failed to fetch total_market_value from DB history: {dbe}")
+
+        if total_val <= 0:
+            total_val = 3_000_000.0  # 基準デフォルト値（300万円）
+            is_fallback = True
+
+        # 最低エントリー下限ガード付き金額枠（円）
+        cap_1pct = max(20_000, int(total_val * 0.01))
+        cap_2pct = max(30_000, int(total_val * 0.02))
+        cap_3pct = max(50_000, int(total_val * 0.03))
+
+        # 現在株価での株数換算（最低1株保証）
+        if price_num > 0:
+            shares_1pct = max(1, int(cap_1pct // price_num))
+            shares_2pct = max(1, int(cap_2pct // price_num))
+            shares_3pct = max(1, int(cap_3pct // price_num))
+        else:
+            shares_1pct = shares_2pct = shares_3pct = 1
+
+        summary_text = (
+            f"  * ポートフォリオ総評価額: 約 {int(total_val):,} 円"
+            f"{' (※推計基準値)' if is_fallback else ''}\n"
+            f"  * 【サテライト枠 (1〜2%分散目安)】: 約 {cap_1pct:,} 円〜約 {cap_2pct:,} 円 (約 {shares_1pct} 株〜約 {shares_2pct} 株まで)\n"
+            f"  * 【コア枠 (最大3%分散目安)】: 最大約 {cap_3pct:,} 円 (約 {shares_3pct} 株まで)"
+        )
+
+        return {
+            "total_market_value": total_val,
+            "is_fallback": is_fallback,
+            "cap_1pct": cap_1pct,
+            "cap_2pct": cap_2pct,
+            "cap_3pct": cap_3pct,
+            "shares_1pct": shares_1pct,
+            "shares_2pct": shares_2pct,
+            "shares_3pct": shares_3pct,
+            "summary_text": summary_text
+        }
+
     def _calculate_downside_metrics(self, stock_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         案件 #303: 下値分析（仕込みどきの価格・安全網）用の定量的指標を算出する。
@@ -458,6 +540,9 @@ class LLMDiagnosisService:
         # 下値分析用の定量的指標を算出
         downside_metrics = self._calculate_downside_metrics(stock_data)
 
+        # 案件 #304: 100銘柄分散投資ポリシーに基づく購入上限目安指標を算出
+        cap_metrics = self._calculate_portfolio_cap_metrics(portfolio_summary, price_num)
+
         prompt = f"""{policy_prompt}
 
 ---
@@ -482,6 +567,8 @@ class LLMDiagnosisService:
 - リアルタイム為替環境 (USD/JPY): {fx_info_str}
 - 下値参考指標 (定量的安全網データ):
 {downside_metrics['summary_text']}
+- 100銘柄分散投資ポリシーに基づく購入上限参考指標:
+{cap_metrics['summary_text']}
 
 ---
 
@@ -489,6 +576,7 @@ class LLMDiagnosisService:
 上記「ユーザーの基本投資方針」に照らし合わせ、対象銘柄({code} {name})の適合度を分析してください。
 直近の業績動向（EPSや収益性）、配当維持能力（還元の盾）、および【75日・200日移動平均線との位置関係（上昇トレンド／押し目圏／長期下降トレンド）】と【材料出尽くし感（好材料出尽くし下落リスク / 悪材料アク抜け大底判定）やマクロ地政学・災害・米国市況ショックの影響度】、ならびに【リアルタイムドル円レートおよび直近レンジ位置（為替影響: 輸出株の減益リスク／内需株の追い風）】を踏まえて投資判断を行ってください。
 また、本システム（S株ナンピン買い下がり）における【下値メド（第1仕込みライン・第2岩盤ライン）】を分析し、買い下がりターゲットとなる価格帯と利回り、下値支持の根拠を明示してください。
+さらに、約100銘柄への分散投資（集中投資防止ルール）に基づき、本銘柄の安全度・選定枠に応じた【1銘柄あたりの購入上限目安（金額・資産比率・累計株数・ナンピン配分計画）】を判定・出力してください（コア枠: 最大3%程度まで、サテライト枠: 1〜2%程度まで）。
 ※重要: トレンドが「上昇トレンド」や「絶好の押し目圏」にある場合は、順張り・格安エントリーの観点から分析の確信度 (confidence_score) を高め(85〜95点)に算出して後押しし、長期下降トレンド下では慎重な確信度・立ち回りを提示してください。
 必ず以下のJSONフォーマットのみを出力してください。Markdownや他の余計な文言は一切含めないでください。
 
@@ -499,6 +587,13 @@ JSONフォーマットで回答を出力してください。キーは必ず以�
   "decision_label": "【判定ラベル】(例: 【強い買い（コア）】 / 【買い（サテライト）】 / 【中立・監視】 / 【見送り（Avoid）】)",
   "estimated_yield": "予想配当利回りの記載(例: 約4.4%)",
   "recommended_shares": "1回あたりの購入目安株数の記載(例: 約3株〜4株)",
+  "investment_cap": {{
+    "tier": "選定枠(例: コア枠 (最大3%) または サテライト枠 (1〜2%))",
+    "cap_amount_str": "購入上限目安金額と比率(例: 最大約15万円 (総資産の約3%))",
+    "max_shares_str": "上限株数(例: 累計約60株まで)",
+    "allocation_plan": "ナンピン配分(例: 1回あたり1〜2万円×最大3〜4回に分けて買い下がり)",
+    "reason": "100銘柄分散投資方針に基づく上限理由(例: 還元の盾と財務盤石性により上限3%まで許容)"
+  }},
   "shield_and_valuation": "「還元の盾」およびPBR/PER過熱感の評価詳細",
   "performance_summary": "直近のEPS・収益性・業績動向および配当原資創出力に関するAI評価解説",
   "trend_analysis": "75日・200日移動平均線を踏まえた長中期トレンドの簡潔な評価解説（※1〜2文程度のコンパクトな文章とすること）",
@@ -536,6 +631,21 @@ fit_levelの基準:
             "tactical_memo": "時間分散・価格分散によるS株ナンピン買い下がりを推奨します。"
         }
 
+        default_cap_core = {
+            "tier": "コア枠 (最大3%)",
+            "cap_amount_str": "最大約15万円 (総資産の約3%)",
+            "max_shares_str": "算出中",
+            "allocation_plan": "1回あたり1〜2万円×複数回に分けて買い下がり",
+            "reason": "100銘柄分散投資方針に基づく上限目安（安全度高: 最大3%まで）"
+        }
+        default_cap_satellite = {
+            "tier": "サテライト枠 (1〜2%)",
+            "cap_amount_str": "最大約5万〜10万円 (総資産の約1〜2%)",
+            "max_shares_str": "算出中",
+            "allocation_plan": "1回あたり1〜2万円×最大3〜5回に限定",
+            "reason": "100銘柄分散投資方針に基づく上限目安（限定枠: 1〜2%まで）"
+        }
+
         try:
             data = json.loads(cleaned)
         except Exception:
@@ -545,6 +655,7 @@ fit_levelの基準:
                 "decision_label": "【判定解析中】",
                 "estimated_yield": "要確認",
                 "recommended_shares": "要確認",
+                "investment_cap": default_cap_satellite,
                 "shield_and_valuation": "レスポンスのパースに一部失敗しましたが、詳細テキストを以下に示します。",
                 "performance_summary": "業績データの詳細解析を実行中です。",
                 "trend_analysis": "75日・200日移動平均線を踏まえたトレンド分析を実行中です。",
@@ -581,12 +692,27 @@ fit_levelの基準:
         else:
             dip_analysis = default_dip
 
+        # investment_cap の安全な抽出と自己修復（補完） (#304)
+        fallback_cap = default_cap_core if fit_level == "fit" else default_cap_satellite
+        cap_raw = data.get("investment_cap")
+        if isinstance(cap_raw, dict):
+            cap_analysis = {
+                "tier": str(cap_raw.get("tier") or fallback_cap["tier"]),
+                "cap_amount_str": str(cap_raw.get("cap_amount_str") or fallback_cap["cap_amount_str"]),
+                "max_shares_str": str(cap_raw.get("max_shares_str") or fallback_cap["max_shares_str"]),
+                "allocation_plan": str(cap_raw.get("allocation_plan") or fallback_cap["allocation_plan"]),
+                "reason": str(cap_raw.get("reason") or fallback_cap["reason"])
+            }
+        else:
+            cap_analysis = fallback_cap
+
         return {
             "fit_level": fit_level,
             "confidence_score": confidence_score,
             "decision_label": str(data.get("decision_label", "【判定完了】")),
             "estimated_yield": str(data.get("estimated_yield", "N/A")),
             "recommended_shares": str(data.get("recommended_shares", "N/A")),
+            "investment_cap": cap_analysis,
             "shield_and_valuation": str(data.get("shield_and_valuation", "データなし")),
             "performance_summary": str(data.get("performance_summary", "直近業績（EPS・収益性）データに基づき持続可能な配当維持力を検証済みです。")),
             "trend_analysis": str(data.get("trend_analysis", "75日・200日移動平均線との位置関係およびトレンド状態を考慮した分析を実行済みです。")),
@@ -1176,6 +1302,9 @@ fit_levelの基準:
         # パイプ区切り形式に圧縮
         pipe_formatted_data = self._format_assets_to_pipe_lines(filtered_assets)
 
+        # 案件 #304: 100銘柄分散投資ポリシーに基づく購入上限目安指標
+        cap_metrics = self._calculate_portfolio_cap_metrics(portfolio_summary, 0)
+
         # 為替コンテキストテキスト
         fx_text = ""
         if usd_jpy_rate_detail and isinstance(usd_jpy_rate_detail, dict):
@@ -1191,7 +1320,7 @@ fit_levelの基準:
         system_instruction = (
             "あなたは厳格な定量的データと数式ロジックに基づいて株式分析を行う「インカムゲイン特化型・リスク管理専門アナリスト」です。"
             "提供されたパイプ区切り形式の銘柄データとユーザーの『投資方針』、為替相場コンテキストを照らし合わせ、"
-            "個別銘柄診断と同一の基準（配当利回り3.5%以上、還元の盾: DOE/連続増配、PBR過熱回避、ポートフォリオ配当集中防止）に適合する"
+            "個別銘柄診断と同一の基準（配当利回り3.5%以上、還元の盾: DOE/連続増配、PBR過熱回避、ポートフォリオ配当集中防止、100銘柄分散投資ルール）に適合する"
             "購入推奨度の最も高い銘柄を最大5つ厳選して順位付けし、構造化JSONフォーマットで回答してください。"
         )
 
@@ -1199,6 +1328,11 @@ fit_levelの基準:
 
 【ユーザーの基本投資方針と判定基準】:
 {policy_prompt if policy_prompt.strip() else 'インカムゲイン最大化を目指し、予想利回り3.5%以上、DOEや連続増配による還元の盾、PBR1.5倍以下の割安株を厳選する。'}
+
+【100銘柄分散投資ポリシー（1銘柄購入上限目安）】:
+- ポートフォリオ総評価額: 約{int(cap_metrics['total_market_value']):,}円
+- 【コア枠（高い安全性）】: 最大でも総資産の3%程度まで（上限目安: 最大約{cap_metrics['cap_3pct']:,}円）
+- 【サテライト枠（条件付き・高リスク）】: 総資産の1〜2%程度まで（上限目安: 約{cap_metrics['cap_1pct']:,}円〜約{cap_metrics['cap_2pct']:,}円）
 
 【分析対象銘柄データ (パイプ区切り1行フォーマット: コード|銘柄名|業種|現在株価|PER|PBR|ROE|利回り|配当性向|DOE|増配年|配当比|保有株|スコア|シグナル|仕込目安)】:
 {pipe_formatted_data}
@@ -1214,6 +1348,8 @@ fit_levelの基準:
 4. 【ポートフォリオ配当比率（集中防止と新規分散）】:
    - 既に保有していて「配当比（ポートフォリオ年間配当に占める割合）」が10%〜15%以上の銘柄は、配当集中リスクを避けるため順位を抑えてください。
    - 「配当比:0%(新規)」の未保有銘柄、または低シェアの優良銘柄は、ポートフォリオの分散効果が高いとして優先的に推奨してください。
+5. 【100銘柄分散上限目安の明示】:
+   - 銘柄ごとの枠組み（コア枠またはサテライト枠）に応じた購入上限金額・比率目安を `investment_cap_str` に明記してください。
 
 【回答フォーマット指示】:
 必ず以下の構造を持つ唯一の JSON オブジェクトのみを出力してください (Markdownコードブロック ```json ... ``` で包んで構いません):
@@ -1226,6 +1362,7 @@ fit_levelの基準:
       "industry": "業種",
       "dividend_yield_str": "予想利回り (例: 4.2%)",
       "target_buy_price": "仕込み目標株価 (例: 約2,450円 / 利回り4.5%水準)",
+      "investment_cap_str": "購入上限目安 (例: 最大約15万円 (約3%) または 約5万〜10万円 (約1〜2%))",
       "shield_summary": "還元の盾の要約 (例: DOE 4.8% または 連続増配11年 または 累進配当)",
       "role_badge": "枠組み (例: 【コア枠】新規分散 または 【高利回りブースター】 または 【コア枠】買い増し)",
       "fit_score": 95,
@@ -1271,7 +1408,7 @@ fit_levelの基準:
             json_str = json_match.group(1) if json_match else raw_text
             parsed_res = json.loads(json_str)
 
-            # target_buy_price の安全なフォールバック補完
+            # target_buy_price および investment_cap_str の安全なフォールバック補完
             recs = parsed_res.get("recommendations", [])
             for r in recs:
                 if not r.get("target_buy_price"):
@@ -1286,6 +1423,13 @@ fit_levelの基準:
                             r["target_buy_price"] = "現在値近辺で打診買い"
                     else:
                         r["target_buy_price"] = "現在値近辺で打診買い"
+
+                if not r.get("investment_cap_str"):
+                    role = str(r.get("role_badge", ""))
+                    is_satellite = "サテライト" in role
+                    target_cap = cap_metrics["cap_2pct"] if is_satellite else cap_metrics["cap_3pct"]
+                    target_pct = "約1〜2%" if is_satellite else "約3%"
+                    r["investment_cap_str"] = f"上限: 約{int(target_cap):,}円 ({target_pct})"
 
             diagnosed_at_str = time.strftime("%H:%M", time.localtime(now))
             result = {

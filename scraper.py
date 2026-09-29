@@ -452,7 +452,7 @@ class JPStockScraper(BaseScraper):
 
                 # 基準日ごとの年間合計値 (予想・修正実績・実績の優先順位で抽出)
                 # 型: [{"settlementDate": "202409", "annualForecastValue": "20.0", ...}, ...]
-                dps_matches_ext = re.findall(r'\"settlementDate\":\"(\d{4})\d{2}\"[^{}]*?\"(annualForecastValue|annualCorrectedActualValue|annualActualValue|annualActualDividend)\":\s*([\d\.]+)', json_div)
+                dps_matches_ext = re.findall(r'\"settlementDate\":\"(\d{4})\d{2}\"[^{}]*?\"(annualForecastValue|annualCorrectedActualValue|annualActualValue|annualActualDividend)\":\s*\"?([\d\.]+)\"?', json_div)
                 for year, type_key, val in dps_matches_ext:
                     v = float(val)
                     if v < 100000:
@@ -476,7 +476,7 @@ class JPStockScraper(BaseScraper):
         div_list_area = re.search(r'\"dividend\":\[.*?\]', json_q)
         if div_list_area:
             ctx = div_list_area.group(0)
-            m_list = re.findall(r'\"date\":\"(\d{4})\d{2}\".*?\"(?:dividend|dps)\":\s*([\d\.]+)', ctx)
+            m_list = re.findall(r'\"date\":\"(\d{4})\d{2}\".*?\"(?:dividend|dps)\":\s*\"?([\d\.]+)\"?', ctx)
             for year, val in m_list:
                 v = float(val)
                 if v < 100000:
@@ -531,6 +531,36 @@ class JPStockScraper(BaseScraper):
                     calc_yield = (data['annual_dividend'] / p) * 100
                     data['yield'] = f"{calc_yield:.2f}"
             except: pass
+
+        # 株式分割直後のトップページ会社予想DPS更新遅延に対する整合性補正 (#330)
+        # トップページが分割前の旧DPS(例: 180円)のままで、詳細タブの dividend_history に分割後DPS(例: 90円)が先行反映されている場合
+        if data['annual_dividend'] > 0 and div_history:
+            current_year = datetime.now().year
+            forward_years = [str(current_year), str(current_year + 1), str(current_year + 2)]
+            future_candidates = {y: v for y, v in div_history.items() if y in forward_years and v > 0}
+            if future_candidates:
+                latest_future_year = max(future_candidates.keys())
+                latest_hist_div = future_candidates[latest_future_year]
+                if latest_hist_div > 0:
+                    div_ratio = data['annual_dividend'] / latest_hist_div
+                    # 一般的な株式分割比率 (1:2, 1:3, 1:4, 1:5, 1:10等) の範囲内にあるか判定 (乖離が1.6倍以上)
+                    is_split_mismatch = any(
+                        (0.8 * r <= div_ratio <= 1.2 * r) for r in [2.0, 3.0, 4.0, 5.0, 10.0]
+                    )
+                    if is_split_mismatch:
+                        logger.info(
+                            f"Detected unadjusted top-page DPS for {code} ({data['annual_dividend']} vs history {latest_hist_div}). "
+                            f"Overriding annual_dividend with split-adjusted dividend from dividend_history (Year: {latest_future_year})."
+                        )
+                        data['annual_dividend'] = latest_hist_div
+                        # 利回りも最新分割後株価で再計算・更新
+                        try:
+                            p = float(data['price'])
+                            if p > 0:
+                                calc_yield = (data['annual_dividend'] / p) * 100
+                                data['yield'] = f"{calc_yield:.2f}"
+                        except Exception:
+                            pass
 
         data.update({
             "code": code,

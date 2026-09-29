@@ -751,6 +751,30 @@ def _enrich_stock_data(merged_data: Dict[str, Any], scraped_data: Optional[Dict[
         except Exception as e:
             logger.warning(f"Failed to virtual-calculate MAs for {code}: {e}")
 
+        # --- 株式分割適用済み銘柄の配当自己修復 (Self-Healing Dividend Correction) (#330) ---
+        try:
+            applied_splits = {s["code"]: float(s["ratio"]) for s in history_manager.get_applied_split_alerts()}
+            if code in applied_splits:
+                ratio = applied_splits[code]
+                cur_dps = float(merged_data.get("annual_dividend") or 0)
+                div_hist = merged_data.get("dividend_history", {})
+                if cur_dps > 0 and div_hist and ratio > 1.0:
+                    cur_y = datetime.now().year
+                    future_years = [str(cur_y), str(cur_y + 1), str(cur_y + 2)]
+                    future_candidates = {y: float(v) for y, v in div_hist.items() if y in future_years and float(v) > 0}
+                    if future_candidates:
+                        latest_future_val = future_candidates[max(future_candidates.keys())]
+                        # 乖離比率が概ね分割比率相当(0.8〜1.2*ratio)の場合、分割前の旧DPSと判定して自己修復
+                        if 0.8 * ratio <= (cur_dps / latest_future_val) <= 1.2 * ratio:
+                            logger.info(f"Self-Healing Split Dividend Correction for {code}: dps {cur_dps} -> {latest_future_val} (ratio={ratio})")
+                            merged_data["annual_dividend"] = latest_future_val
+                            p_val = float(str(merged_data.get("price") or 0).replace(',', ''))
+                            if p_val > 0:
+                                merged_data["yield"] = f"{(latest_future_val / p_val) * 100:.2f}"
+                                merged_data["dividend_yield"] = float(merged_data["yield"])
+        except Exception as split_e:
+            logger.warning(f"Failed to check split dividend self-healing for {code}: {split_e}")
+
         merged_data["consecutive_increase_years"] = calculate_consecutive_dividend_increase(merged_data.get("dividend_history", {}))
         score, details = calculate_score(merged_data)
         merged_data["score"] = score
@@ -2289,6 +2313,39 @@ async def apply_split_alert(req: ApplySplitRequest):
             logger.info(f"Successfully applied DB split adjustment for {code} with ratio {ratio}")
         except Exception as db_e:
             logger.warning(f"Failed to apply DB split adjustment for {code}: {db_e}")
+
+        # DB内の daily_analysis キャッシュ配当・利回りデータも自動分割補正 (#330)
+        try:
+            cached_data = history_manager.get_latest_daily_data(code)
+            if cached_data:
+                cached_dps = float(cached_data.get("annual_dividend") or 0)
+                div_hist = cached_data.get("dividend_history", {})
+                should_adjust_dps = False
+                
+                if cached_dps > 0 and div_hist:
+                    cur_y = datetime.now().year
+                    future_candidates = [div_hist[y] for y in [str(cur_y), str(cur_y + 1), str(cur_y + 2)] if y in div_hist and float(div_hist[y]) > 0]
+                    if future_candidates:
+                        latest_fut = float(future_candidates[-1])
+                        if 0.8 * ratio <= (cached_dps / latest_fut) <= 1.2 * ratio:
+                            should_adjust_dps = True
+                elif cached_dps > 0:
+                    # 詳細履歴がない場合でも、株価に対する利回りが不自然に高い（分割前DPSが残っている）場合は比率で調整
+                    p_chk = float(str(cached_data.get("price") or 0).replace(',', ''))
+                    if p_chk > 0 and (cached_dps / p_chk * 100) > 4.5:
+                        should_adjust_dps = True
+
+                if should_adjust_dps:
+                    new_dps = round(cached_dps / ratio, 2)
+                    cached_data["annual_dividend"] = new_dps
+                    p_val = float(str(cached_data.get("price") or 0).replace(',', ''))
+                    if p_val > 0:
+                        cached_data["yield"] = f"{(new_dps / p_val) * 100:.2f}"
+                        cached_data["dividend_yield"] = float(cached_data["yield"])
+                    history_manager.save_daily_data(code, cached_data.get("asset_type", "jp_stock"), cached_data)
+                    logger.info(f"Successfully adjusted daily_analysis dividend for {code}: {cached_dps} -> {new_dps}")
+        except Exception as div_e:
+            logger.warning(f"Failed to adjust daily_analysis dividend for {code}: {div_e}")
 
         # アラートのステータス更新
         history_manager.update_split_alert_status(code, 'applied')

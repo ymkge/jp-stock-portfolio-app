@@ -885,17 +885,33 @@ def calculate_monthly_change_rankings(
         # --- 株式分割過渡期スナップショットの自動補正 (Self-Healing Split Correction) ---
         adjusted_prev_mv = prev_mv
         effective_prev_qty = prev_qty
-        if code in applied_splits and prev_qty > 0 and curr_qty > 0 and prev_mv > 0:
+        if code in applied_splits and prev_qty > 0 and curr_qty > 0 and prev_mv > 0 and curr_mv > 0:
             ratio = applied_splits[code]
             if ratio > 1.0:
                 qty_ratio = curr_qty / prev_qty
-                # 株数が過去スナップショットから現在にかけて実際に分割比率倍(0.7〜1.3*ratio)増えている過渡期データのみ補正
-                is_transitional_qty = (0.7 * ratio <= qty_ratio <= 1.3 * ratio)
+                # 株数が過去スナップショットから現在にかけて実際に分割比率倍(0.7〜1.3*ratio)増えている場合
+                is_qty_split_matched = (0.7 * ratio <= qty_ratio <= 1.3 * ratio)
                 
-                if is_transitional_qty:
-                    adjusted_prev_mv = prev_mv * ratio
+                if is_qty_split_matched:
+                    # 当月追加買付株数の計算用には、分割後株数ベースで比較するため常に ratio を乗算
                     effective_prev_qty = prev_qty * ratio
-                    logger.info(f"Self-Healing Split Correction applied for {code}: prev_mv {prev_mv} -> {adjusted_prev_mv} (ratio={ratio})")
+                    
+                    # 先月末想定単価と現在想定単価を算出
+                    prev_unit_price = prev_mv / prev_qty
+                    curr_unit_price = curr_mv / curr_qty
+                    unit_price_ratio = prev_unit_price / curr_unit_price
+                    
+                    # 【過渡期異常スナップショット (#271: 8309型) の判定】
+                    # 先月末時点で株価のみ新株価（分割後株価）で記録されていた場合、単価比率は 1.0 付近（0.7〜1.3）となる
+                    if 0.7 <= unit_price_ratio <= 1.3:
+                        adjusted_prev_mv = prev_mv * ratio
+                        logger.info(f"Self-Healing Split Correction applied for transitional data {code}: prev_mv {prev_mv} -> {adjusted_prev_mv} (ratio={ratio})")
+                    else:
+                        # 【正常スナップショット (#329: 8316型) の判定】
+                        # 先月末時点で分割前株価で記録されていた場合、単価比率は ratio 付近（例: 2.0倍）となるため、
+                        # prev_mv はすでに正しい旧評価額であり、二重補正を行わない
+                        adjusted_prev_mv = prev_mv
+                        logger.debug(f"Normal snapshot preserved for {code}: prev_mv={prev_mv}, unit_price_ratio={unit_price_ratio:.2f}")
 
         # --- 当月追加買付株数と概算投資額の算定 (#272) ---
         purchased_qty = max(0.0, curr_qty - effective_prev_qty)

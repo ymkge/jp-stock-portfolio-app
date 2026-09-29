@@ -342,3 +342,67 @@ def test_apply_split_alert_adjusts_db_history():
 
     # クリーンアップ
     history_manager.update_split_alert_status(code, 'dismissed')
+
+
+def test_apply_split_alert_adjusts_daily_analysis_dividend():
+    """案件 #330: split-alerts 適用時に daily_analysis の配当・利回りが自動分割補正されるか検証"""
+    from fastapi.testclient import TestClient
+    from app import app
+    from unittest.mock import patch
+
+    code = "8316_test_div"
+    history_manager.add_split_alert(code, 2.0)
+
+    mock_portfolio = [
+        {"code": code, "name": "テスト銘柄", "holdings": [{"id": "h1", "purchase_price": 2000, "quantity": 60}]}
+    ]
+    mock_daily = {
+        "price": 3357.0,
+        "annual_dividend": 180.0,
+        "dividend_history": {"2026": 78.5, "2027": 90.0},
+        "asset_type": "jp_stock"
+    }
+
+    client = TestClient(app)
+    with patch("portfolio_manager.load_portfolio", return_value=mock_portfolio), \
+         patch("portfolio_manager.save_portfolio"), \
+         patch("sync_history.HistorySyncTool.apply_split_adjustment"), \
+         patch("history_manager.get_latest_daily_data", return_value=mock_daily), \
+         patch("history_manager.save_daily_data") as mock_save_daily:
+        response = client.post("/api/split-alerts/apply", json={"code": code, "ratio": 2.0})
+        assert response.status_code == 200
+        assert response.json()["status"] == "success"
+        # save_daily_data が呼び出され、annual_dividend が 90.0 に補正されたことを検証
+        mock_save_daily.assert_called_once()
+        args = mock_save_daily.call_args[0]
+        assert args[0] == code
+        saved_data = args[2]
+        assert saved_data["annual_dividend"] == 90.0
+        assert saved_data["yield"] == "2.68"
+
+    # クリーンアップ
+    history_manager.update_split_alert_status(code, 'dismissed')
+
+
+def test_enrich_stock_data_self_healing_dividend():
+    """案件 #330: _enrich_stock_data で分割後銘柄の旧配当が自己修復されるか検証"""
+    from app import _enrich_stock_data
+    from unittest.mock import patch
+
+    mock_applied = [{"code": "8316_sh", "ratio": 2.0, "status": "applied"}]
+    test_data = {
+        "code": "8316_sh",
+        "price": 3357.0,
+        "annual_dividend": 180.0,
+        "dividend_history": {"2026": 78.5, "2027": 90.0},
+        "asset_type": "jp_stock",
+        "bps": "4000.0"
+    }
+
+    with patch("history_manager.get_applied_split_alerts", return_value=mock_applied), \
+         patch("history_manager.get_historical_data_for_analysis", return_value=[]):
+        enriched = _enrich_stock_data(test_data)
+        assert enriched["annual_dividend"] == 90.0
+        assert enriched["yield"] == "2.68"
+        assert enriched["dividend_yield"] == 2.68
+        assert enriched["doe"] == 2.25  # 90 / 4000 * 100

@@ -83,3 +83,31 @@ def test_jp_stock_scraper_quote_symbol_issue294():
     assert scraper._get_quote_symbol("7203.T") == "7203.T"
     assert scraper._get_quote_symbol("7203") == "7203.T"
     assert scraper._get_quote_symbol("130A") == "130A.T"
+
+
+def test_jp_stock_scraper_dividend_split_mismatch_correction(mocker):
+    """案件 #330: トップページDPSが分割前のままで、詳細タブの dividend_history に分割後DPSがある場合の自動補正テスト"""
+    scraper = JPStockScraper()
+
+    # モックレスポンス:
+    # 1. quote (トップページ): dps: 180, price: 3357
+    mock_res_q = mocker.Mock()
+    mock_res_q.text = '''self.__next_f.push([1, "{\\"name\\":\\"三井住友FG\\",\\"price\\":{\\"value\\":\\"3357\\"},\\"dps\\":{\\"value\\":\\"180\\"}}"])'''
+
+    # 2. history: 空
+    mock_res_h = mocker.Mock()
+    mock_res_h.text = 'self.__next_f.push([1, "[]"])'
+
+    # 3. dividend: 2027年 90.0円 (JSON形式)
+    mock_res_d = mocker.Mock()
+    mock_res_d.text = 'self.__next_f.push([1, "[{\\"settlementDate\\":\\"202703\\",\\"annualForecastValue\\":\\"90.0\\"}]"])'
+
+    mocker.patch.object(scraper, '_make_request', side_effect=[mock_res_q, mock_res_h, mock_res_d])
+    mocker.patch('history_manager.get_historical_data_for_analysis', return_value=[])
+
+    data = scraper.fetch_data("8316")
+    # トップページの180.0ではなく、詳細タブの90.0が採用されること
+    assert data["annual_dividend"] == 90.0
+    # 90.0 / 3357 * 100 = 2.68% に計算されること
+    assert data["yield"] == "2.68"
+

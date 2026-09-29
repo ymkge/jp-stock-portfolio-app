@@ -407,6 +407,41 @@ def test_calculate_monthly_change_rankings_already_split_no_overcorrection():
         assert g["monthly_change_jpy"] == 960.0
 
 
+def test_calculate_monthly_change_rankings_standard_split_no_doubling():
+    """Issue #329: 正常な過去スナップショット(8316 三井住友FG 1:2分割)で評価額が二重倍増されないことの検証テスト"""
+    from portfolio_manager import calculate_monthly_change_rankings
+    from unittest.mock import patch
+
+    # 先月末スナップショット（分割前株数30株, 分割前株価6,975円 = 209,250円）
+    mock_last_month_map = {
+        "8316": {"code": "8316", "name": "三井住友FG", "market_value": 209250.0, "quantity": 30.0, "asset_type": "jp_stock"}
+    }
+    # 現在の保有（分割適用後: 60株, 分割後株価3,357円 = 201,420円）
+    raw_holdings = [
+        {"code": "8316", "name": "三井住友FG", "asset_type": "jp_stock", "market_value": 201420.0, "quantity": 60.0}
+    ]
+    mock_applied_splits = [
+        {"code": "8316", "ratio": 2.0, "status": "applied"}
+    ]
+
+    with patch("history_manager.get_last_month_end_holdings_snapshot", return_value=("2026-08", mock_last_month_map)), \
+         patch("history_manager.get_applied_split_alerts", return_value=mock_applied_splits):
+        res = calculate_monthly_change_rankings(raw_holdings, {"JPY": 1.0})
+
+        losers = res["month_losers_top10"]
+        assert len(losers) == 1
+        l = losers[0]
+        assert l["code"] == "8316"
+        # 418,500円に二重倍増されず、元の209,250円が保持されること
+        assert l["last_month_market_value"] == 209250.0
+        assert l["current_market_value"] == 201420.0
+        assert l["monthly_change_jpy"] == -7830.0
+        assert round(l["monthly_change_percent"], 2) == -3.74
+        # 分割による株数増を買付と誤認せず 0株 となること
+        assert l["purchased_quantity"] == 0.0
+        assert l["is_purchased_this_month"] is False
+
+
 def test_calculate_monthly_change_rankings_with_purchased_quantity():
     """Issue #272: 当月追加購入株数 (purchased_quantity) および概算投資額 (approx_invested_jpy) の算出テスト"""
     from portfolio_manager import calculate_monthly_change_rankings

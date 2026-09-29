@@ -5455,3 +5455,71 @@ body.dark-mode .rec-mini-badge.badge-target-price,
     border-color: rgba(56, 189, 248, 0.5);
     box-shadow: 0 0 6px rgba(56, 189, 248, 0.3);
 }
+
+/* --- 案件 #304: 100銘柄分散投資ポリシーに基づく購入上限目安バッジ --- */
+.cap-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    font-weight: bold;
+    vertical-align: middle;
+}
+
+.cap-badge.cap-badge-core {
+    background-color: #dbeafe;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+}
+
+.cap-badge.cap-badge-satellite {
+    background-color: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+}
+
+[data-theme="dark"] .cap-badge.cap-badge-core,
+body.dark-mode .cap-badge.cap-badge-core,
+.dark-mode .cap-badge.cap-badge-core {
+    background-color: rgba(59, 130, 246, 0.2);
+    color: #93c5fd;
+    border: 1px solid rgba(59, 130, 246, 0.4);
+}
+
+[data-theme="dark"] .cap-badge.cap-badge-satellite,
+body.dark-mode .cap-badge.cap-badge-satellite,
+.dark-mode .cap-badge.cap-badge-satellite {
+    background-color: rgba(245, 158, 11, 0.2);
+    color: #fcd34d;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.rec-mini-badge.badge-cap-core {
+    background-color: #e0f2fe;
+    color: #0369a1;
+    border: 1px solid #bae6fd;
+}
+
+.rec-mini-badge.badge-cap-satellite {
+    background-color: #fef3c7;
+    color: #b45309;
+    border: 1px solid #fde68a;
+}
+
+[data-theme="dark"] .rec-mini-badge.badge-cap-core,
+body.dark-mode .rec-mini-badge.badge-cap-core,
+.dark-mode .rec-mini-badge.badge-cap-core {
+    background-color: rgba(14, 165, 233, 0.2);
+    color: #7dd3fc;
+    border-color: rgba(56, 189, 248, 0.4);
+}
+
+[data-theme="dark"] .rec-mini-badge.badge-cap-satellite,
+body.dark-mode .rec-mini-badge.badge-cap-satellite,
+.dark-mode .rec-mini-badge.badge-cap-satellite {
+    background-color: rgba(245, 158, 11, 0.2);
+    color: #fde047;
+    border-color: rgba(245, 158, 11, 0.4);
+}

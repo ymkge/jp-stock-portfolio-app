@@ -2423,13 +2423,16 @@ async def diagnose_stock_with_llm(req: LLMDiagnoseRequest):
             logger.warning(f"Failed to enrich stock data for {code}: {ee}")
             stock_data = asset_data
 
-        # ポートフォリオサマリーを計算
+        # ポートフォリオサマリー（総評価額など）を取得 (#304)
         portfolio_summary = {}
         try:
-            raw_portfolio = portfolio_manager.load_portfolio()
-            portfolio_summary = portfolio_manager.calculate_holding_values(raw_portfolio, {code: stock_data})
+            now_jst = history_manager.get_now_jst()
+            today_str = now_jst.strftime("%Y-%m-%d")
+            latest_sum = history_manager.get_summary_before(today_str)
+            if latest_sum and latest_sum.get("total_market_value"):
+                portfolio_summary = dict(latest_sum)
         except Exception as pe:
-            logger.warning(f"Failed to calculate portfolio summary for {code}: {pe}")
+            logger.warning(f"Failed to fetch portfolio summary for {code}: {pe}")
 
         # LLM診断サービス呼び出し (forceフラグを引き渡し)
         res = llm_service_instance.diagnose_stock(stock_data, portfolio_summary, force=req.force)

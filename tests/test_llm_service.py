@@ -878,6 +878,192 @@ def test_format_assets_to_pipe_lines_with_dip_metrics():
     assert "仕込:約2,222円" in pipe_text
 
 
+# --- 案件 #304: 100銘柄分散投資ポリシーに基づく購入上限目安判定テスト ---
+
+def test_calculate_portfolio_cap_metrics_normal():
+    """総資産500万円、株価2,500円における1%, 2%, 3%の計算および株数換算検証 (#304)"""
+    service = LLMDiagnosisService()
+    summary = {"total_market_value": 5_000_000.0}
+    metrics = service._calculate_portfolio_cap_metrics(summary, 2500.0)
+
+    assert metrics["total_market_value"] == 5_000_000.0
+    assert metrics["is_fallback"] is False
+    assert metrics["cap_1pct"] == 50_000      # 500万円 × 1% = 5万円
+    assert metrics["cap_2pct"] == 100_000     # 500万円 × 2% = 10万円
+    assert metrics["cap_3pct"] == 150_000     # 500万円 × 3% = 15万円
+    assert metrics["shares_1pct"] == 20       # 50,000 // 2500 = 20株
+    assert metrics["shares_2pct"] == 40       # 100,000 // 2500 = 40株
+    assert metrics["shares_3pct"] == 60       # 150,000 // 2500 = 60株
+    assert "サテライト枠 (1〜2%分散目安)" in metrics["summary_text"]
+    assert "コア枠 (最大3%分散目安)" in metrics["summary_text"]
+
+
+def test_calculate_portfolio_cap_metrics_small_portfolio_guard():
+    """総資産30万円などの小規模資産における最低エントリー下限ガード（2万・3万・5万円）検証 (#304)"""
+    service = LLMDiagnosisService()
+    summary = {"total_market_value": 300_000.0}
+    metrics = service._calculate_portfolio_cap_metrics(summary, 1000.0)
+
+    assert metrics["total_market_value"] == 300_000.0
+    # 30万円の1%は3,000円だが最低20,000円にガード
+    assert metrics["cap_1pct"] == 20_000
+    # 30万円の2%は6,000円だが最低30,000円にガード
+    assert metrics["cap_2pct"] == 30_000
+    # 30万円の3%は9,000円だが最低50,000円にガード
+    assert metrics["cap_3pct"] == 50_000
+    assert metrics["shares_1pct"] == 20       # 20,000 // 1000 = 20株
+    assert metrics["shares_2pct"] == 30       # 30,000 // 1000 = 30株
+    assert metrics["shares_3pct"] == 50       # 50,000 // 1000 = 50株
+
+
+def test_calculate_portfolio_cap_metrics_fallback():
+    """総評価額が0または未設定時の安全なフォールバック（デフォルト300万円基準）検証 (#304)"""
+    service = LLMDiagnosisService()
+    # 空辞書かつDBにも何もないと仮定したモック
+    with patch("history_manager.DB_FILE", "/non/existent/db.db"):
+        metrics = service._calculate_portfolio_cap_metrics({}, 2000.0)
+        assert metrics["total_market_value"] == 3_000_000.0
+        assert metrics["is_fallback"] is True
+        assert metrics["cap_1pct"] == 30_000  # 300万 × 1% = 3万円
+        assert metrics["cap_2pct"] == 60_000  # 300万 × 2% = 6万円
+        assert metrics["cap_3pct"] == 90_000  # 300万 × 3% = 9万円
+
+
+def test_calculate_portfolio_cap_metrics_zero_price():
+    """株価0または無効値時のゼロ除算防止・最低1株保証検証 (#304)"""
+    service = LLMDiagnosisService()
+    summary = {"total_market_value": 5_000_000.0}
+    metrics = service._calculate_portfolio_cap_metrics(summary, 0.0)
+    assert metrics["shares_1pct"] == 1
+    assert metrics["shares_2pct"] == 1
+    assert metrics["shares_3pct"] == 1
+
+
+def test_parse_llm_json_investment_cap_compatibility():
+    """旧形式やキー欠損時でもinvestment_capが自己修復・補完されるか検証 (#304)"""
+    service = LLMDiagnosisService()
+    # 1. 正常なinvestment_capが含まれている場合
+    raw_with_cap = json.dumps({
+        "fit_level": "caution",
+        "decision_label": "【買い（サテライト）】",
+        "investment_cap": {
+            "tier": "サテライト枠 (1〜2%)",
+            "cap_amount_str": "最大約10万円 (総資産の約2%)",
+            "max_shares_str": "累計約40株まで",
+            "allocation_plan": "1回あたり1〜2万円×最大2〜3回に限定",
+            "reason": "還元ルール変更リスクがあるため上限2%に制限"
+        }
+    })
+    parsed = service._parse_llm_json(raw_with_cap)
+    assert "investment_cap" in parsed
+    assert parsed["investment_cap"]["tier"] == "サテライト枠 (1〜2%)"
+    assert "最大約10万円" in parsed["investment_cap"]["cap_amount_str"]
+
+    # 2. investment_capが完全に欠落している旧キャッシュ形式の場合（fit: コア枠自己修復）
+    raw_old_core = json.dumps({
+        "fit_level": "fit",
+        "decision_label": "【強い買い（コア）】"
+    })
+    parsed_old_core = service._parse_llm_json(raw_old_core)
+    assert "investment_cap" in parsed_old_core
+    assert "コア枠" in parsed_old_core["investment_cap"]["tier"]
+    assert "最大約15万円" in parsed_old_core["investment_cap"]["cap_amount_str"]
+
+    # 3. investment_capが完全に欠落している旧キャッシュ形式の場合（caution: サテライト枠自己修復）
+    raw_old_sat = json.dumps({
+        "fit_level": "caution",
+        "decision_label": "【買い（サテライト）】"
+    })
+    parsed_old_sat = service._parse_llm_json(raw_old_sat)
+    assert "investment_cap" in parsed_old_sat
+    assert "サテライト枠" in parsed_old_sat["investment_cap"]["tier"]
+    assert "最大約5万〜10万円" in parsed_old_sat["investment_cap"]["cap_amount_str"]
+
+
+def test_diagnose_stock_prompt_contains_cap_metrics():
+    """_build_prompt に100銘柄分散投資ポリシーに基づく購入上限指標が含まれるか検証 (#304)"""
+    service = LLMDiagnosisService()
+    stock_data = {
+        "code": "7164",
+        "name": "全国保証",
+        "price": 2500
+    }
+    summary = {"total_market_value": 10_000_000.0}
+    prompt = service._build_prompt(stock_data, summary, "投資方針テスト")
+
+    assert "100銘柄分散投資ポリシーに基づく購入上限参考指標:" in prompt
+    assert "ポートフォリオ総評価額: 約 10,000,000 円" in prompt
+    assert "サテライト枠 (1〜2%分散目安)" in prompt
+    assert "コア枠 (最大3%分散目安)" in prompt
+    assert "investment_cap" in prompt
+
+
+@patch("requests.post")
+def test_filtered_recommendations_cap_str_and_fallback(mock_post):
+    """おすすめ5選において investment_cap_str が正常にパース・補完されるか検証 (#304)"""
+    service = LLMDiagnosisService()
+    service.policy_manager.get_effective_api_key = MagicMock(return_value="AIzaSyDummyKey")
+
+    assets = [
+        {"code": "7164", "name": "全国保証", "industry": "その他金融業", "price": 2500, "yield": 4.0},
+        {"code": "6200", "name": "インソース", "industry": "サービス業", "price": 800, "yield": 4.2}
+    ]
+
+    mock_llm_output = {
+        "recommendations": [
+            {
+                "rank": 1,
+                "code": "7164",
+                "name": "全国保証",
+                "industry": "その他金融業",
+                "dividend_yield_str": "4.0%",
+                "target_buy_price": "約2,222円 (利回り4.5%)",
+                "investment_cap_str": "最大約15万円 (総資産の約3%)",
+                "role_badge": "【コア枠】新規分散",
+                "fit_score": 95,
+                "fit_stars": "★★★★★",
+                "rationale": "累進配当の盾が強力",
+                "risk_factor": "特になし",
+                "portfolio_advice": "上限まで買い下がり推奨"
+            },
+            {
+                "rank": 2,
+                "code": "6200",
+                "name": "インソース",
+                "industry": "サービス業",
+                "dividend_yield_str": "4.2%",
+                "target_buy_price": "約750円",
+                # investment_cap_str 欠落時のフォールバックテスト
+                "role_badge": "【サテライト枠】新規分散",
+                "fit_score": 80,
+                "fit_stars": "★★★★☆",
+                "rationale": "高ROEだが還元ルール変更リスクあり",
+                "risk_factor": "配当性向の戻り",
+                "portfolio_advice": "上限1〜2%に限定"
+            }
+        ],
+        "overall_summary": "100銘柄分散投資に合致した選定です。"
+    }
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "candidates": [{"content": {"parts": [{"text": json.dumps(mock_llm_output)}]}}]
+    }
+    mock_post.return_value = mock_resp
+
+    summary = {"total_market_value": 5_000_000.0}
+    res = service.diagnose_filtered_recommendations(assets, portfolio_summary=summary, force=True)
+
+    assert res.get("error") is not True
+    recs = res.get("recommendations", [])
+    assert len(recs) == 2
+    assert recs[0]["investment_cap_str"] == "最大約15万円 (総資産の約3%)"
+    # 欠落していた2件目はサテライト枠として上限約100,000円（約1〜2%）にフォールバック補完される
+    assert "上限: 約100,000円 (約1〜2%)" in recs[1]["investment_cap_str"]
+
+
+
 
 
 

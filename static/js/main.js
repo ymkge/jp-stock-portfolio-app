@@ -2056,6 +2056,10 @@ document.addEventListener('DOMContentLoaded', () => {
             fitBadgeIcon = '🔴';
         }
 
+        const isSatellite = (data.decision_label && data.decision_label.includes('サテライト')) || 
+                            (data.investment_cap && data.investment_cap.tier && data.investment_cap.tier.includes('サテライト')) || 
+                            data.fit_level === 'caution';
+
         const html = `
             <div class="llm-card">
                 <div class="llm-card-header">
@@ -2071,7 +2075,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
 
                 <div class="llm-meta-strip">
-                    【概算配当利回り】 ${data.estimated_yield} | 【S株購入目安】 ${data.recommended_shares}
+                    <span>【概算配当利回り】 ${data.estimated_yield}</span>
+                    <span class="meta-strip-divider">|</span>
+                    <span>【S株購入目安】 ${data.recommended_shares}</span>
+                    ${data.investment_cap ? `
+                    <span class="meta-strip-divider">|</span>
+                    <span class="cap-badge ${isSatellite ? 'cap-badge-satellite' : 'cap-badge-core'}">
+                        ${isSatellite ? '⚠️ サテライト上限' : '🎯 コア上限'}: ${escapeHtml(data.investment_cap.cap_amount_str || '')}
+                        ${data.investment_cap.max_shares_str ? `(${escapeHtml(data.investment_cap.max_shares_str)})` : ''}
+                    </span>
+                    ` : ''}
                 </div>
 
                 <!-- フルワイド: 総合判定サマリー -->
@@ -2142,6 +2155,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         <div class="llm-section-block theme-highlight-action">
                             <div class="llm-section-title">💡 本システムでの立ち回りアドバイス</div>
+                            ${data.investment_cap && data.investment_cap.allocation_plan ? `
+                            <div class="cap-allocation-note" style="margin-bottom: 6px; font-size: 0.85rem; padding: 4px 8px; border-radius: 4px; background: rgba(59, 130, 246, 0.08); border-left: 3px solid #3b82f6;">
+                                <strong>🎯 投入配分目安:</strong> ${escapeHtml(data.investment_cap.allocation_plan)}
+                            </div>
+                            ` : ''}
                             <div class="llm-text-content">${data.tactical_advice || 'データなし'}</div>
                         </div>
                     </div>
@@ -2444,6 +2462,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const targetBuyBadge = item.target_buy_price ? `<span class="rec-mini-badge badge-target-price">🎯 仕込み目安: ${escapeHtml(item.target_buy_price)}</span>` : '';
 
+            const isRecSatellite = item.role_badge && item.role_badge.includes('サテライト');
+            const capLimitBadge = item.investment_cap_str ? 
+                `<span class="rec-mini-badge ${isRecSatellite ? 'badge-cap-satellite' : 'badge-cap-core'}">🎯 ${escapeHtml(item.investment_cap_str)}</span>` : '';
+
             return `
                 <div class="recommendation-card ${rankClass} mb-3">
                     <div class="card-header">
@@ -2461,13 +2483,14 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <span class="badge bg-primary ms-1" style="font-size: 0.8rem;">適合度 ${fitScore}%</span>
                             </div>
                         </div>
-                        ${(roleBadge || yieldBadge || shieldBadge || contribBadge || targetBuyBadge) ? `
+                        ${(roleBadge || yieldBadge || shieldBadge || contribBadge || targetBuyBadge || capLimitBadge) ? `
                             <div class="rec-badge-strip">
                                 ${roleBadge}
                                 ${yieldBadge}
                                 ${shieldBadge}
                                 ${contribBadge}
                                 ${targetBuyBadge}
+                                ${capLimitBadge}
                             </div>
                         ` : ''}
                     </div>

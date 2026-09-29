@@ -175,5 +175,40 @@ class TestPresetFilters(unittest.TestCase):
         with open(html_path, 'r', encoding='utf-8') as f:
             html = f.read()
 
-        self.assertIn('style.css?v=3.7', html)
-        self.assertIn('main.js?v=3.7', html)
+        self.assertIn('style.css?v=3.8', html)
+        self.assertIn('main.js?v=3.8', html)
+
+    def test_investment_cap_ui_and_css_styles(self):
+        """style.css, main.js, index.html において購入上限目安バッジのUIおよびダークモードが定義されているか検証 (#304)"""
+        import os
+        css_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'css', 'style.css')
+        with open(css_path, 'r', encoding='utf-8') as f:
+            css = f.read()
+
+        self.assertIn('.cap-badge', css)
+        self.assertIn('.cap-badge.cap-badge-core', css)
+        self.assertIn('.cap-badge.cap-badge-satellite', css)
+        self.assertIn('.rec-mini-badge.badge-cap-core', css)
+        self.assertIn('.rec-mini-badge.badge-cap-satellite', css)
+        self.assertIn('[data-theme="dark"] .cap-badge.cap-badge-core', css)
+        self.assertIn('[data-theme="dark"] .cap-badge.cap-badge-satellite', css)
+        self.assertIn('[data-theme="dark"] .rec-mini-badge.badge-cap-core', css)
+        self.assertIn('[data-theme="dark"] .rec-mini-badge.badge-cap-satellite', css)
+
+        js_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'js', 'main.js')
+        with open(js_path, 'r', encoding='utf-8') as f:
+            js = f.read()
+
+        self.assertIn('cap-badge-core', js)
+        self.assertIn('cap-badge-satellite', js)
+        self.assertIn('badge-cap-core', js)
+        self.assertIn('badge-cap-satellite', js)
+        self.assertIn('investment_cap', js)
+        self.assertIn('cap-allocation-note', js)
+
+        html_path = os.path.join(os.path.dirname(__file__), '..', 'templates', 'index.html')
+        with open(html_path, 'r', encoding='utf-8') as f:
+            html = f.read()
+
+        self.assertIn('style.css?v=3.8', html)
+        self.assertIn('main.js?v=3.8', html)

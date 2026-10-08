@@ -117,6 +117,15 @@ class HoldingData(BaseModel):
     security_company: Optional[str] = None
     memo: Optional[str] = None
 
+class SellHoldingRequest(BaseModel):
+    quantity: float
+    sell_price: float
+    sold_date: Optional[str] = None
+
+class AdjustReinvestmentPoolRequest(BaseModel):
+    balance: float
+    currency: Optional[str] = "JPY"
+
 # --- 購入注目フラグの表示設定 ---
 # --- 購入注目フラグの表示設定 ---
 BUY_SIGNAL_DISPLAY = get_config("buy_signal.display", {
@@ -1954,6 +1963,55 @@ async def delete_holding_endpoint(holding_id: str):
         raise HTTPException(status_code=404, detail="指定された保有情報が見つかりません。")
     return {"status": "success"}
 
+@app.post("/api/holdings/{holding_id}/sell")
+async def sell_holding_endpoint(holding_id: str, request: SellHoldingRequest):
+    """保有株式の一部または全売却を実行する (#332)"""
+    if request.quantity <= 0 or request.sell_price <= 0:
+        raise HTTPException(status_code=400, detail="売却数量と売却単価は0より大きい値を指定してください。")
+    try:
+        result = portfolio_manager.sell_holding(
+            holding_id=holding_id,
+            quantity=request.quantity,
+            sell_price=request.sell_price,
+            sold_date=request.sold_date
+        )
+        return {"status": "success", "result": result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error selling holding {holding_id}: {e}")
+        raise HTTPException(status_code=500, detail="売却処理中にエラーが発生しました。")
+
+@app.get("/api/reinvestment-pool")
+async def get_reinvestment_pool_endpoint():
+    """再投資待機資金プール残高、今年度確定損益、直近売却履歴を取得する (#332)"""
+    try:
+        current_year = datetime.now().year
+        pool_balance = history_manager.get_reinvestment_pool_balance()
+        realized_summary = history_manager.get_realized_summary(current_year)
+        recent_trades = history_manager.get_realized_trades(current_year)[:10]
+        return {
+            "status": "success",
+            "balance": pool_balance,
+            "realized_summary": realized_summary,
+            "recent_trades": recent_trades
+        }
+    except Exception as e:
+        logger.error(f"Error fetching reinvestment pool: {e}")
+        raise HTTPException(status_code=500, detail="再投資プール情報の取得に失敗しました。")
+
+@app.post("/api/reinvestment-pool/adjust")
+async def adjust_reinvestment_pool_endpoint(request: AdjustReinvestmentPoolRequest):
+    """再投資待機資金プールの残高を手動微調整またはリセット（0円）する (#332)"""
+    if request.balance < 0:
+        raise HTTPException(status_code=400, detail="残高は0以上の数値を指定してください。")
+    try:
+        new_balance = history_manager.set_reinvestment_pool_balance(request.balance, request.currency or "JPY")
+        return {"status": "success", "balance": new_balance}
+    except Exception as e:
+        logger.error(f"Error adjusting reinvestment pool: {e}")
+        raise HTTPException(status_code=500, detail="再投資プール残高の調整に失敗しました。")
+
 @app.get("/api/portfolio/analysis")
 async def get_portfolio_analysis(force: bool = False, cooldown_check: None = Depends(check_update_cooldown)):
     """保有資産の分析データを返す"""
@@ -2174,6 +2232,10 @@ async def get_portfolio_analysis(force: bool = False, cooldown_check: None = Dep
         "profit_taking_candidates": profit_taking_candidates, # 追加 (#273)
         "metadata": metadata,
         "previous_summary": previous_summary, # 過去サマリーを追加
+        "reinvestment_pool": {
+            "balance": history_manager.get_reinvestment_pool_balance(),
+            "realized_summary": history_manager.get_realized_summary(datetime.now().year)
+        },
     }
 
 

@@ -251,9 +251,10 @@
                             <button type="button" id="tab-period-monthly" class="period-tab-btn">📅 先月比 (<span id="ranking-month-label">先月末比</span>)</button>
                         </div>
                         <!-- 増減切替 サブタブ -->
-                        <div class="ranking-tab-buttons" style="margin-bottom: 15px;">
+                        <div class="ranking-tab-buttons" style="margin-bottom: 15px; display: flex; gap: 8px;">
                             <button type="button" id="tab-gainers-top20" class="ranking-tab-btn active gainer-tab">🟢 資産増加 TOP20</button>
                             <button type="button" id="tab-losers-top20" class="ranking-tab-btn loser-tab">🔴 資産減少 TOP20</button>
+                            <button type="button" id="tab-sold-out-monthly" class="ranking-tab-btn sold-out-tab hidden" style="border-color: #64748b; color: #64748b;">🏷️ 当月売却済</button>
                         </div>
                         <div id="daily-ranking-content">
                             <!-- ランキングテーブルはここにJSで描画 -->
@@ -474,6 +475,6 @@
     <script src="/static/js/stateManager.js?v=3.2"></script>
     <script src="/static/js/marketFibonacci.js?v=1.0"></script>
     <script src="/static/js/marketAnomaly.js?v=1.0"></script>
-    <script src="/static/js/analysis.js?v=3.4"></script>
+    <script src="/static/js/analysis.js?v=3.5"></script>
 </body>
 </html>

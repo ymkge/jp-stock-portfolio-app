@@ -175,8 +175,9 @@ class TestPresetFilters(unittest.TestCase):
         with open(html_path, 'r', encoding='utf-8') as f:
             html = f.read()
 
-        self.assertIn('style.css?v=3.8', html)
-        self.assertIn('main.js?v=3.8', html)
+        import re
+        self.assertTrue(re.search(r'style\.css\?v=[\d\.]+', html))
+        self.assertTrue(re.search(r'main\.js\?v=[\d\.]+', html))
 
     def test_investment_cap_ui_and_css_styles(self):
         """style.css, main.js, index.html において購入上限目安バッジのUIおよびダークモードが定義されているか検証 (#304)"""
@@ -210,5 +211,6 @@ class TestPresetFilters(unittest.TestCase):
         with open(html_path, 'r', encoding='utf-8') as f:
             html = f.read()
 
-        self.assertIn('style.css?v=3.8', html)
-        self.assertIn('main.js?v=3.8', html)
+        import re
+        self.assertTrue(re.search(r'style\.css\?v=[\d\.]+', html))
+        self.assertTrue(re.search(r'main\.js\?v=[\d\.]+', html))

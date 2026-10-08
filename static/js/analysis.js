@@ -877,10 +877,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 compareDateLabel.textContent = (prevDate && !isFiltered) ? `(比較対象: ${prevDate})` : '';
             }
             
+            const poolData = (fullAnalysisData && fullAnalysisData.reinvestment_pool) || {};
+            const poolBalance = poolData.balance || 0;
+            const realizedSummary = poolData.realized_summary || {};
+            const realizedPl = realizedSummary.total_pl_jpy || 0;
+            const realizedSign = realizedPl >= 0 ? '+' : '';
+            const realizedClass = realizedPl >= 0 ? 'profit' : 'loss';
+
+            let poolHtml = '';
+            if (poolBalance > 0) {
+                const totalAssetWithPool = totalMarketValue + poolBalance;
+                poolHtml = `
+                    <p title="株式等の評価額と待機資金を合わせた総資産です">総資産(待機資金含む): <span class="numeric ${!isAmountVisible ? 'masked-amount' : ''}" style="font-weight: 700; color: #1e40af;">${formatNumber(totalAssetWithPool, 0)}円</span></p>
+                    <p title="売却代金が一時ストックされた買付待機資金です。次回買付時に自動相殺されます">再投資待機資金: <span class="numeric ${!isAmountVisible ? 'masked-amount' : ''}" style="font-weight: 700; color: #2563eb;">${formatNumber(poolBalance, 0)}円</span></p>
+                `;
+            }
+
+            let realizedPlHtml = '';
+            if (realizedSummary.trade_count > 0 || realizedPl !== 0) {
+                realizedPlHtml = `
+                    <p title="今年度の株式売却による確定損益の合計です">今年度の確定損益: <span class="numeric ${!isAmountVisible ? 'masked-amount' : ''} ${realizedClass}" style="font-weight: 700;">${realizedSign}${formatNumber(realizedPl, 0)}円</span> <small style="color: var(--text-muted); font-size: 0.75rem;">(${realizedSummary.trade_count}取引, 勝率 ${(realizedSummary.win_rate || 0).toFixed(1)}%)</small></p>
+                `;
+            }
+
             summaryContent.innerHTML = `
-                <p>総評価額: <span class="numeric ${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalMarketValue, 0)}円</span>${momSuffixMV}</p>
+                ${poolHtml}
+                <p>総評価額(保有株): <span class="numeric ${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalMarketValue, 0)}円</span>${momSuffixMV}</p>
                 <p>総損益: <span class="numeric ${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossClass}">${formatNumber(totalProfitLoss, 0)}円</span>${momSuffixPL}</p>
                 <p>総損益率: <span class="numeric ${!isAmountVisible ? 'masked-amount' : ''} ${summaryProfitLossRateClass}">${formatNumber(totalProfitLossRate, 2)}%</span></p>
+                ${realizedPlHtml}
                 <p>年間配当合計: <span class="numeric ${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalEstimatedAnnualDividend, 0)}円</span>${momSuffixDiv}</p>
                 <p>年間配当合計(税引後): <span class="numeric ${!isAmountVisible ? 'masked-amount' : ''}">${formatNumber(totalEstimatedAnnualDividendAfterTax, 0)}円</span></p>
                 <hr>
@@ -1025,6 +1050,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tabPeriodMonthlyBtn = document.getElementById('tab-period-monthly');
         const tabGainersBtn = document.getElementById('tab-gainers-top20') || document.getElementById('tab-gainers-top10');
         const tabLosersBtn = document.getElementById('tab-losers-top20') || document.getElementById('tab-losers-top10');
+        const tabSoldOutBtn = document.getElementById('tab-sold-out-monthly');
         const monthLabelSpan = document.getElementById('ranking-month-label');
         const modalTitle = document.getElementById('modal-ranking-title');
 
@@ -1037,11 +1063,15 @@ document.addEventListener('DOMContentLoaded', () => {
             monthLabelSpan.textContent = monthlyRankings.month_label;
         }
 
+        const soldOutList = (monthlyRankings && monthlyRankings.month_sold_out) || [];
+
         if (tabPeriodDailyBtn && tabPeriodMonthlyBtn) {
             tabPeriodDailyBtn.onclick = () => {
                 currentRankingPeriod = 'daily';
+                if (currentRankingTab === 'sold_out') currentRankingTab = 'gainers';
                 tabPeriodDailyBtn.classList.add('active');
                 tabPeriodMonthlyBtn.classList.remove('active');
+                if (tabSoldOutBtn) tabSoldOutBtn.classList.add('hidden');
                 if (modalTitle) modalTitle.textContent = '🚀 当日 資産変動ランキング (TOP20)';
                 renderRankingModalContent();
             };
@@ -1049,10 +1079,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentRankingPeriod = 'monthly';
                 tabPeriodMonthlyBtn.classList.add('active');
                 tabPeriodDailyBtn.classList.remove('active');
+                if (tabSoldOutBtn) {
+                    tabSoldOutBtn.classList.remove('hidden');
+                    tabSoldOutBtn.textContent = `🏷️ 当月売却済 (${soldOutList.length})`;
+                }
                 const mLabel = (monthlyRankings && monthlyRankings.month_label) ? monthlyRankings.month_label : '先月末比';
                 if (modalTitle) modalTitle.textContent = `🚀 先月比 資産変動ランキング (${mLabel} TOP20)`;
                 renderRankingModalContent();
             };
+        }
+
+        if (currentRankingPeriod === 'monthly' && tabSoldOutBtn) {
+            tabSoldOutBtn.classList.remove('hidden');
+            tabSoldOutBtn.textContent = `🏷️ 当月売却済 (${soldOutList.length})`;
+        } else if (tabSoldOutBtn) {
+            tabSoldOutBtn.classList.add('hidden');
         }
 
         if (tabGainersBtn && tabLosersBtn) {
@@ -1060,12 +1101,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentRankingTab = 'gainers';
                 tabGainersBtn.classList.add('active');
                 tabLosersBtn.classList.remove('active');
+                if (tabSoldOutBtn) tabSoldOutBtn.classList.remove('active');
                 renderRankingModalContent();
             };
             tabLosersBtn.onclick = () => {
                 currentRankingTab = 'losers';
                 tabLosersBtn.classList.add('active');
                 tabGainersBtn.classList.remove('active');
+                if (tabSoldOutBtn) tabSoldOutBtn.classList.remove('active');
+                renderRankingModalContent();
+            };
+        }
+
+        if (tabSoldOutBtn) {
+            tabSoldOutBtn.onclick = () => {
+                currentRankingTab = 'sold_out';
+                tabSoldOutBtn.classList.add('active');
+                if (tabGainersBtn) tabGainersBtn.classList.remove('active');
+                if (tabLosersBtn) tabLosersBtn.classList.remove('active');
                 renderRankingModalContent();
             };
         }
@@ -1185,11 +1238,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const gainers = rankingsData.month_gainers_top20 || rankingsData.month_gainers_top10 || [];
         const losers = rankingsData.month_losers_top20 || rankingsData.month_losers_top10 || [];
-        const currentList = currentRankingTab === 'gainers' ? gainers : losers;
-        const isGainer = currentRankingTab === 'gainers';
+        const soldOuts = rankingsData.month_sold_out || [];
+
+        let currentList = gainers;
+        if (currentRankingTab === 'losers') {
+            currentList = losers;
+        } else if (currentRankingTab === 'sold_out') {
+            currentList = soldOuts;
+        }
 
         if (currentList.length === 0) {
-            const msg = isGainer ? '先月比の資産増加銘柄はありません。' : '先月比の資産減少銘柄はありません。';
+            let msg = '先月比の資産増加銘柄はありません。';
+            if (currentRankingTab === 'losers') {
+                msg = '先月比の資産減少銘柄はありません。';
+            } else if (currentRankingTab === 'sold_out') {
+                msg = '当月売却された銘柄はありません。';
+            }
             rankingContainer.innerHTML = `<p class="text-muted" style="text-align: center; padding: 20px; font-size: 0.9rem;">${msg}</p>`;
             return;
         }

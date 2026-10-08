@@ -668,18 +668,19 @@ def test_sell_holding_partial_and_full():
         }
     ]
 
-    # 1. 一部売却 (h-1 の 100株中 40株を 3000円で売却)
+    # 1. 一部売却 (h-1 の 100株中 40株を 3000円で売却、手数料1500円控除 #332, #335)
     with patch("portfolio_manager.load_portfolio", return_value=dummy_portfolio), \
          patch("portfolio_manager.save_portfolio") as mock_save, \
          patch("history_manager.get_latest_daily_data", return_value={"name": "トヨタ自動車"}), \
          patch("history_manager.add_realized_trade", return_value=101) as mock_add_trade, \
-         patch("history_manager.update_reinvestment_pool_balance", return_value=120000.0) as mock_update_pool:
+         patch("history_manager.update_reinvestment_pool_balance", return_value=118500.0) as mock_update_pool:
 
         res = portfolio_manager.sell_holding(
             holding_id="h-1",
             quantity=40.0,
             sell_price=3000.0,
-            sold_date="2026-10-08"
+            sold_date="2026-10-01",
+            fee_jpy=1500.0
         )
 
         assert res["trade_id"] == 101
@@ -689,14 +690,29 @@ def test_sell_holding_partial_and_full():
         assert res["is_full_holding_sold"] is False
         assert res["is_entire_stock_removed"] is False
         assert res["sell_amount_jpy"] == 120000.0   # 3000 * 40
+        assert res["fee_jpy"] == 1500.0
+        assert res["net_sell_amount_jpy"] == 118500.0 # 120000 - 1500
         assert res["purchase_amount_jpy"] == 80000.0 # 2000 * 40
-        assert res["realized_pl_jpy"] == 40000.0    # 120000 - 80000 (+40,000円)
-        assert res["realized_pl_rate"] == 50.0      # +50.0%
-        assert res["reinvestment_pool_balance"] == 120000.0
+        assert res["realized_pl_jpy"] == 38500.0    # 118500 - 80000 (+38,500円)
+        assert res["realized_pl_rate"] == 48.12     # 38500 / 80000 * 100 (四捨五入2桁)
+        assert res["reinvestment_pool_balance"] == 118500.0
 
-        # DB記録呼び出し検証
-        mock_add_trade.assert_called_once()
-        mock_update_pool.assert_called_once_with(120000.0)
+        # DB記録呼び出し検証 (fee_jpy, sold_date が正しく渡されていること)
+        mock_add_trade.assert_called_once_with(
+            code="7203",
+            name="トヨタ自動車",
+            asset_type="jp_stock",
+            account_type="特定口座",
+            quantity=40.0,
+            sell_price=3000.0,
+            purchase_price=2000.0,
+            sold_date="2026-10-01",
+            security_company="SBI証券",
+            currency="JPY",
+            exchange_rate=1.0,
+            fee_jpy=1500.0
+        )
+        mock_update_pool.assert_called_once_with(118500.0)
         mock_save.assert_called_once()
 
     # 2. 全株売却 (h-2 の 50株を全株売却、銘柄内には h-1(60株)が残る)
@@ -736,6 +752,51 @@ def test_sell_holding_partial_and_full():
         assert res["is_entire_stock_removed"] is True
         # portfolio から 7203 自体が削除されたこと
         assert len(dummy_portfolio) == 0
+
+
+def test_sell_holding_with_excessive_fee():
+    """手数料が売却代金を上回る場合の0円クランプ検証 (#335)"""
+    import portfolio_manager
+    from unittest.mock import patch
+
+    dummy_portfolio = [
+        {
+            "code": "7203",
+            "asset_type": "jp_stock",
+            "currency": "JPY",
+            "holdings": [
+                {
+                    "id": "h-1",
+                    "account_type": "特定口座",
+                    "quantity": 10.0,
+                    "purchase_price": 2000.0,
+                    "security_company": "SBI証券"
+                }
+            ]
+        }
+    ]
+
+    with patch("portfolio_manager.load_portfolio", return_value=dummy_portfolio), \
+         patch("portfolio_manager.save_portfolio"), \
+         patch("history_manager.get_latest_daily_data", return_value={"name": "トヨタ自動車"}), \
+         patch("history_manager.add_realized_trade", return_value=104) as mock_add_trade, \
+         patch("history_manager.update_reinvestment_pool_balance", return_value=0.0) as mock_update_pool:
+
+        # 10株 * 2500円 = 25000円 に対し、手数料 30000円
+        res = portfolio_manager.sell_holding(
+            holding_id="h-1",
+            quantity=10.0,
+            sell_price=2500.0,
+            sold_date="2026-10-02",
+            fee_jpy=30000.0
+        )
+
+        assert res["sell_amount_jpy"] == 25000.0
+        assert res["fee_jpy"] == 30000.0
+        assert res["net_sell_amount_jpy"] == 0.0  # 負数にならず 0円にクランプ
+        assert res["purchase_amount_jpy"] == 20000.0
+        assert res["realized_pl_jpy"] == -20000.0 # 0 - 20000 (-20,000円)
+        mock_update_pool.assert_called_once_with(0.0)
 
 
 def test_reinvestment_pool_auto_offset():

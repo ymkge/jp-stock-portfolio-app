@@ -1520,9 +1520,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const sellQuantityInput = document.getElementById('sell-quantity-input');
     const sellPriceInput = document.getElementById('sell-price-input');
     const sellDateInput = document.getElementById('sell-date-input');
+    const sellFeeInput = document.getElementById('sell-fee-input');
     const btnSellAllQty = document.getElementById('btn-sell-all-qty');
     const sellTargetStockInfo = document.getElementById('sell-target-stock-info');
-    const sellPreviewAmount = document.getElementById('sell-preview-amount');
+    const sellPreviewGrossAmount = document.getElementById('sell-preview-gross-amount') || document.getElementById('sell-preview-amount');
+    const sellPreviewNetAmount = document.getElementById('sell-preview-net-amount');
     const sellPreviewPl = document.getElementById('sell-preview-pl');
 
     const navPoolBalance = document.getElementById('nav-pool-balance');
@@ -1579,9 +1581,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const currentPrice = asset.price || holding.purchase_price || 0;
         sellPriceInput.value = currentPrice;
 
-        // 今日の日付をセット
+        // 今日の日付をセット（過去日付選択可能、未来日は選択不可）
         const todayStr = new Date().toISOString().split('T')[0];
         sellDateInput.value = todayStr;
+        sellDateInput.max = todayStr;
+
+        // 手数料入力のリセット
+        if (sellFeeInput) {
+            sellFeeInput.value = 0;
+        }
 
         // 銘柄情報ヘッダー
         const currencySymbol = (asset.currency === 'USD' || asset.asset_type === 'us_stock') ? '$' : '円';
@@ -1611,26 +1619,36 @@ document.addEventListener('DOMContentLoaded', () => {
         const qty = parseFloat(sellQuantityInput.value) || 0;
         const sellPrice = parseFloat(sellPriceInput.value) || 0;
         const purchasePrice = parseFloat(currentSellingHolding.purchase_price) || 0;
+        const feeJpy = (sellFeeInput ? parseFloat(sellFeeInput.value) : 0) || 0;
 
         const isUsd = (currentSellingAsset.currency === 'USD' || currentSellingAsset.asset_type === 'us_stock');
         // 為替レート（概算: 150円、日本株は1.0）
         const rate = isUsd ? (window.appState && window.appState.exchangeRates ? window.appState.exchangeRates['USD'] || 150.0 : 150.0) : 1.0;
 
-        const sellAmountJpy = sellPrice * qty * rate;
+        const sellGrossAmountJpy = sellPrice * qty * rate;
+        const sellNetAmountJpy = Math.max(0, sellGrossAmountJpy - feeJpy);
         const purchaseAmountJpy = purchasePrice * qty * rate;
-        const plJpy = sellAmountJpy - purchaseAmountJpy;
+        const plJpy = sellNetAmountJpy - purchaseAmountJpy;
         const plRate = purchaseAmountJpy > 0 ? (plJpy / purchaseAmountJpy * 100) : 0;
 
-        sellPreviewAmount.textContent = `${formatNumber(sellAmountJpy, 0)}円` + (isUsd ? ` (約$${formatNumber(sellPrice * qty, 2)})` : '');
+        if (sellPreviewGrossAmount) {
+            sellPreviewGrossAmount.textContent = `${formatNumber(sellGrossAmountJpy, 0)}円` + (isUsd ? ` (約$${formatNumber(sellPrice * qty, 2)})` : '');
+        }
+        if (sellPreviewNetAmount) {
+            sellPreviewNetAmount.textContent = `${formatNumber(sellNetAmountJpy, 0)}円`;
+        }
         
         const sign = plJpy >= 0 ? '+' : '';
         const plClass = plJpy >= 0 ? 'profit' : 'loss';
-        sellPreviewPl.innerHTML = `<span class="${plClass}">${sign}${formatNumber(plJpy, 0)}円 (${sign}${plRate.toFixed(2)}%)</span>`;
+        if (sellPreviewPl) {
+            sellPreviewPl.innerHTML = `<span class="${plClass}">${sign}${formatNumber(plJpy, 0)}円 (${sign}${plRate.toFixed(2)}%)</span>`;
+        }
     }
 
     // イベント登録（入力時のリアルタイム計算）
     if (sellQuantityInput) sellQuantityInput.addEventListener('input', updateSellPreview);
     if (sellPriceInput) sellPriceInput.addEventListener('input', updateSellPreview);
+    if (sellFeeInput) sellFeeInput.addEventListener('input', updateSellPreview);
     if (btnSellAllQty) {
         btnSellAllQty.addEventListener('click', () => {
             if (currentSellingHolding) {
@@ -1656,9 +1674,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const quantity = parseFloat(sellQuantityInput.value);
             const sellPrice = parseFloat(sellPriceInput.value);
             const soldDate = sellDateInput.value;
+            const fee = sellFeeInput ? (parseFloat(sellFeeInput.value) || 0) : 0;
 
             if (!holdingId || quantity <= 0 || sellPrice <= 0) {
                 showAlert('売却株数と売却単価を正しく入力してください。', 'warning');
+                return;
+            }
+            if (fee < 0) {
+                showAlert('手数料は0以上の数値を入力してください。', 'warning');
                 return;
             }
 
@@ -1669,9 +1692,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({
                         quantity: quantity,
                         sell_price: sellPrice,
-                        sold_date: soldDate || null
+                        sold_date: soldDate || null,
+                        fee: fee
                     })
                 });
+
 
                 if (!res.ok) {
                     const err = await res.json();

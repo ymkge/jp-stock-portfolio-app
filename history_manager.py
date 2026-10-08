@@ -97,11 +97,19 @@ def init_db():
                     realized_pl_jpy REAL NOT NULL,
                     realized_pl_rate REAL NOT NULL,
                     sold_date TEXT NOT NULL,
+                    fee_jpy REAL DEFAULT 0.0,
                     created_at_jst TEXT NOT NULL
                 )
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_realized_trades_date ON realized_trades (sold_date)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_realized_trades_code ON realized_trades (code)")
+
+            # realized_trades のカラム追加マイグレーション (fee_jpy #335)
+            cursor.execute("PRAGMA table_info(realized_trades)")
+            trade_cols = [col[1] for col in cursor.fetchall()]
+            if trade_cols and "fee_jpy" not in trade_cols:
+                logger.info("Adding fee_jpy column to realized_trades...")
+                cursor.execute("ALTER TABLE realized_trades ADD COLUMN fee_jpy REAL DEFAULT 0.0")
 
             # --- 新規テーブル：再投資待機資金プール (#332) ---
             cursor.execute("""
@@ -904,14 +912,17 @@ def add_realized_trade(
     sold_date: str,
     security_company: str = "",
     currency: str = "JPY",
-    exchange_rate: float = 1.0
+    exchange_rate: float = 1.0,
+    fee_jpy: float = 0.0
 ) -> int:
-    """株式売却履歴を保存し、確定損益を記録する"""
+    """株式売却履歴を保存し、確定損益を記録する（手数料控除対応 #335）"""
     try:
         now_str = get_now_jst().strftime("%Y-%m-%d %H:%M:%S")
         sell_amount_jpy = sell_price * quantity * exchange_rate
+        fee_jpy = max(0.0, float(fee_jpy or 0.0))
+        net_sell_amount_jpy = max(0.0, sell_amount_jpy - fee_jpy)
         purchase_amount_jpy = purchase_price * quantity * exchange_rate
-        realized_pl_jpy = sell_amount_jpy - purchase_amount_jpy
+        realized_pl_jpy = net_sell_amount_jpy - purchase_amount_jpy
         realized_pl_rate = (realized_pl_jpy / purchase_amount_jpy * 100.0) if purchase_amount_jpy > 0 else 0.0
 
         with sqlite3.connect(DB_FILE) as conn:
@@ -921,17 +932,17 @@ def add_realized_trade(
                     code, name, asset_type, account_type, security_company,
                     quantity, sell_price, purchase_price, currency, exchange_rate,
                     sell_amount_jpy, purchase_amount_jpy, realized_pl_jpy, realized_pl_rate,
-                    sold_date, created_at_jst
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    sold_date, fee_jpy, created_at_jst
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 code, name, asset_type, account_type, security_company,
                 quantity, sell_price, purchase_price, currency, exchange_rate,
-                sell_amount_jpy, purchase_amount_jpy, realized_pl_jpy, realized_pl_rate,
-                sold_date, now_str
+                net_sell_amount_jpy, purchase_amount_jpy, realized_pl_jpy, realized_pl_rate,
+                sold_date, fee_jpy, now_str
             ))
             conn.commit()
             trade_id = cursor.lastrowid
-            logger.info(f"Recorded realized trade #{trade_id} for {code}: PL={realized_pl_jpy:+.1f} JPY ({realized_pl_rate:+.2f}%)")
+            logger.info(f"Recorded realized trade #{trade_id} for {code}: NetSell={net_sell_amount_jpy:.1f} JPY (Fee={fee_jpy:.1f}), PL={realized_pl_jpy:+.1f} JPY ({realized_pl_rate:+.2f}%)")
             return trade_id
     except Exception as e:
         logger.error(f"Failed to add realized trade for {code}: {e}")
@@ -960,10 +971,11 @@ def get_realized_trades(year: Optional[int] = None) -> List[Dict[str, Any]]:
         return []
 
 def get_realized_summary(year: Optional[int] = None) -> Dict[str, Any]:
-    """確定損益のサマリー（合計損益、取引回数、勝率など）を取得する"""
+    """確定損益のサマリー（合計損益、合計手数料、取引回数、勝率など）を取得する"""
     trades = get_realized_trades(year)
     total_pl = sum(t["realized_pl_jpy"] for t in trades)
     total_sell_amount = sum(t["sell_amount_jpy"] for t in trades)
+    total_fee = sum(t.get("fee_jpy", 0.0) or 0.0 for t in trades)
     wins = [t for t in trades if t["realized_pl_jpy"] > 0]
     losses = [t for t in trades if t["realized_pl_jpy"] < 0]
     win_rate = (len(wins) / len(trades) * 100.0) if trades else 0.0
@@ -972,6 +984,7 @@ def get_realized_summary(year: Optional[int] = None) -> Dict[str, Any]:
         "year": year or datetime.now().year,
         "total_pl_jpy": round(total_pl, 1),
         "total_sell_amount_jpy": round(total_sell_amount, 1),
+        "total_fee_jpy": round(total_fee, 1),
         "trade_count": len(trades),
         "win_count": len(wins),
         "loss_count": len(losses),

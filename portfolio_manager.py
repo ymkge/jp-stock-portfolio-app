@@ -294,14 +294,15 @@ def sell_holding(
     holding_id: str,
     quantity: float,
     sell_price: float,
-    sold_date: Optional[str] = None
+    sold_date: Optional[str] = None,
+    fee_jpy: float = 0.0
 ) -> Dict[str, Any]:
     """
-    指定された保有情報を一部または全売却する (#332)。
+    指定された保有情報を一部または全売却する (#332, #335)。
     1. holding の数量を減算、または holding 自体を削除
     2. 全 holding が無くなった場合は銘柄自体をポートフォリオから削除
-    3. 確定損益を計算し history_manager.add_realized_trade に記録
-    4. 売却代金（円換算）を再投資待機資金プールに加算 (history_manager.update_reinvestment_pool_balance)
+    3. 手数料控除後の実質手取額で確定損益を計算し history_manager.add_realized_trade に記録
+    4. 実質手取額（円換算）を再投資待機資金プールに加算 (history_manager.update_reinvestment_pool_balance)
     5. 売却結果サマリーを返却
     """
     import history_manager
@@ -358,10 +359,12 @@ def sell_holding(
                 logger.warning(f"Failed to fetch exchange rate for {currency}: {e}")
                 exchange_rate = 1.0
 
-        # 金額・損益の計算
+        # 金額・損益の計算（手数料控除対応 #335）
+        fee_jpy = max(0.0, float(fee_jpy or 0.0))
         sell_amount_jpy = sell_price * sell_qty * exchange_rate
+        net_sell_amount_jpy = max(0.0, sell_amount_jpy - fee_jpy)
         purchase_amount_jpy = purchase_price * sell_qty * exchange_rate
-        realized_pl_jpy = sell_amount_jpy - purchase_amount_jpy
+        realized_pl_jpy = net_sell_amount_jpy - purchase_amount_jpy
         realized_pl_rate = (realized_pl_jpy / purchase_amount_jpy * 100.0) if purchase_amount_jpy > 0 else 0.0
 
         # 保有株数の更新・削除処理
@@ -395,15 +398,17 @@ def sell_holding(
             sold_date=sold_date,
             security_company=security_company,
             currency=currency,
-            exchange_rate=exchange_rate
+            exchange_rate=exchange_rate,
+            fee_jpy=fee_jpy
         )
 
-        # 再投資待機資金プールへの自動ストック
-        new_pool_balance = history_manager.update_reinvestment_pool_balance(sell_amount_jpy)
+        # 再投資待機資金プールへの自動ストック（手数料控除後の手取額を加算）
+        new_pool_balance = history_manager.update_reinvestment_pool_balance(net_sell_amount_jpy)
 
         logger.info(
             f"Successfully sold {sell_qty} of {code} ({name}): "
-            f"sell_amount={sell_amount_jpy:.1f} JPY, realized_pl={realized_pl_jpy:+.1f} JPY ({realized_pl_rate:+.2f}%), "
+            f"gross_sell={sell_amount_jpy:.1f} JPY, fee={fee_jpy:.1f} JPY, net_sell={net_sell_amount_jpy:.1f} JPY, "
+            f"realized_pl={realized_pl_jpy:+.1f} JPY ({realized_pl_rate:+.2f}%), "
             f"new_pool_balance={new_pool_balance:.1f} JPY"
         )
 
@@ -418,6 +423,8 @@ def sell_holding(
             "sell_price": sell_price,
             "purchase_price": purchase_price,
             "sell_amount_jpy": round(sell_amount_jpy, 1),
+            "fee_jpy": round(fee_jpy, 1),
+            "net_sell_amount_jpy": round(net_sell_amount_jpy, 1),
             "purchase_amount_jpy": round(purchase_amount_jpy, 1),
             "realized_pl_jpy": round(realized_pl_jpy, 1),
             "realized_pl_rate": round(realized_pl_rate, 2),

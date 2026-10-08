@@ -121,6 +121,7 @@ class SellHoldingRequest(BaseModel):
     quantity: float
     sell_price: float
     sold_date: Optional[str] = None
+    fee: Optional[float] = 0.0
 
 class AdjustReinvestmentPoolRequest(BaseModel):
     balance: float
@@ -1965,15 +1966,18 @@ async def delete_holding_endpoint(holding_id: str):
 
 @app.post("/api/holdings/{holding_id}/sell")
 async def sell_holding_endpoint(holding_id: str, request: SellHoldingRequest):
-    """保有株式の一部または全売却を実行する (#332)"""
+    """保有株式の一部または全売却を実行する (#332, #335)"""
     if request.quantity <= 0 or request.sell_price <= 0:
         raise HTTPException(status_code=400, detail="売却数量と売却単価は0より大きい値を指定してください。")
+    if request.fee is not None and request.fee < 0:
+        raise HTTPException(status_code=400, detail="手数料は0以上の値を指定してください。")
     try:
         result = portfolio_manager.sell_holding(
             holding_id=holding_id,
             quantity=request.quantity,
             sell_price=request.sell_price,
-            sold_date=request.sold_date
+            sold_date=request.sold_date,
+            fee_jpy=request.fee or 0.0
         )
         return {"status": "success", "result": result}
     except ValueError as e:

@@ -42,7 +42,7 @@ def test_realized_trades_and_reinvestment_pool_isolated():
             assert bal_set == 50000.0
             assert history_manager.get_reinvestment_pool_balance("JPY") == 50000.0
 
-            # 6. realized_trades への売却履歴追加
+            # 6. realized_trades への売却履歴追加 (手数料あり・過去日付 #335)
             trade_id = history_manager.add_realized_trade(
                 code="7203",
                 name="トヨタ自動車",
@@ -51,10 +51,11 @@ def test_realized_trades_and_reinvestment_pool_isolated():
                 quantity=100.0,
                 sell_price=3000.0,
                 purchase_price=2000.0,
-                sold_date="2026-10-08",
+                sold_date="2026-10-01",
                 security_company="SBI証券",
                 currency="JPY",
-                exchange_rate=1.0
+                exchange_rate=1.0,
+                fee_jpy=1500.0
             )
             assert trade_id > 0
 
@@ -63,14 +64,17 @@ def test_realized_trades_and_reinvestment_pool_isolated():
             assert len(trades) == 1
             t = trades[0]
             assert t["code"] == "7203"
-            assert t["sell_amount_jpy"] == 300000.0
+            assert t["sold_date"] == "2026-10-01"
+            assert t["fee_jpy"] == 1500.0
+            assert t["sell_amount_jpy"] == 298500.0      # 手数料控除後の実受取売却額
             assert t["purchase_amount_jpy"] == 200000.0
-            assert t["realized_pl_jpy"] == 100000.0
-            assert t["realized_pl_rate"] == 50.0
+            assert t["realized_pl_jpy"] == 98500.0       # 298500 - 200000
+            assert t["realized_pl_rate"] == 49.25        # 98500 / 200000 * 100
 
-            # 8. サマリー集計
+            # 8. サマリー集計 (total_fee_jpy も検証)
             summary = history_manager.get_realized_summary(2026)
-            assert summary["total_pl_jpy"] == 100000.0
+            assert summary["total_pl_jpy"] == 98500.0
+            assert summary["total_fee_jpy"] == 1500.0
             assert summary["trade_count"] == 1
             assert summary["win_count"] == 1
             assert summary["loss_count"] == 0

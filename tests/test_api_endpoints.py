@@ -1852,7 +1852,8 @@ def test_api_sell_holding_endpoint():
         payload = {
             "quantity": 50.0,
             "sell_price": 2800.0,
-            "sold_date": "2026-10-08"
+            "sold_date": "2026-10-01",
+            "fee": 1000.0
         }
         res = client.post("/api/holdings/test-holding-id/sell", json=payload)
         assert res.status_code == 200
@@ -1864,7 +1865,8 @@ def test_api_sell_holding_endpoint():
             holding_id="test-holding-id",
             quantity=50.0,
             sell_price=2800.0,
-            sold_date="2026-10-08"
+            sold_date="2026-10-01",
+            fee_jpy=1000.0
         )
 
     # 2. バリデーションエラー (数量が0以下)
@@ -1873,6 +1875,10 @@ def test_api_sell_holding_endpoint():
 
     # 3. バリデーションエラー (単価が0以下)
     res = client.post("/api/holdings/test-holding-id/sell", json={"quantity": 10, "sell_price": -100})
+    assert res.status_code == 400
+
+    # 4. バリデーションエラー (手数料が負数 #335)
+    res = client.post("/api/holdings/test-holding-id/sell", json={"quantity": 10, "sell_price": 1000, "fee": -50})
     assert res.status_code == 400
 
 

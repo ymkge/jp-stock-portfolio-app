@@ -1827,6 +1827,91 @@ def test_api_industry_daily_summary_no_api_key():
         assert data["error_code"] == "NO_API_KEY"
 
 
+def test_api_sell_holding_endpoint():
+    """売却APIエンドポイントの正常系およびバリデーション検証 (#332)"""
+    from fastapi.testclient import TestClient
+    from unittest.mock import patch
+    from app import app
+
+    client = TestClient(app)
+
+    # 1. 正常系
+    mock_sell_result = {
+        "trade_id": 999,
+        "code": "7203",
+        "name": "トヨタ自動車",
+        "sold_quantity": 50.0,
+        "sell_price": 2800.0,
+        "sell_amount_jpy": 140000.0,
+        "realized_pl_jpy": 30000.0,
+        "realized_pl_rate": 27.27,
+        "reinvestment_pool_balance": 140000.0
+    }
+
+    with patch("portfolio_manager.sell_holding", return_value=mock_sell_result) as mock_sell:
+        payload = {
+            "quantity": 50.0,
+            "sell_price": 2800.0,
+            "sold_date": "2026-10-08"
+        }
+        res = client.post("/api/holdings/test-holding-id/sell", json=payload)
+        assert res.status_code == 200
+        body = res.json()
+        assert body["status"] == "success"
+        assert body["result"]["trade_id"] == 999
+        assert body["result"]["sell_amount_jpy"] == 140000.0
+        mock_sell.assert_called_once_with(
+            holding_id="test-holding-id",
+            quantity=50.0,
+            sell_price=2800.0,
+            sold_date="2026-10-08"
+        )
+
+    # 2. バリデーションエラー (数量が0以下)
+    res = client.post("/api/holdings/test-holding-id/sell", json={"quantity": 0, "sell_price": 1000})
+    assert res.status_code == 400
+
+    # 3. バリデーションエラー (単価が0以下)
+    res = client.post("/api/holdings/test-holding-id/sell", json={"quantity": 10, "sell_price": -100})
+    assert res.status_code == 400
+
+
+def test_api_reinvestment_pool_endpoints():
+    """再投資プール取得および調整エンドポイントの検証 (#332)"""
+    from fastapi.testclient import TestClient
+    from unittest.mock import patch
+    from app import app
+
+    client = TestClient(app)
+
+    # 1. GET /api/reinvestment-pool
+    with patch("history_manager.get_reinvestment_pool_balance", return_value=150000.0), \
+         patch("history_manager.get_realized_summary", return_value={"total_pl_jpy": 45000.0, "trade_count": 3, "win_rate": 100.0}), \
+         patch("history_manager.get_realized_trades", return_value=[{"code": "7203", "realized_pl_jpy": 45000.0}]):
+
+        res = client.get("/api/reinvestment-pool")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "success"
+        assert data["balance"] == 150000.0
+        assert data["realized_summary"]["total_pl_jpy"] == 45000.0
+        assert len(data["recent_trades"]) == 1
+
+    # 2. POST /api/reinvestment-pool/adjust (正常設定)
+    with patch("history_manager.set_reinvestment_pool_balance", return_value=200000.0) as mock_set:
+        res = client.post("/api/reinvestment-pool/adjust", json={"balance": 200000.0})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "success"
+        assert data["balance"] == 200000.0
+        mock_set.assert_called_once_with(200000.0, "JPY")
+
+    # 3. POST /api/reinvestment-pool/adjust (負の値のバリデーションエラー)
+    res = client.post("/api/reinvestment-pool/adjust", json={"balance": -100.0})
+    assert res.status_code == 400
+
+
+
 
 
 

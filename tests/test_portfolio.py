@@ -211,10 +211,14 @@ def test_calculate_monthly_change_rankings_normal():
         assert gainers[1]["code"] == "9994"
         assert gainers[1]["is_newly_added"] is True
 
-        assert len(losers) == 2
-        assert losers[0]["code"] == "9993"  # 売却済 (-50,000円)
-        assert losers[0]["is_sold_out"] is True
-        assert losers[1]["code"] == "9992"  # -20,000円
+        assert len(losers) == 1
+        assert losers[0]["code"] == "9992"  # -20,000円
+
+        # 売却済銘柄は month_losers から除外され、month_sold_out に分類されること (#332)
+        assert len(res["month_sold_out"]) == 1
+        assert res["month_sold_out"][0]["code"] == "9993"
+        assert res["month_sold_out"][0]["is_sold_out"] is True
+        assert res["month_sold_out"][0]["monthly_change_jpy"] == -50000.0
 
 
 def test_calculate_monthly_change_rankings_no_data():
@@ -633,6 +637,158 @@ def test_calculate_daily_industry_changes():
 
     # 全体増減合計: 12000 + 7500 + 1000 - 5000 = 15,500円
     assert res["total_daily_change_jpy"] == 15500.0
+
+
+def test_sell_holding_partial_and_full():
+    """株式の一部売却および全株売却、確定損益・プール加算の検証 (#332)"""
+    import portfolio_manager
+    from unittest.mock import patch, MagicMock
+
+    dummy_portfolio = [
+        {
+            "code": "7203",
+            "asset_type": "jp_stock",
+            "currency": "JPY",
+            "holdings": [
+                {
+                    "id": "h-1",
+                    "account_type": "特定口座",
+                    "quantity": 100.0,
+                    "purchase_price": 2000.0,
+                    "security_company": "SBI証券"
+                },
+                {
+                    "id": "h-2",
+                    "account_type": "新NISA(成長投資枠)",
+                    "quantity": 50.0,
+                    "purchase_price": 2500.0,
+                    "security_company": "楽天証券"
+                }
+            ]
+        }
+    ]
+
+    # 1. 一部売却 (h-1 の 100株中 40株を 3000円で売却)
+    with patch("portfolio_manager.load_portfolio", return_value=dummy_portfolio), \
+         patch("portfolio_manager.save_portfolio") as mock_save, \
+         patch("history_manager.get_latest_daily_data", return_value={"name": "トヨタ自動車"}), \
+         patch("history_manager.add_realized_trade", return_value=101) as mock_add_trade, \
+         patch("history_manager.update_reinvestment_pool_balance", return_value=120000.0) as mock_update_pool:
+
+        res = portfolio_manager.sell_holding(
+            holding_id="h-1",
+            quantity=40.0,
+            sell_price=3000.0,
+            sold_date="2026-10-08"
+        )
+
+        assert res["trade_id"] == 101
+        assert res["code"] == "7203"
+        assert res["sold_quantity"] == 40.0
+        assert res["remaining_quantity"] == 60.0
+        assert res["is_full_holding_sold"] is False
+        assert res["is_entire_stock_removed"] is False
+        assert res["sell_amount_jpy"] == 120000.0   # 3000 * 40
+        assert res["purchase_amount_jpy"] == 80000.0 # 2000 * 40
+        assert res["realized_pl_jpy"] == 40000.0    # 120000 - 80000 (+40,000円)
+        assert res["realized_pl_rate"] == 50.0      # +50.0%
+        assert res["reinvestment_pool_balance"] == 120000.0
+
+        # DB記録呼び出し検証
+        mock_add_trade.assert_called_once()
+        mock_update_pool.assert_called_once_with(120000.0)
+        mock_save.assert_called_once()
+
+    # 2. 全株売却 (h-2 の 50株を全株売却、銘柄内には h-1(60株)が残る)
+    with patch("portfolio_manager.load_portfolio", return_value=dummy_portfolio), \
+         patch("portfolio_manager.save_portfolio") as mock_save, \
+         patch("history_manager.get_latest_daily_data", return_value={"name": "トヨタ自動車"}), \
+         patch("history_manager.add_realized_trade", return_value=102) as mock_add_trade, \
+         patch("history_manager.update_reinvestment_pool_balance", return_value=245000.0):
+
+        res = portfolio_manager.sell_holding(
+            holding_id="h-2",
+            quantity=50.0,
+            sell_price=2500.0
+        )
+
+        assert res["is_full_holding_sold"] is True
+        assert res["is_entire_stock_removed"] is False
+        assert res["remaining_quantity"] == 0.0
+        # dummy_portfolio の 7203 から h-2 が削除されたこと
+        assert len(dummy_portfolio[0]["holdings"]) == 1
+        assert dummy_portfolio[0]["holdings"][0]["id"] == "h-1"
+
+    # 3. 最後の holding 全売却 (h-1 の残り 60株を全株売却、銘柄自体が portfolio から削除される)
+    with patch("portfolio_manager.load_portfolio", return_value=dummy_portfolio), \
+         patch("portfolio_manager.save_portfolio") as mock_save, \
+         patch("history_manager.get_latest_daily_data", return_value={"name": "トヨタ自動車"}), \
+         patch("history_manager.add_realized_trade", return_value=103), \
+         patch("history_manager.update_reinvestment_pool_balance", return_value=425000.0):
+
+        res = portfolio_manager.sell_holding(
+            holding_id="h-1",
+            quantity=60.0,
+            sell_price=3000.0
+        )
+
+        assert res["is_full_holding_sold"] is True
+        assert res["is_entire_stock_removed"] is True
+        # portfolio から 7203 自体が削除されたこと
+        assert len(dummy_portfolio) == 0
+
+
+def test_reinvestment_pool_auto_offset():
+    """新規買付時に再投資プールから自動相殺されることの検証 (#332)"""
+    import portfolio_manager
+    from unittest.mock import patch
+
+    dummy_portfolio = [
+        {
+            "code": "8306",
+            "asset_type": "jp_stock",
+            "currency": "JPY",
+            "holdings": []
+        }
+    ]
+
+    new_holding_data = {
+        "account_type": "特定口座",
+        "quantity": 100.0,
+        "purchase_price": 1500.0,  # 買付総額: 150,000円
+        "security_company": "SBI証券"
+    }
+
+    # ケースA: プール残高が 200,000円 ある場合 (買付額 150,000円 全額相殺、プール残高 50,000円 に)
+    with patch("portfolio_manager.load_portfolio", return_value=dummy_portfolio), \
+         patch("portfolio_manager.save_portfolio"), \
+         patch("history_manager.get_reinvestment_pool_balance", return_value=200000.0), \
+         patch("history_manager.update_reinvestment_pool_balance", return_value=50000.0) as mock_update_pool:
+
+        h_id = portfolio_manager.add_holding("8306", new_holding_data.copy())
+        assert h_id is not None
+        # -150,000円 の相殺が実行されたこと
+        mock_update_pool.assert_called_once_with(-150000.0)
+
+    # ケースB: プール残高が 80,000円 しかない場合 (プール残高分 80,000円 のみ相殺、プール残高 0円 に)
+    with patch("portfolio_manager.load_portfolio", return_value=dummy_portfolio), \
+         patch("portfolio_manager.save_portfolio"), \
+         patch("history_manager.get_reinvestment_pool_balance", return_value=80000.0), \
+         patch("history_manager.update_reinvestment_pool_balance", return_value=0.0) as mock_update_pool:
+
+        h_id = portfolio_manager.add_holding("8306", new_holding_data.copy())
+        # プール残高の 80,000円 分のみ安全に相殺されること
+        mock_update_pool.assert_called_once_with(-80000.0)
+
+    # ケースC: プール残高が 0円 の場合 (何もしない)
+    with patch("portfolio_manager.load_portfolio", return_value=dummy_portfolio), \
+         patch("portfolio_manager.save_portfolio"), \
+         patch("history_manager.get_reinvestment_pool_balance", return_value=0.0), \
+         patch("history_manager.update_reinvestment_pool_balance") as mock_update_pool:
+
+        h_id = portfolio_manager.add_holding("8306", new_holding_data.copy())
+        mock_update_pool.assert_not_called()
+
 
 
 

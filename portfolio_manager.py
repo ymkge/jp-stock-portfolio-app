@@ -204,6 +204,7 @@ def add_holding(code: str, holding_data: Dict[str, Any]) -> str:
     """
     特定の銘柄に新しい保有情報を追加する。
     新しい保有情報のIDを返す。
+    自動相殺: 再投資待機資金プールに残高がある場合、新規買付金額分を自動減額する (#332)。
     """
     with portfolio_lock():
         portfolio = load_portfolio()
@@ -211,10 +212,12 @@ def add_holding(code: str, holding_data: Dict[str, Any]) -> str:
         holding_data['id'] = new_holding_id
         
         stock_found = False
+        target_stock = None
         for stock in portfolio:
             if stock.get("code") == code:
                 stock.setdefault("holdings", []).append(holding_data)
                 stock_found = True
+                target_stock = stock
                 break
         
         if not stock_found:
@@ -222,6 +225,28 @@ def add_holding(code: str, holding_data: Dict[str, Any]) -> str:
             raise ValueError(f"Stock with code {code} not found in portfolio.")
 
         save_portfolio(portfolio)
+
+        # --- スマート再投資プールからの自動相殺 (#332) ---
+        try:
+            qty = float(holding_data.get("quantity") or 0.0)
+            price = float(holding_data.get("purchase_price") or 0.0)
+            if qty > 0 and price > 0:
+                currency = target_stock.get("currency", "JPY") if target_stock else "JPY"
+                rate = 1.0
+                if currency == "USD" or (target_stock and target_stock.get("asset_type") == "us_stock"):
+                    from scraper import get_exchange_rate
+                    rate = get_exchange_rate('USDJPY=X') or 1.0
+                purchase_amount_jpy = price * qty * rate
+                
+                import history_manager
+                pool_balance = history_manager.get_reinvestment_pool_balance()
+                consume = min(pool_balance, purchase_amount_jpy)
+                if consume > 0:
+                    new_balance = history_manager.update_reinvestment_pool_balance(-consume)
+                    logger.info(f"Auto-offset reinvestment pool for {code}: consumed {consume:.1f} JPY, remaining pool: {new_balance:.1f} JPY")
+        except Exception as e:
+            logger.warning(f"Failed to auto-offset reinvestment pool for {code}: {e}")
+
         return new_holding_id
 
 def update_holding(holding_id: str, update_data: Dict[str, Any]) -> bool:
@@ -264,6 +289,141 @@ def delete_holding(holding_id: str) -> bool:
             save_portfolio(portfolio)
             return True
         return False
+
+def sell_holding(
+    holding_id: str,
+    quantity: float,
+    sell_price: float,
+    sold_date: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    指定された保有情報を一部または全売却する (#332)。
+    1. holding の数量を減算、または holding 自体を削除
+    2. 全 holding が無くなった場合は銘柄自体をポートフォリオから削除
+    3. 確定損益を計算し history_manager.add_realized_trade に記録
+    4. 売却代金（円換算）を再投資待機資金プールに加算 (history_manager.update_reinvestment_pool_balance)
+    5. 売却結果サマリーを返却
+    """
+    import history_manager
+    from datetime import date
+    if not sold_date:
+        sold_date = date.today().isoformat()
+
+    with portfolio_lock():
+        portfolio = load_portfolio()
+        target_stock = None
+        target_holding = None
+        stock_idx = -1
+        holding_idx = -1
+
+        for s_idx, stock in enumerate(portfolio):
+            for h_idx, holding in enumerate(stock.get("holdings", [])):
+                if holding.get("id") == holding_id:
+                    target_stock = stock
+                    target_holding = holding
+                    stock_idx = s_idx
+                    holding_idx = h_idx
+                    break
+            if target_holding:
+                break
+
+        if not target_holding or not target_stock:
+            raise ValueError(f"Holding with id {holding_id} not found in portfolio.")
+
+        current_qty = float(target_holding.get("quantity") or 0.0)
+        sell_qty = float(quantity)
+        if sell_qty <= 0:
+            raise ValueError(f"Sell quantity must be positive, got {sell_qty}")
+        if sell_qty > current_qty + 1e-6:
+            raise ValueError(f"Sell quantity {sell_qty} exceeds holding quantity {current_qty}")
+
+        purchase_price = float(target_holding.get("purchase_price") or 0.0)
+        code = target_stock.get("code", "")
+        asset_type = target_stock.get("asset_type", "jp_stock")
+        currency = target_stock.get("currency", "JPY")
+        account_type = target_holding.get("account_type", "tokutei")
+        security_company = target_holding.get("security_company", "")
+
+        # 銘柄名取得（最新日次データまたは銘柄コード）
+        latest_data = history_manager.get_latest_daily_data(code)
+        name = latest_data.get("name", code) if latest_data else code
+
+        # 為替レート取得
+        exchange_rate = 1.0
+        if currency == "USD" or asset_type == "us_stock":
+            try:
+                from scraper import get_exchange_rate
+                exchange_rate = get_exchange_rate('USDJPY=X') or 1.0
+            except Exception as e:
+                logger.warning(f"Failed to fetch exchange rate for {currency}: {e}")
+                exchange_rate = 1.0
+
+        # 金額・損益の計算
+        sell_amount_jpy = sell_price * sell_qty * exchange_rate
+        purchase_amount_jpy = purchase_price * sell_qty * exchange_rate
+        realized_pl_jpy = sell_amount_jpy - purchase_amount_jpy
+        realized_pl_rate = (realized_pl_jpy / purchase_amount_jpy * 100.0) if purchase_amount_jpy > 0 else 0.0
+
+        # 保有株数の更新・削除処理
+        remaining_qty = current_qty - sell_qty
+        is_full_holding_sold = False
+        is_entire_stock_removed = False
+
+        if remaining_qty <= 1e-6:
+            # 当該 holding を完全削除
+            is_full_holding_sold = True
+            target_stock["holdings"].pop(holding_idx)
+            # 銘柄内の全 holding が無くなった場合は銘柄自体を削除
+            if len(target_stock.get("holdings", [])) == 0:
+                is_entire_stock_removed = True
+                portfolio.pop(stock_idx)
+        else:
+            # 一部売却（残数量を更新）
+            target_holding["quantity"] = round(remaining_qty, 4)
+
+        save_portfolio(portfolio)
+
+        # 確定損益の永続化
+        trade_id = history_manager.add_realized_trade(
+            code=code,
+            name=name,
+            asset_type=asset_type,
+            account_type=account_type,
+            quantity=sell_qty,
+            sell_price=sell_price,
+            purchase_price=purchase_price,
+            sold_date=sold_date,
+            security_company=security_company,
+            currency=currency,
+            exchange_rate=exchange_rate
+        )
+
+        # 再投資待機資金プールへの自動ストック
+        new_pool_balance = history_manager.update_reinvestment_pool_balance(sell_amount_jpy)
+
+        logger.info(
+            f"Successfully sold {sell_qty} of {code} ({name}): "
+            f"sell_amount={sell_amount_jpy:.1f} JPY, realized_pl={realized_pl_jpy:+.1f} JPY ({realized_pl_rate:+.2f}%), "
+            f"new_pool_balance={new_pool_balance:.1f} JPY"
+        )
+
+        return {
+            "trade_id": trade_id,
+            "code": code,
+            "name": name,
+            "sold_quantity": sell_qty,
+            "remaining_quantity": max(0.0, remaining_qty) if not is_full_holding_sold else 0.0,
+            "is_full_holding_sold": is_full_holding_sold,
+            "is_entire_stock_removed": is_entire_stock_removed,
+            "sell_price": sell_price,
+            "purchase_price": purchase_price,
+            "sell_amount_jpy": round(sell_amount_jpy, 1),
+            "purchase_amount_jpy": round(purchase_amount_jpy, 1),
+            "realized_pl_jpy": round(realized_pl_jpy, 1),
+            "realized_pl_rate": round(realized_pl_rate, 2),
+            "sold_date": sold_date,
+            "reinvestment_pool_balance": round(new_pool_balance, 1)
+        }
 
 
 # --- CSV生成関数 (既存のものは維持しつつ、将来的に改修) ---
@@ -840,6 +1000,7 @@ def calculate_monthly_change_rankings(
             "month_losers_top20": [],
             "month_gainers_top10": [],
             "month_losers_top10": [],
+            "month_sold_out": [],
         }
 
     y, m = last_month_str.split("-")
@@ -948,13 +1109,16 @@ def calculate_monthly_change_rankings(
         })
 
     gainers = [r for r in aggregated_results if r["monthly_change_jpy"] > 0]
-    losers = [r for r in aggregated_results if r["monthly_change_jpy"] < 0]
+    losers = [r for r in aggregated_results if r["monthly_change_jpy"] < 0 and not r["is_sold_out"]]
+    sold_outs = [r for r in aggregated_results if r["is_sold_out"]]
 
     gainers_sorted = sorted(gainers, key=lambda x: x["monthly_change_jpy"], reverse=True)[:top_n]
     losers_sorted = sorted(losers, key=lambda x: x["monthly_change_jpy"])[:top_n]
+    sold_outs_sorted = sorted(sold_outs, key=lambda x: abs(x["monthly_change_jpy"]), reverse=True)[:top_n]
 
     for i, g in enumerate(gainers_sorted, 1): g["rank"] = i
     for i, l in enumerate(losers_sorted, 1): l["rank"] = i
+    for i, s in enumerate(sold_outs_sorted, 1): s["rank"] = i
 
     return {
         "has_last_month_data": True,
@@ -963,6 +1127,7 @@ def calculate_monthly_change_rankings(
         "month_losers_top20": losers_sorted,
         "month_gainers_top10": gainers_sorted,
         "month_losers_top10": losers_sorted,
+        "month_sold_out": sold_outs_sorted,
     }
 
 

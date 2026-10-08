@@ -78,6 +78,44 @@ def init_db():
                 )
             """)
 
+            # --- 新規テーブル：株式売却履歴・確定損益 (#332) ---
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS realized_trades (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    code TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    asset_type TEXT NOT NULL,
+                    account_type TEXT NOT NULL,
+                    security_company TEXT,
+                    quantity REAL NOT NULL,
+                    sell_price REAL NOT NULL,
+                    purchase_price REAL NOT NULL,
+                    currency TEXT NOT NULL DEFAULT 'JPY',
+                    exchange_rate REAL DEFAULT 1.0,
+                    sell_amount_jpy REAL NOT NULL,
+                    purchase_amount_jpy REAL NOT NULL,
+                    realized_pl_jpy REAL NOT NULL,
+                    realized_pl_rate REAL NOT NULL,
+                    sold_date TEXT NOT NULL,
+                    created_at_jst TEXT NOT NULL
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_realized_trades_date ON realized_trades (sold_date)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_realized_trades_code ON realized_trades (code)")
+
+            # --- 新規テーブル：再投資待機資金プール (#332) ---
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS reinvestment_pool (
+                    currency TEXT PRIMARY KEY,
+                    balance REAL NOT NULL DEFAULT 0.0,
+                    updated_at_jst TEXT NOT NULL
+                )
+            """)
+            cursor.execute("""
+                INSERT OR IGNORE INTO reinvestment_pool (currency, balance, updated_at_jst)
+                VALUES ('JPY', 0.0, datetime('now', '+9 hours'))
+            """)
+
             # カラム追加の移行処理 (is_reliable)
             cursor.execute("PRAGMA table_info(stock_price_history)")
             columns = [col[1] for col in cursor.fetchall()]
@@ -506,12 +544,24 @@ def save_snapshot(portfolio_data: List[Dict[str, Any]]):
 
             cursor.executemany(insert_detail_sql, records_to_insert)
             
-            # 2. 全体サマリーの保存 (INSERT OR REPLACE by snapshot_date)
+            # 2. 再投資待機資金プール残高を取得して総資産に合算 (#332)
+            pool_balance = 0.0
+            try:
+                cursor.execute("SELECT balance FROM reinvestment_pool WHERE currency = 'JPY'")
+                p_row = cursor.fetchone()
+                if p_row and p_row[0]:
+                    pool_balance = float(p_row[0])
+            except Exception as pe:
+                logger.warning(f"Failed to fetch reinvestment_pool balance during save_snapshot: {pe}")
+
+            summary_market_value = total_market_value + pool_balance
+
+            # 3. 全体サマリーの保存 (INSERT OR REPLACE by snapshot_date)
             cursor.execute("""
                 INSERT OR REPLACE INTO portfolio_summary_history (
                     snapshot_date, snapshot_month, total_market_value, total_profit_loss, total_dividend, updated_at_jst
                 ) VALUES (?, ?, ?, ?, ?, ?)
-            """, (snapshot_date, snapshot_month, total_market_value, total_profit_loss, total_dividend, updated_at_str))
+            """, (snapshot_date, snapshot_month, summary_market_value, total_profit_loss, total_dividend, updated_at_str))
             
             conn.commit()
             logger.info(f"Snapshot and Summary for {snapshot_date} saved/updated. Details: {len(records_to_insert)} records.")
@@ -622,12 +672,31 @@ def get_last_month_end_holdings_snapshot() -> Tuple[Optional[str], Dict[str, Dic
         return None, {}
 
 def get_monthly_summary():
-    """月ごとのサマリーを取得する（各月の最新日のデータを集計）"""
+    """月ごとのサマリーを取得する（各月の最新日のデータを集計）(#332)"""
     try:
         with sqlite3.connect(DB_FILE) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            # 各月の最新の snapshot_date を特定し、その日のデータのみを集計
+            # 1. まずはプール合算済みの全体サマリー (portfolio_summary_history) から各月最新のレコードを取得
+            cursor.execute("""
+                SELECT 
+                    snapshot_month,
+                    total_market_value,
+                    total_profit_loss,
+                    total_dividend
+                FROM portfolio_summary_history
+                WHERE snapshot_date IN (
+                    SELECT MAX(snapshot_date)
+                    FROM portfolio_summary_history
+                    GROUP BY snapshot_month
+                )
+                ORDER BY snapshot_month ASC
+            """)
+            rows = cursor.fetchall()
+            if rows:
+                return [dict(row) for row in rows]
+
+            # フォールバック (サマリーテーブルが空の場合のみ portfolio_history から集計)
             cursor.execute("""
                 SELECT 
                     snapshot_month,
@@ -819,6 +888,151 @@ def get_latest_price_from_db(code: str) -> Optional[float]:
     except Exception as e:
         logger.error(f"Error fetching latest price from DB for {code}: {e}")
         return None
+
+# ==========================================
+# 株式売却履歴・確定損益 ＆ 再投資待機資金プール (#332)
+# ==========================================
+
+def add_realized_trade(
+    code: str,
+    name: str,
+    asset_type: str,
+    account_type: str,
+    quantity: float,
+    sell_price: float,
+    purchase_price: float,
+    sold_date: str,
+    security_company: str = "",
+    currency: str = "JPY",
+    exchange_rate: float = 1.0
+) -> int:
+    """株式売却履歴を保存し、確定損益を記録する"""
+    try:
+        now_str = get_now_jst().strftime("%Y-%m-%d %H:%M:%S")
+        sell_amount_jpy = sell_price * quantity * exchange_rate
+        purchase_amount_jpy = purchase_price * quantity * exchange_rate
+        realized_pl_jpy = sell_amount_jpy - purchase_amount_jpy
+        realized_pl_rate = (realized_pl_jpy / purchase_amount_jpy * 100.0) if purchase_amount_jpy > 0 else 0.0
+
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO realized_trades (
+                    code, name, asset_type, account_type, security_company,
+                    quantity, sell_price, purchase_price, currency, exchange_rate,
+                    sell_amount_jpy, purchase_amount_jpy, realized_pl_jpy, realized_pl_rate,
+                    sold_date, created_at_jst
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                code, name, asset_type, account_type, security_company,
+                quantity, sell_price, purchase_price, currency, exchange_rate,
+                sell_amount_jpy, purchase_amount_jpy, realized_pl_jpy, realized_pl_rate,
+                sold_date, now_str
+            ))
+            conn.commit()
+            trade_id = cursor.lastrowid
+            logger.info(f"Recorded realized trade #{trade_id} for {code}: PL={realized_pl_jpy:+.1f} JPY ({realized_pl_rate:+.2f}%)")
+            return trade_id
+    except Exception as e:
+        logger.error(f"Failed to add realized trade for {code}: {e}")
+        raise
+
+def get_realized_trades(year: Optional[int] = None) -> List[Dict[str, Any]]:
+    """売却履歴を取得する（年指定可能）"""
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            if year:
+                cursor.execute("""
+                    SELECT * FROM realized_trades 
+                    WHERE strftime('%Y', sold_date) = ?
+                    ORDER BY sold_date DESC, id DESC
+                """, (str(year),))
+            else:
+                cursor.execute("""
+                    SELECT * FROM realized_trades 
+                    ORDER BY sold_date DESC, id DESC
+                """)
+            return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Failed to get realized trades: {e}")
+        return []
+
+def get_realized_summary(year: Optional[int] = None) -> Dict[str, Any]:
+    """確定損益のサマリー（合計損益、取引回数、勝率など）を取得する"""
+    trades = get_realized_trades(year)
+    total_pl = sum(t["realized_pl_jpy"] for t in trades)
+    total_sell_amount = sum(t["sell_amount_jpy"] for t in trades)
+    wins = [t for t in trades if t["realized_pl_jpy"] > 0]
+    losses = [t for t in trades if t["realized_pl_jpy"] < 0]
+    win_rate = (len(wins) / len(trades) * 100.0) if trades else 0.0
+
+    return {
+        "year": year or datetime.now().year,
+        "total_pl_jpy": round(total_pl, 1),
+        "total_sell_amount_jpy": round(total_sell_amount, 1),
+        "trade_count": len(trades),
+        "win_count": len(wins),
+        "loss_count": len(losses),
+        "win_rate": round(win_rate, 1)
+    }
+
+def get_reinvestment_pool_balance(currency: str = "JPY") -> float:
+    """再投資待機資金プールの残高を取得する"""
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT balance FROM reinvestment_pool WHERE currency = ?", (currency,))
+            row = cursor.fetchone()
+            return float(row[0]) if row and row[0] is not None else 0.0
+    except Exception as e:
+        logger.error(f"Failed to get reinvestment pool balance for {currency}: {e}")
+        return 0.0
+
+def update_reinvestment_pool_balance(delta: float, currency: str = "JPY") -> float:
+    """再投資待機資金プールの残高を増減させる（0円未満にはならないようガード）"""
+    try:
+        now_str = get_now_jst().strftime("%Y-%m-%d %H:%M:%S")
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT balance FROM reinvestment_pool WHERE currency = ?", (currency,))
+            row = cursor.fetchone()
+            current_balance = float(row[0]) if row and row[0] is not None else 0.0
+            
+            # 0円未満にならないようクランプ
+            new_balance = max(0.0, current_balance + delta)
+            
+            cursor.execute("""
+                INSERT INTO reinvestment_pool (currency, balance, updated_at_jst)
+                VALUES (?, ?, ?)
+                ON CONFLICT(currency) DO UPDATE SET balance = excluded.balance, updated_at_jst = excluded.updated_at_jst
+            """, (currency, new_balance, now_str))
+            conn.commit()
+            logger.info(f"Updated reinvestment pool ({currency}): {current_balance} -> {new_balance} (delta={delta:+.1f})")
+            return new_balance
+    except Exception as e:
+        logger.error(f"Failed to update reinvestment pool balance: {e}")
+        return 0.0
+
+def set_reinvestment_pool_balance(balance: float, currency: str = "JPY") -> float:
+    """再投資待機資金プールの残高を直接設定・リセットする"""
+    try:
+        safe_balance = max(0.0, float(balance))
+        now_str = get_now_jst().strftime("%Y-%m-%d %H:%M:%S")
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO reinvestment_pool (currency, balance, updated_at_jst)
+                VALUES (?, ?, ?)
+                ON CONFLICT(currency) DO UPDATE SET balance = excluded.balance, updated_at_jst = excluded.updated_at_jst
+            """, (currency, safe_balance, now_str))
+            conn.commit()
+            logger.info(f"Directly set reinvestment pool ({currency}) balance to {safe_balance}")
+            return safe_balance
+    except Exception as e:
+        logger.error(f"Failed to set reinvestment pool balance: {e}")
+        return 0.0
 
 # モジュール読み込み時にDB初期化を実行
 init_db()

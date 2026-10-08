@@ -1073,7 +1073,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!holdings || holdings.length === 0) { holdingsListContainer.innerHTML = '<p>保有情報なし</p>'; return; }
         holdings.forEach(h => {
             const item = document.createElement('div'); item.className = 'holding-item';
-            item.innerHTML = `<div class="holding-info"><span class="account-type">${h.account_type}</span><span>取得単価: ${formatNumber(h.purchase_price, 2)}円</span><span>数量: ${formatNumber(h.quantity, assetType === 'investment_trust' ? 6 : 0)}</span></div><div class="holding-actions"><button class="btn-sm btn-edit" data-holding-id="${h.id}">編集</button><button class="btn-sm btn-delete-holding" data-holding-id="${h.id}">削除</button></div>`;
+            item.innerHTML = `<div class="holding-info"><span class="account-type">${h.account_type}</span><span>取得単価: ${formatNumber(h.purchase_price, 2)}円</span><span>数量: ${formatNumber(h.quantity, assetType === 'investment_trust' ? 6 : 0)}</span></div><div class="holding-actions"><button class="btn-sm btn-edit" data-holding-id="${h.id}">編集</button><button class="btn-sm btn-sell-holding" data-holding-id="${h.id}" style="background-color: #d97706; color: white;">売却</button><button class="btn-sm btn-delete-holding" data-holding-id="${h.id}">削除</button></div>`;
             holdingsListContainer.appendChild(item);
         });
     }
@@ -1499,11 +1499,308 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.classList.contains('btn-edit')) {
             const h = allAssetsData.find(s => s.code === currentManagingCode).holdings.find(h => h.id === e.target.dataset.holdingId);
             showHoldingForm(h);
-        } else if (e.target.classList.contains('btn-delete-holding')) handleHoldingDelete(e.target.dataset.holdingId);
+        } else if (e.target.classList.contains('btn-sell-holding')) {
+            openSellModal(e.target.dataset.holdingId);
+        } else if (e.target.classList.contains('btn-delete-holding')) {
+            handleHoldingDelete(e.target.dataset.holdingId);
+        }
     });
     modalCloseBtn.addEventListener('click', closeModal);
     modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
     window.addEventListener('pagehide', () => { if (fetchController) fetchController.abort(); });
+
+    // ==========================================
+    // 株式売却 ＆ 再投資待機資金プール管理ロジック (#332)
+    // ==========================================
+    const sellHoldingModal = document.getElementById('sell-holding-modal');
+    const btnCloseSellModal = document.getElementById('btn-close-sell-modal');
+    const btnCancelSell = document.getElementById('btn-cancel-sell');
+    const sellHoldingForm = document.getElementById('sell-holding-form');
+    const sellHoldingIdInput = document.getElementById('sell-holding-id-input');
+    const sellQuantityInput = document.getElementById('sell-quantity-input');
+    const sellPriceInput = document.getElementById('sell-price-input');
+    const sellDateInput = document.getElementById('sell-date-input');
+    const btnSellAllQty = document.getElementById('btn-sell-all-qty');
+    const sellTargetStockInfo = document.getElementById('sell-target-stock-info');
+    const sellPreviewAmount = document.getElementById('sell-preview-amount');
+    const sellPreviewPl = document.getElementById('sell-preview-pl');
+
+    const navPoolBalance = document.getElementById('nav-pool-balance');
+    const btnOpenPoolModal = document.getElementById('btn-open-pool-modal');
+    const reinvestmentPoolModal = document.getElementById('reinvestment-pool-modal');
+    const btnClosePoolModal = document.getElementById('btn-close-pool-modal');
+    const btnClosePoolFooter = document.getElementById('btn-close-pool-footer');
+    const modalPoolBalanceVal = document.getElementById('modal-pool-balance-val');
+    const modalRealizedPlVal = document.getElementById('modal-realized-pl-val');
+    const modalRealizedStatsVal = document.getElementById('modal-realized-stats-val');
+    const modalRecentTradesList = document.getElementById('modal-recent-trades-list');
+    const btnResetPoolZero = document.getElementById('btn-reset-pool-zero');
+    const btnAdjustPoolPrompt = document.getElementById('btn-adjust-pool-prompt');
+
+    let currentSellingHolding = null;
+    let currentSellingAsset = null;
+
+    // 再投資プール残高の取得・ヘッダー更新
+    async function fetchAndUpdateReinvestmentPool() {
+        try {
+            const res = await fetch('/api/reinvestment-pool');
+            if (!res.ok) return;
+            const data = await res.json();
+            const balance = data.balance || 0;
+            if (navPoolBalance) {
+                navPoolBalance.textContent = `${formatNumber(balance, 0)}円`;
+                if (balance > 0) {
+                    navPoolBalance.style.color = '#2563eb';
+                } else {
+                    navPoolBalance.style.color = 'inherit';
+                }
+            }
+            return data;
+        } catch (e) {
+            console.warn('Failed to fetch reinvestment pool:', e);
+        }
+    }
+
+    // 売却モーダルを開く
+    function openSellModal(holdingId) {
+        const asset = allAssetsData.find(s => s.code === currentManagingCode);
+        if (!asset) return;
+        const holding = (asset.holdings || []).find(h => h.id === holdingId);
+        if (!holding) return;
+
+        currentSellingHolding = holding;
+        currentSellingAsset = asset;
+
+        sellHoldingIdInput.value = holding.id;
+        sellQuantityInput.value = holding.quantity;
+        sellQuantityInput.max = holding.quantity;
+
+        // 現在株価をデフォルトセット（なければ取得単価）
+        const currentPrice = asset.price || holding.purchase_price || 0;
+        sellPriceInput.value = currentPrice;
+
+        // 今日の日付をセット
+        const todayStr = new Date().toISOString().split('T')[0];
+        sellDateInput.value = todayStr;
+
+        // 銘柄情報ヘッダー
+        const currencySymbol = (asset.currency === 'USD' || asset.asset_type === 'us_stock') ? '$' : '円';
+        sellTargetStockInfo.innerHTML = `
+            <div style="font-weight: 700; font-size: 1rem; margin-bottom: 4px;">${escapeHtml(asset.name || asset.code)} (${asset.code})</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.82rem; color: var(--text-muted);">
+                <span>口座: <strong>${holding.account_type}</strong></span>
+                <span>保有数: <strong>${formatNumber(holding.quantity, asset.asset_type === 'investment_trust' ? 4 : 0)}</strong></span>
+                <span>取得単価: <strong>${formatNumber(holding.purchase_price, 2)}${currencySymbol}</strong></span>
+                <span>現在株価: <strong>${formatNumber(currentPrice, 2)}${currencySymbol}</strong></span>
+            </div>
+        `;
+
+        updateSellPreview();
+        sellHoldingModal.classList.remove('hidden');
+    }
+
+    function closeSellModal() {
+        if (sellHoldingModal) sellHoldingModal.classList.add('hidden');
+        currentSellingHolding = null;
+        currentSellingAsset = null;
+    }
+
+    // プレビュー計算
+    function updateSellPreview() {
+        if (!currentSellingHolding || !currentSellingAsset) return;
+        const qty = parseFloat(sellQuantityInput.value) || 0;
+        const sellPrice = parseFloat(sellPriceInput.value) || 0;
+        const purchasePrice = parseFloat(currentSellingHolding.purchase_price) || 0;
+
+        const isUsd = (currentSellingAsset.currency === 'USD' || currentSellingAsset.asset_type === 'us_stock');
+        // 為替レート（概算: 150円、日本株は1.0）
+        const rate = isUsd ? (window.appState && window.appState.exchangeRates ? window.appState.exchangeRates['USD'] || 150.0 : 150.0) : 1.0;
+
+        const sellAmountJpy = sellPrice * qty * rate;
+        const purchaseAmountJpy = purchasePrice * qty * rate;
+        const plJpy = sellAmountJpy - purchaseAmountJpy;
+        const plRate = purchaseAmountJpy > 0 ? (plJpy / purchaseAmountJpy * 100) : 0;
+
+        sellPreviewAmount.textContent = `${formatNumber(sellAmountJpy, 0)}円` + (isUsd ? ` (約$${formatNumber(sellPrice * qty, 2)})` : '');
+        
+        const sign = plJpy >= 0 ? '+' : '';
+        const plClass = plJpy >= 0 ? 'profit' : 'loss';
+        sellPreviewPl.innerHTML = `<span class="${plClass}">${sign}${formatNumber(plJpy, 0)}円 (${sign}${plRate.toFixed(2)}%)</span>`;
+    }
+
+    // イベント登録（入力時のリアルタイム計算）
+    if (sellQuantityInput) sellQuantityInput.addEventListener('input', updateSellPreview);
+    if (sellPriceInput) sellPriceInput.addEventListener('input', updateSellPreview);
+    if (btnSellAllQty) {
+        btnSellAllQty.addEventListener('click', () => {
+            if (currentSellingHolding) {
+                sellQuantityInput.value = currentSellingHolding.quantity;
+                updateSellPreview();
+            }
+        });
+    }
+
+    if (btnCloseSellModal) btnCloseSellModal.addEventListener('click', closeSellModal);
+    if (btnCancelSell) btnCancelSell.addEventListener('click', closeSellModal);
+    if (sellHoldingModal) {
+        sellHoldingModal.addEventListener('click', (e) => {
+            if (e.target === sellHoldingModal) closeSellModal();
+        });
+    }
+
+    // 売却送信
+    if (sellHoldingForm) {
+        sellHoldingForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const holdingId = sellHoldingIdInput.value;
+            const quantity = parseFloat(sellQuantityInput.value);
+            const sellPrice = parseFloat(sellPriceInput.value);
+            const soldDate = sellDateInput.value;
+
+            if (!holdingId || quantity <= 0 || sellPrice <= 0) {
+                showAlert('売却株数と売却単価を正しく入力してください。', 'warning');
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/holdings/${holdingId}/sell`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        quantity: quantity,
+                        sell_price: sellPrice,
+                        sold_date: soldDate || null
+                    })
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || '売却処理に失敗しました。');
+                }
+
+                const data = await res.json();
+                const pl = data.result.realized_pl_jpy || 0;
+                const sign = pl >= 0 ? '+' : '';
+                showAlert(`売却が完了しました！ 確定損益: ${sign}${formatNumber(pl, 0)}円、再投資待機資金: ${formatNumber(data.result.reinvestment_pool_balance, 0)}円`, 'success');
+
+                closeSellModal();
+                window.appState.clearState();
+                await fetchAndUpdateReinvestmentPool();
+                await fetchAndRenderAllData(false);
+
+                // 保有管理モーダルの表示更新
+                const asset = allAssetsData.find(a => a.code === currentManagingCode);
+                if (asset && asset.holdings && asset.holdings.length > 0) {
+                    renderHoldingsList(asset.holdings, asset.asset_type);
+                } else {
+                    closeModal(); // 全株売却で銘柄自体が削除された場合はモーダルを閉じる
+                }
+            } catch (err) {
+                showAlert(`売却エラー: ${err.message}`, 'error');
+            }
+        });
+    }
+
+    // 再投資待機資金モーダルの開閉
+    async function openPoolModal() {
+        const data = await fetchAndUpdateReinvestmentPool();
+        if (!data) return;
+
+        const balance = data.balance || 0;
+        const summary = data.realized_summary || {};
+        const trades = data.recent_trades || [];
+
+        modalPoolBalanceVal.textContent = `${formatNumber(balance, 0)}円`;
+        const pl = summary.total_pl_jpy || 0;
+        const plSign = pl >= 0 ? '+' : '';
+        modalRealizedPlVal.innerHTML = `<span class="${pl >= 0 ? 'profit' : 'loss'}">${plSign}${formatNumber(pl, 0)}円</span>`;
+        modalRealizedStatsVal.textContent = `${summary.trade_count || 0}取引 (${summary.win_count || 0}勝 ${summary.loss_count || 0}敗 / 勝率 ${(summary.win_rate || 0).toFixed(1)}%)`;
+
+        if (trades.length === 0) {
+            modalRecentTradesList.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">売却取引の履歴はありません</div>';
+        } else {
+            modalRecentTradesList.innerHTML = trades.map(t => {
+                const tPl = t.realized_pl_jpy || 0;
+                const tSign = tPl >= 0 ? '+' : '';
+                const tCls = tPl >= 0 ? 'profit' : 'loss';
+                return `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--border-color); font-size: 0.85rem;">
+                        <div>
+                            <strong>${escapeHtml(t.name || t.code)}</strong> <small style="color: var(--text-muted);">(${t.code})</small>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">${t.sold_date} / ${t.quantity}株 @ ${formatNumber(t.sell_price, 1)}円</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div class="${tCls}" style="font-weight: 700;">${tSign}${formatNumber(tPl, 0)}円</div>
+                            <small style="color: var(--text-muted);">売却額: ${formatNumber(t.sell_amount_jpy, 0)}円</small>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        reinvestmentPoolModal.classList.remove('hidden');
+    }
+
+    function closePoolModal() {
+        if (reinvestmentPoolModal) reinvestmentPoolModal.classList.add('hidden');
+    }
+
+    if (btnOpenPoolModal) btnOpenPoolModal.addEventListener('click', openPoolModal);
+    if (btnClosePoolModal) btnClosePoolModal.addEventListener('click', closePoolModal);
+    if (btnClosePoolFooter) btnClosePoolFooter.addEventListener('click', closePoolModal);
+    if (reinvestmentPoolModal) {
+        reinvestmentPoolModal.addEventListener('click', (e) => {
+            if (e.target === reinvestmentPoolModal) closePoolModal();
+        });
+    }
+
+    // 0円リセット
+    if (btnResetPoolZero) {
+        btnResetPoolZero.addEventListener('click', async () => {
+            if (!confirm('再投資待機資金プールを 0円 にリセット（クリア）しますか？\n（出金した場合などに使用します）')) return;
+            try {
+                const res = await fetch('/api/reinvestment-pool/adjust', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ balance: 0.0 })
+                });
+                if (!res.ok) throw new Error('リセットに失敗しました');
+                showAlert('再投資待機資金を 0円 にリセットしました。', 'success');
+                await openPoolModal();
+            } catch (err) {
+                showAlert(`エラー: ${err.message}`, 'error');
+            }
+        });
+    }
+
+    // 金額手動調整
+    if (btnAdjustPoolPrompt) {
+        btnAdjustPoolPrompt.addEventListener('click', async () => {
+            const currentStr = modalPoolBalanceVal.textContent.replace(/[^0-9.]/g, '') || '0';
+            const inputVal = prompt('設定したい再投資待機資金の金額（円）を入力してください:', currentStr);
+            if (inputVal === null) return;
+            const newBal = parseFloat(inputVal);
+            if (isNaN(newBal) || newBal < 0) {
+                showAlert('有効な金額（0以上の数値）を入力してください。', 'warning');
+                return;
+            }
+            try {
+                const res = await fetch('/api/reinvestment-pool/adjust', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ balance: newBal })
+                });
+                if (!res.ok) throw new Error('調整に失敗しました');
+                showAlert(`再投資待機資金を ${formatNumber(newBal, 0)}円 に更新しました。`, 'success');
+                await openPoolModal();
+            } catch (err) {
+                showAlert(`エラー: ${err.message}`, 'error');
+            }
+        });
+    }
+
+    // 初期化時にプール残高を読み込み
+    fetchAndUpdateReinvestmentPool();
 
     // ==========================================
     // 株式分割アラート関連ロジック (Issue #216)

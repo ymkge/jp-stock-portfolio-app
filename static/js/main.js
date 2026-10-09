@@ -1533,7 +1533,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const sellPreviewNetAmount = document.getElementById('sell-preview-net-amount');
     const sellPreviewPl = document.getElementById('sell-preview-pl');
 
-    const navPoolBalance = document.getElementById('nav-pool-balance');
+    const navPoolBadge = document.getElementById('nav-pool-badge');
     const btnOpenPoolModal = document.getElementById('btn-open-pool-modal');
     const reinvestmentPoolModal = document.getElementById('reinvestment-pool-modal');
     const btnClosePoolModal = document.getElementById('btn-close-pool-modal');
@@ -1548,19 +1548,25 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentSellingHolding = null;
     let currentSellingAsset = null;
 
-    // 再投資プール残高の取得・ヘッダー更新
+    // 再投資プール残高の取得・ヘッダー更新 (#340: 個人情報保護のため生金額を非表示化し、残高有無のインジケーターのみ制御)
     async function fetchAndUpdateReinvestmentPool() {
         try {
             const res = await fetch('/api/reinvestment-pool');
             if (!res.ok) return;
             const data = await res.json();
             const balance = data.balance || 0;
-            if (navPoolBalance) {
-                navPoolBalance.textContent = `${formatNumber(balance, 0)}円`;
+
+            if (btnOpenPoolModal) {
                 if (balance > 0) {
-                    navPoolBalance.style.color = '#2563eb';
+                    btnOpenPoolModal.classList.add('has-pool');
+                    btnOpenPoolModal.title = '再投資待機資金があります（クリックして確認・管理）';
+                    btnOpenPoolModal.setAttribute('aria-label', '再投資待機資金（残高あり・クリックして確認・管理）');
+                    if (navPoolBadge) navPoolBadge.classList.remove('hidden');
                 } else {
-                    navPoolBalance.style.color = 'inherit';
+                    btnOpenPoolModal.classList.remove('has-pool');
+                    btnOpenPoolModal.title = '再投資待機資金プールと確定損益を確認・調整します';
+                    btnOpenPoolModal.setAttribute('aria-label', '再投資待機資金プールと確定損益を確認・調整します');
+                    if (navPoolBadge) navPoolBadge.classList.add('hidden');
                 }
             }
             return data;

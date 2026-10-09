@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>国内株式ポートフォリオ</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=4.0">
+    <link rel="stylesheet" href="/static/css/style.css?v=4.1">
     <script>
         // テーマおよび免責バナー表示の初期適用（チラつき防止）
         (function() {
@@ -36,8 +36,9 @@
                     </div>
                 </div>
                 <div class="nav-right">
-                    <button id="btn-open-pool-modal" class="btn-outline" title="売却代金の再投資待機資金プールと確定損益を確認・調整します" style="display: inline-flex; align-items: center; gap: 4px;">
-                        💰 待機資金: <strong id="nav-pool-balance">0円</strong>
+                    <button id="btn-open-pool-modal" class="btn-outline" title="再投資待機資金プールと確定損益を確認・調整します" aria-label="再投資待機資金プールと確定損益を確認・調整します">
+                        <span>💰 待機資金</span>
+                        <span id="nav-pool-badge" class="nav-pool-badge hidden" role="status" aria-label="待機資金あり"></span>
                     </button>
                     <button id="btn-open-policy-config" class="btn-outline">⚙️ 投資方針</button>
                     <button id="btn-show-market-fibonacci" class="btn-outline">📈 指数フィボナッチ</button>
@@ -635,6 +636,6 @@
     <script src="/static/js/stateManager.js?v=3.2"></script>
     <script src="/static/js/marketFibonacci.js?v=1.0"></script>
     <script src="/static/js/marketAnomaly.js?v=1.0"></script>
-    <script src="/static/js/main.js?v=4.2"></script>
+    <script src="/static/js/main.js?v=4.3"></script>
 </body>
 </html>

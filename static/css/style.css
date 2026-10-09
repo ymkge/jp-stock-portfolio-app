@@ -5616,3 +5616,63 @@ body.dark-mode .pool-summary-card,
     border-color: #334155;
     color: #f8fafc;
 }
+
+/* ==========================================================================
+   再投資待機資金 ナビゲーションボタン & インジケーター (#340)
+   ========================================================================== */
+#btn-open-pool-modal {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+}
+
+/* 待機資金ありを示す円形インジケータードット (ピュアCSS) */
+.nav-pool-badge {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #2563eb;
+    margin-left: 2px;
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+}
+
+/* 待機資金あり（残高 > 0）のアクティブスタイル */
+#btn-open-pool-modal.has-pool {
+    color: #2563eb;
+    border-color: #93c5fd;
+    background-color: rgba(37, 99, 235, 0.05);
+    font-weight: 600;
+}
+
+#btn-open-pool-modal.has-pool:hover {
+    background-color: rgba(37, 99, 235, 0.12);
+}
+
+#btn-open-pool-modal.has-pool:hover .nav-pool-badge {
+    transform: scale(1.2);
+}
+
+/* ダークモード対応 */
+[data-theme="dark"] .nav-pool-badge,
+body.dark-mode .nav-pool-badge,
+.dark-mode .nav-pool-badge {
+    background-color: #60a5fa;
+    box-shadow: 0 0 6px rgba(96, 165, 250, 0.6);
+}
+
+[data-theme="dark"] #btn-open-pool-modal.has-pool,
+body.dark-mode #btn-open-pool-modal.has-pool,
+.dark-mode #btn-open-pool-modal.has-pool {
+    color: #93c5fd;
+    border-color: #3b82f6;
+    background-color: rgba(59, 130, 246, 0.15);
+}
+
+[data-theme="dark"] #btn-open-pool-modal.has-pool:hover,
+body.dark-mode #btn-open-pool-modal.has-pool:hover,
+.dark-mode #btn-open-pool-modal.has-pool:hover {
+    background-color: rgba(59, 130, 246, 0.25);
+}

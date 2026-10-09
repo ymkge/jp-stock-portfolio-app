@@ -200,11 +200,44 @@ def get_stock_info(code: str) -> Optional[Dict[str, Any]]:
             return stock
     return None
 
+def _offset_reinvestment_pool(
+    amount: float,
+    target_stock: Optional[Dict[str, Any]],
+    context_label: str = "purchase"
+) -> float:
+    """
+    買付代金（円換算）に応じて再投資待機資金プールから自動相殺するヘルパー関数 (#332, #338)。
+    相殺に成功した場合は消費額（JPY）を返す。失敗または0円相殺の場合は0.0を返す。
+    """
+    if amount <= 0.01:
+        return 0.0
+    try:
+        currency = target_stock.get("currency", "JPY") if target_stock else "JPY"
+        rate = 1.0
+        if currency == "USD" or (target_stock and target_stock.get("asset_type") == "us_stock"):
+            from scraper import get_exchange_rate
+            rate = get_exchange_rate('USDJPY=X') or 1.0
+        purchase_amount_jpy = amount * rate
+        
+        import history_manager
+        pool_balance = history_manager.get_reinvestment_pool_balance()
+        consume = min(pool_balance, purchase_amount_jpy)
+        if consume > 0:
+            new_balance = history_manager.update_reinvestment_pool_balance(-consume)
+            logger.info(
+                f"Auto-offset reinvestment pool for {context_label}: "
+                f"consumed {consume:.1f} JPY, remaining pool: {new_balance:.1f} JPY"
+            )
+            return consume
+    except Exception as e:
+        logger.warning(f"Failed to auto-offset reinvestment pool for {context_label}: {e}")
+    return 0.0
+
 def add_holding(code: str, holding_data: Dict[str, Any]) -> str:
     """
     特定の銘柄に新しい保有情報を追加する。
     新しい保有情報のIDを返す。
-    自動相殺: 再投資待機資金プールに残高がある場合、新規買付金額分を自動減額する (#332)。
+    自動相殺: 再投資待機資金プールに残高がある場合、新規買付金額分を自動減額する (#332, #338)。
     """
     with portfolio_lock():
         portfolio = load_portfolio()
@@ -226,39 +259,32 @@ def add_holding(code: str, holding_data: Dict[str, Any]) -> str:
 
         save_portfolio(portfolio)
 
-        # --- スマート再投資プールからの自動相殺 (#332) ---
-        try:
-            qty = float(holding_data.get("quantity") or 0.0)
-            price = float(holding_data.get("purchase_price") or 0.0)
-            if qty > 0 and price > 0:
-                currency = target_stock.get("currency", "JPY") if target_stock else "JPY"
-                rate = 1.0
-                if currency == "USD" or (target_stock and target_stock.get("asset_type") == "us_stock"):
-                    from scraper import get_exchange_rate
-                    rate = get_exchange_rate('USDJPY=X') or 1.0
-                purchase_amount_jpy = price * qty * rate
-                
-                import history_manager
-                pool_balance = history_manager.get_reinvestment_pool_balance()
-                consume = min(pool_balance, purchase_amount_jpy)
-                if consume > 0:
-                    new_balance = history_manager.update_reinvestment_pool_balance(-consume)
-                    logger.info(f"Auto-offset reinvestment pool for {code}: consumed {consume:.1f} JPY, remaining pool: {new_balance:.1f} JPY")
-        except Exception as e:
-            logger.warning(f"Failed to auto-offset reinvestment pool for {code}: {e}")
+        # --- スマート再投資プールからの自動相殺 (#332, #338) ---
+        qty = float(holding_data.get("quantity") or 0.0)
+        price = float(holding_data.get("purchase_price") or 0.0)
+        if qty > 0 and price > 0:
+            _offset_reinvestment_pool(price * qty, target_stock, context_label=f"add {code}")
 
         return new_holding_id
 
 def update_holding(holding_id: str, update_data: Dict[str, Any]) -> bool:
     """
     指定されたIDの保有情報を更新する。
+    買い増し（株数増加かつ買付総額増加）の場合は、再投資プールから差額分を自動相殺する (#338)。
     """
     with portfolio_lock():
         portfolio = load_portfolio()
         holding_found = False
+        target_stock = None
+        old_qty = 0.0
+        old_price = 0.0
+
         for stock in portfolio:
             for holding in stock.get("holdings", []):
                 if holding.get("id") == holding_id:
+                    target_stock = stock
+                    old_qty = float(holding.get("quantity") or 0.0)
+                    old_price = float(holding.get("purchase_price") or 0.0)
                     holding.update(update_data)
                     holding_found = True
                     break
@@ -267,6 +293,21 @@ def update_holding(holding_id: str, update_data: Dict[str, Any]) -> bool:
         
         if holding_found:
             save_portfolio(portfolio)
+
+            # --- 買い増し時の再投資待機資金自動相殺 (#338) ---
+            new_qty = float(update_data.get("quantity", old_qty) or 0.0)
+            new_price = float(update_data.get("purchase_price", old_price) or 0.0)
+
+            if new_qty > old_qty:
+                additional_amount = (new_qty * new_price) - (old_qty * old_price)
+                if additional_amount > 0.01:
+                    code = target_stock.get("code", "unknown") if target_stock else "unknown"
+                    _offset_reinvestment_pool(
+                        additional_amount,
+                        target_stock,
+                        context_label=f"update {code}"
+                    )
+
             return True
         return False
 

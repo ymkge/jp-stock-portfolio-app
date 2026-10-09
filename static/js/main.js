@@ -1095,7 +1095,10 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch(url, { method: holdingIdInput.value ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
             if (!res.ok) throw new Error('保存失敗');
-            showAlert('保有情報を保存しました。', 'success'); window.appState.clearState(); await fetchAndRenderAllData(false);
+            showAlert('保有情報を保存しました。', 'success');
+            window.appState.clearState();
+            await fetchAndUpdateReinvestmentPool();
+            await fetchAndRenderAllData(false);
             const asset = allAssetsData.find(a => a.code === currentManagingCode); if (asset) renderHoldingsList(asset.holdings, asset.asset_type);
             hideHoldingForm();
         } catch (err) { showAlert(err.message, 'danger'); }
@@ -1104,7 +1107,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!confirm('削除しますか？')) return;
         try {
             const res = await fetch(`/api/holdings/${id}`, { method: 'DELETE' }); if (!res.ok) throw new Error('削除失敗');
-            showAlert('削除しました。', 'success'); window.appState.clearState(); await fetchAndRenderAllData(false);
+            showAlert('削除しました。', 'success');
+            window.appState.clearState();
+            await fetchAndUpdateReinvestmentPool();
+            await fetchAndRenderAllData(false);
             const asset = allAssetsData.find(a => a.code === currentManagingCode); if (asset) renderHoldingsList(asset.holdings, asset.asset_type);
         } catch (err) { showAlert(err.message, 'danger'); }
     }

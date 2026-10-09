@@ -851,6 +851,136 @@ def test_reinvestment_pool_auto_offset():
         mock_update_pool.assert_not_called()
 
 
+def test_update_holding_auto_offset_on_quantity_increase():
+    """既存保有の編集（買い増し）時に待機資金プールから差額が自動相殺されることの検証 (#338)"""
+    import portfolio_manager
+    from unittest.mock import patch
+
+    dummy_portfolio = [
+        {
+            "code": "8306",
+            "asset_type": "jp_stock",
+            "currency": "JPY",
+            "holdings": [
+                {
+                    "id": "h-8306-1",
+                    "account_type": "特定口座",
+                    "quantity": 100.0,
+                    "purchase_price": 1000.0,  # 旧総額: 100,000円
+                    "security_company": "SBI証券",
+                    "memo": ""
+                }
+            ]
+        }
+    ]
+
+    # 1. 正常系: 100株 @ 1000円 ➔ 200株 @ 1500円 (新総額: 300,000円、差額: +200,000円)
+    #    プール残高 250,000円 ➔ 200,000円相殺
+    with patch("portfolio_manager.load_portfolio", return_value=dummy_portfolio), \
+         patch("portfolio_manager.save_portfolio"), \
+         patch("history_manager.get_reinvestment_pool_balance", return_value=250000.0), \
+         patch("history_manager.update_reinvestment_pool_balance", return_value=50000.0) as mock_update_pool:
+
+        ok = portfolio_manager.update_holding("h-8306-1", {
+            "quantity": 200.0,
+            "purchase_price": 1500.0
+        })
+        assert ok is True
+        mock_update_pool.assert_called_once_with(-200000.0)
+
+    # 2. クランプ系: プール残高 70,000円 しかない場合 (70,000円のみ相殺)
+    #    200株 @ 1500円 ➔ 300株 @ 1600円 (旧総額: 300,000円、新総額: 480,000円、差額: +180,000円)
+    with patch("portfolio_manager.load_portfolio", return_value=dummy_portfolio), \
+         patch("portfolio_manager.save_portfolio"), \
+         patch("history_manager.get_reinvestment_pool_balance", return_value=70000.0), \
+         patch("history_manager.update_reinvestment_pool_balance", return_value=0.0) as mock_update_pool:
+
+        ok = portfolio_manager.update_holding("h-8306-1", {
+            "quantity": 300.0,
+            "purchase_price": 1600.0
+        })
+        assert ok is True
+        mock_update_pool.assert_called_once_with(-70000.0)
+
+    # 3. 防衛系: 単価のみ変更（株数不変 300株のまま @ 1800円）➔ 相殺されないこと
+    with patch("portfolio_manager.load_portfolio", return_value=dummy_portfolio), \
+         patch("portfolio_manager.save_portfolio"), \
+         patch("history_manager.get_reinvestment_pool_balance", return_value=50000.0), \
+         patch("history_manager.update_reinvestment_pool_balance") as mock_update_pool:
+
+        ok = portfolio_manager.update_holding("h-8306-1", {
+            "quantity": 300.0,
+            "purchase_price": 1800.0
+        })
+        assert ok is True
+        mock_update_pool.assert_not_called()
+
+    # 4. 防衛系: 株数減少（300株 ➔ 200株 @ 1600円）➔ 相殺されないこと
+    with patch("portfolio_manager.load_portfolio", return_value=dummy_portfolio), \
+         patch("portfolio_manager.save_portfolio"), \
+         patch("history_manager.get_reinvestment_pool_balance", return_value=50000.0), \
+         patch("history_manager.update_reinvestment_pool_balance") as mock_update_pool:
+
+        ok = portfolio_manager.update_holding("h-8306-1", {
+            "quantity": 200.0,
+            "purchase_price": 1600.0
+        })
+        assert ok is True
+        mock_update_pool.assert_not_called()
+
+    # 5. 防衛系: メモ・口座変更のみ（株数・単価不変）➔ 相殺されないこと
+    with patch("portfolio_manager.load_portfolio", return_value=dummy_portfolio), \
+         patch("portfolio_manager.save_portfolio"), \
+         patch("history_manager.get_reinvestment_pool_balance", return_value=50000.0), \
+         patch("history_manager.update_reinvestment_pool_balance") as mock_update_pool:
+
+        ok = portfolio_manager.update_holding("h-8306-1", {
+            "memo": "ナンピン完了",
+            "account_type": "新NISA(成長投資枠)"
+        })
+        assert ok is True
+        mock_update_pool.assert_not_called()
+
+
+def test_update_holding_auto_offset_us_stock():
+    """米国株（USD）保有の買い増し編集時に為替換算されてプールから自動相殺されることの検証 (#338)"""
+    import portfolio_manager
+    from unittest.mock import patch
+
+    dummy_portfolio = [
+        {
+            "code": "AAPL",
+            "asset_type": "us_stock",
+            "currency": "USD",
+            "holdings": [
+                {
+                    "id": "h-aapl-1",
+                    "account_type": "特定口座",
+                    "quantity": 10.0,
+                    "purchase_price": 150.0,  # 旧総額: 1,500 USD
+                    "security_company": "SBI証券"
+                }
+            ]
+        }
+    ]
+
+    # 10株 @ 150 USD ➔ 20株 @ 200 USD (新総額: 4,000 USD、差額: +2,500 USD)
+    # 為替レート: 150.0 JPY/USD ➔ 2,500 USD * 150.0 = 375,000 JPY
+    # プール残高 500,000 JPY ➔ 375,000 JPY 相殺
+    with patch("portfolio_manager.load_portfolio", return_value=dummy_portfolio), \
+         patch("portfolio_manager.save_portfolio"), \
+         patch("scraper.get_exchange_rate", return_value=150.0), \
+         patch("history_manager.get_reinvestment_pool_balance", return_value=500000.0), \
+         patch("history_manager.update_reinvestment_pool_balance", return_value=125000.0) as mock_update_pool:
+
+        ok = portfolio_manager.update_holding("h-aapl-1", {
+            "quantity": 20.0,
+            "purchase_price": 200.0
+        })
+        assert ok is True
+        mock_update_pool.assert_called_once_with(-375000.0)
+
+
 
 
 

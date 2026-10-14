@@ -1718,20 +1718,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await res.json();
                 const pl = data.result.realized_pl_jpy || 0;
                 const sign = pl >= 0 ? '+' : '';
-                showAlert(`売却が完了しました！ 確定損益: ${sign}${formatNumber(pl, 0)}円、再投資待機資金: ${formatNumber(data.result.reinvestment_pool_balance, 0)}円`, 'success');
+                let successMsg = `売却が完了しました！ 確定損益: ${sign}${formatNumber(pl, 0)}円、再投資待機資金: ${formatNumber(data.result.reinvestment_pool_balance, 0)}円`;
 
                 closeSellModal();
                 window.appState.clearState();
                 await fetchAndUpdateReinvestmentPool();
                 await fetchAndRenderAllData(false);
 
-                // 保有管理モーダルの表示更新
+                // 保有管理モーダルの表示更新 (#342)
                 const asset = allAssetsData.find(a => a.code === currentManagingCode);
                 if (asset && asset.holdings && asset.holdings.length > 0) {
                     renderHoldingsList(asset.holdings, asset.asset_type);
                 } else {
-                    closeModal(); // 全株売却で銘柄自体が削除された場合はモーダルを閉じる
+                    // 全株売却完了時: 管理モーダルを閉じ、監視銘柄として維持されている旨を通知
+                    closeModal();
+                    successMsg += '<br><small class="text-muted" style="font-size: 0.85em;">※銘柄は監視対象として維持されています（「保有のみ」チェックを外すと一覧で確認できます）</small>';
                 }
+
+                showAlert(successMsg, 'success');
             } catch (err) {
                 showAlert(`売却エラー: ${err.message}`, 'error');
             }

@@ -735,7 +735,7 @@ def test_sell_holding_partial_and_full():
         assert len(dummy_portfolio[0]["holdings"]) == 1
         assert dummy_portfolio[0]["holdings"][0]["id"] == "h-1"
 
-    # 3. 最後の holding 全売却 (h-1 の残り 60株を全株売却、銘柄自体が portfolio から削除される)
+    # 3. 最後の holding 全売却 (h-1 の残り 60株を全株売却、銘柄自体は削除されず holdings: [] で残る #342)
     with patch("portfolio_manager.load_portfolio", return_value=dummy_portfolio), \
          patch("portfolio_manager.save_portfolio") as mock_save, \
          patch("history_manager.get_latest_daily_data", return_value={"name": "トヨタ自動車"}), \
@@ -749,9 +749,54 @@ def test_sell_holding_partial_and_full():
         )
 
         assert res["is_full_holding_sold"] is True
-        assert res["is_entire_stock_removed"] is True
-        # portfolio から 7203 自体が削除されたこと
-        assert len(dummy_portfolio) == 0
+        assert res["is_entire_stock_removed"] is False
+        # portfolio から 7203 自体は削除されず、holdings が空配列で維持されること (#342)
+        assert len(dummy_portfolio) == 1
+        assert dummy_portfolio[0]["code"] == "7203"
+        assert dummy_portfolio[0]["holdings"] == []
+
+
+def test_sell_holding_keep_as_watchlist_and_rebuy():
+    """全売却後に監視銘柄として残った銘柄に対し、再購入(add_holding)と待機資金自動相殺が連動する検証 (#342)"""
+    import portfolio_manager
+    from unittest.mock import patch
+
+    # 全売却済み（holdings: []）の監視銘柄データ
+    watchlist_portfolio = [
+        {
+            "code": "7203",
+            "name": "トヨタ自動車",
+            "asset_type": "jp_stock",
+            "holdings": []
+        }
+    ]
+
+    with patch("portfolio_manager.load_portfolio", return_value=watchlist_portfolio), \
+         patch("portfolio_manager.save_portfolio") as mock_save, \
+         patch("portfolio_manager._offset_reinvestment_pool") as mock_offset:
+
+        holding_id = portfolio_manager.add_holding(
+            code="7203",
+            holding_data={
+                "account_type": "特定",
+                "purchase_price": 2600.0,
+                "quantity": 100.0,
+                "security_company": "SBI証券",
+                "memo": "押し目で買い戻し"
+            }
+        )
+
+        assert holding_id is not None
+        mock_save.assert_called_once()
+        # 銘柄の holdings に新規口座が追加されたこと
+        assert len(watchlist_portfolio[0]["holdings"]) == 1
+        new_h = watchlist_portfolio[0]["holdings"][0]
+        assert new_h["quantity"] == 100.0
+        assert new_h["purchase_price"] == 2600.0
+        assert new_h["memo"] == "押し目で買い戻し"
+
+        # 再購入金額 260,000円 が再投資待機資金から自動相殺されること (#338)
+        mock_offset.assert_called_once_with(260000.0, watchlist_portfolio[0], context_label="add 7203")
 
 
 def test_sell_holding_with_excessive_fee():

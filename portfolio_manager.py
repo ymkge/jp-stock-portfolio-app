@@ -341,7 +341,7 @@ def sell_holding(
     """
     指定された保有情報を一部または全売却する (#332, #335)。
     1. holding の数量を減算、または holding 自体を削除
-    2. 全 holding が無くなった場合は銘柄自体をポートフォリオから削除
+    2. 全 holding が無くなった場合も銘柄自体は削除せず、監視銘柄（holdings: []）として残す (#342)
     3. 手数料控除後の実質手取額で確定損益を計算し history_manager.add_realized_trade に記録
     4. 実質手取額（円換算）を再投資待機資金プールに加算 (history_manager.update_reinvestment_pool_balance)
     5. 売却結果サマリーを返却
@@ -417,10 +417,8 @@ def sell_holding(
             # 当該 holding を完全削除
             is_full_holding_sold = True
             target_stock["holdings"].pop(holding_idx)
-            # 銘柄内の全 holding が無くなった場合は銘柄自体を削除
-            if len(target_stock.get("holdings", [])) == 0:
-                is_entire_stock_removed = True
-                portfolio.pop(stock_idx)
+            # 全株売却されても銘柄自体は削除せず、監視銘柄（holdings: []）として残す (#342)
+            is_entire_stock_removed = False
         else:
             # 一部売却（残数量を更新）
             target_holding["quantity"] = round(remaining_qty, 4)

@@ -995,11 +995,11 @@ body.dark-mode .theme-contrarian-diamond,
 
 #management-modal {
     background-color: var(--content-background-color);
-    padding: 2rem;
+    padding: 1.75rem;
     border-radius: 8px;
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-    width: 90%;
-    max-width: 500px;
+    width: 92%;
+    max-width: 640px;
     z-index: 1001;
     transform: translateY(-20px);
     transition: transform 0.3s;
@@ -1129,50 +1129,134 @@ body.dark-mode .theme-contrarian-diamond,
 }
 
 #holdings-list-container {
-    margin-bottom: 1rem;
-    border-top: 1px solid var(--border-color);
-    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 1.25rem;
     padding: 0.5rem 0;
-    max-height: 300px;
+    max-height: 340px;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
 }
 
 .holding-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.8rem 0.5rem;
-    border-bottom: 1px solid #f0f0f0;
-}
-.holding-item:last-child {
-    border-bottom: none;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    background-color: var(--card-bg, #f8fafc);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 8px;
+    box-sizing: border-box;
+    transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.holding-info span {
-    margin-right: 1rem;
+.holding-item:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
 }
-.holding-info .account-type {
-    font-weight: bold;
-    display: inline-block;
-    min-width: 80px;
+
+.holding-info {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.holding-info .account-badge {
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: #e2e8f0;
+    color: #334155;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+}
+
+.holding-info .account-badge.account-tokutei {
+    background: #e2e8f0;
+    color: #1e293b;
+    border: 1px solid #cbd5e1;
+}
+
+.holding-info .account-badge.account-nisa {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+
+.holding-info .account-badge.account-general {
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+}
+
+.holding-detail-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    font-size: 0.9rem;
+}
+
+.holding-detail-item .detail-label {
+    color: var(--secondary-text-color, #64748b);
+    font-size: 0.85rem;
+}
+
+.holding-detail-item .detail-value {
+    font-weight: 600;
+    color: var(--text-color, #0f172a);
+}
+
+.holding-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .holding-actions .btn-sm {
-    padding: 4px 8px;
+    padding: 5px 10px;
     font-size: 0.85rem;
-    margin-left: 5px;
+    font-weight: 500;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    line-height: 1.2;
+    transition: background-color 0.2s, transform 0.1s;
 }
+
+.holding-actions .btn-sm:active {
+    transform: scale(0.97);
+}
+
 .btn-edit {
-    background-color: var(--primary-color);
+    background-color: var(--primary-color, #2563eb);
+    color: white;
 }
 .btn-edit:hover {
-    background-color: var(--primary-hover-color);
+    background-color: var(--primary-hover-color, #1d4ed8);
 }
+
+.btn-sell-holding {
+    background-color: #d97706;
+    color: white;
+}
+.btn-sell-holding:hover {
+    background-color: #b45309;
+}
+
 .btn-delete-holding {
-    background-color: var(--danger-color);
+    background-color: var(--danger-color, #dc2626);
+    color: white;
 }
 .btn-delete-holding:hover {
-    background-color: var(--danger-hover-color);
+    background-color: var(--danger-hover-color, #b91c1c);
 }
 
 .modal-actions {
@@ -3002,6 +3086,79 @@ body.dark-mode .btn-secondary:hover,
 .dark-mode .btn-secondary:hover {
     background-color: #475569 !important;
     color: #ffffff !important;
+}
+
+/* 4. 保有情報アイテムカード (.holding-item) のダークモード定義 (#344) */
+[data-theme="dark"] .holding-item,
+body.dark-mode .holding-item,
+.dark-mode .holding-item {
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+[data-theme="dark"] .holding-item:hover,
+body.dark-mode .holding-item:hover,
+.dark-mode .holding-item:hover {
+    border-color: #475569 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
+}
+
+[data-theme="dark"] .account-badge.account-tokutei,
+body.dark-mode .account-badge.account-tokutei,
+.dark-mode .account-badge.account-tokutei {
+    background-color: #334155 !important;
+    color: #f1f5f9 !important;
+    border-color: #475569 !important;
+}
+
+[data-theme="dark"] .account-badge.account-nisa,
+body.dark-mode .account-badge.account-nisa,
+.dark-mode .account-badge.account-nisa {
+    background-color: #064e3b !important;
+    color: #a7f3d0 !important;
+    border-color: #047857 !important;
+}
+
+[data-theme="dark"] .account-badge.account-general,
+body.dark-mode .account-badge.account-general,
+.dark-mode .account-badge.account-general {
+    background-color: #1e293b !important;
+    color: #cbd5e1 !important;
+    border-color: #334155 !important;
+}
+
+[data-theme="dark"] .holding-detail-item .detail-label,
+body.dark-mode .holding-detail-item .detail-label,
+.dark-mode .holding-detail-item .detail-label {
+    color: #94a3b8 !important;
+}
+
+[data-theme="dark"] .holding-detail-item .detail-value,
+body.dark-mode .holding-detail-item .detail-value,
+.dark-mode .holding-detail-item .detail-value {
+    color: #f8fafc !important;
+}
+
+/* 5. 保有情報管理モーダルのレスポンシブ（モバイル表示最適化） (#344) */
+@media (max-width: 576px) {
+    #management-modal {
+        padding: 1.25rem 1rem !important;
+        width: 95% !important;
+    }
+    .holding-item {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 0.75rem !important;
+        padding: 0.75rem !important;
+    }
+    .holding-info {
+        justify-content: flex-start !important;
+        gap: 0.5rem 0.75rem !important;
+    }
+    .holding-actions {
+        justify-content: flex-end !important;
+        width: 100% !important;
+    }
 }
 
 /* ==========================================

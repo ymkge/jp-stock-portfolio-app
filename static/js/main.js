@@ -1070,10 +1070,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function renderHoldingsList(holdings, assetType) {
         holdingsListContainer.innerHTML = '';
-        if (!holdings || holdings.length === 0) { holdingsListContainer.innerHTML = '<p>保有情報なし</p>'; return; }
+        if (!holdings || holdings.length === 0) { 
+            holdingsListContainer.innerHTML = '<p class="no-holdings-message" style="text-align: center; color: var(--secondary-text-color); padding: 1rem 0;">保有情報なし</p>'; 
+            return; 
+        }
+        const unit = assetType === 'investment_trust' ? '口' : '株';
         holdings.forEach(h => {
-            const item = document.createElement('div'); item.className = 'holding-item';
-            item.innerHTML = `<div class="holding-info"><span class="account-type">${h.account_type}</span><span>取得単価: ${formatNumber(h.purchase_price, 2)}円</span><span>数量: ${formatNumber(h.quantity, assetType === 'investment_trust' ? 6 : 0)}</span></div><div class="holding-actions"><button class="btn-sm btn-edit" data-holding-id="${h.id}">編集</button><button class="btn-sm btn-sell-holding" data-holding-id="${h.id}" style="background-color: #d97706; color: white;">売却</button><button class="btn-sm btn-delete-holding" data-holding-id="${h.id}">削除</button></div>`;
+            const item = document.createElement('div'); 
+            item.className = 'holding-item';
+            const accType = h.account_type || '';
+            const accClass = accType === '特定口座' ? 'account-tokutei' : accType.includes('NISA') ? 'account-nisa' : 'account-general';
+            item.innerHTML = `<div class="holding-info"><span class="account-badge ${accClass}">${accType}</span><span class="holding-detail-item"><span class="detail-label">取得単価:</span><span class="detail-value numeric">${formatNumber(h.purchase_price, 2)}円</span></span><span class="holding-detail-item"><span class="detail-label">数量:</span><span class="detail-value numeric">${formatNumber(h.quantity, assetType === 'investment_trust' ? 6 : 0)}${unit}</span></span></div><div class="holding-actions"><button class="btn-sm btn-edit" data-holding-id="${h.id}">編集</button><button class="btn-sm btn-sell-holding" data-holding-id="${h.id}">売却</button><button class="btn-sm btn-delete-holding" data-holding-id="${h.id}">削除</button></div>`;
             holdingsListContainer.appendChild(item);
         });
     }

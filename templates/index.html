@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>国内株式ポートフォリオ</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=4.2">
+    <link rel="stylesheet" href="/static/css/style.css?v=4.3">
     <script>
         // テーマおよび免責バナー表示の初期適用（チラつき防止）
         (function() {
@@ -43,9 +43,21 @@
                     <button id="btn-open-policy-config" class="btn-outline">⚙️ 投資方針</button>
                     <button id="btn-show-market-fibonacci" class="btn-outline">📈 指数フィボナッチ</button>
                     <button id="btn-open-market-anomaly-modal" class="btn-outline">📅 投資アノマリー</button>
-                    <button id="btn-show-split-history" class="btn-outline">✂️ 分割履歴</button>
-                    <button id="refresh-all-button" class="btn-outline">全件更新</button>
                     <a href="/analysis" class="nav-link-btn btn-primary">📊 分析ページ</a>
+                    <div class="nav-more-dropdown dropdown">
+                        <button id="nav-more-toggle-btn" class="nav-more-btn btn-outline" title="その他操作メニュー" aria-label="その他操作メニュー" aria-haspopup="true" aria-expanded="false">
+                            <span class="nav-more-icon">⋮</span>
+                            <span class="nav-more-spinner" style="display: none;">🔄</span>
+                        </button>
+                        <div id="nav-more-menu" class="dropdown-content">
+                            <button id="refresh-all-button" class="dropdown-item-btn" title="すべての銘柄情報を最新に更新します">
+                                🔄 全件更新
+                            </button>
+                            <button id="btn-show-split-history" class="dropdown-item-btn" title="過去に検知・適用した株式分割の履歴を確認します">
+                                ✂️ 分割履歴
+                            </button>
+                        </div>
+                    </div>
                     <label class="theme-switch" for="dark-mode-toggle">
                         <input type="checkbox" id="dark-mode-toggle"> 🌓
                     </label>
@@ -636,6 +648,6 @@
     <script src="/static/js/stateManager.js?v=3.2"></script>
     <script src="/static/js/marketFibonacci.js?v=1.0"></script>
     <script src="/static/js/marketAnomaly.js?v=1.0"></script>
-    <script src="/static/js/main.js?v=4.5"></script>
+    <script src="/static/js/main.js?v=4.6"></script>
 </body>
 </html>

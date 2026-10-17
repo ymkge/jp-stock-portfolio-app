@@ -5833,3 +5833,159 @@ body.dark-mode #btn-open-pool-modal.has-pool:hover,
 .dark-mode #btn-open-pool-modal.has-pool:hover {
     background-color: rgba(59, 130, 246, 0.25);
 }
+
+/* ==========================================
+   三点リーダー その他操作メニュー スタイル (#347)
+   ========================================== */
+.nav-more-dropdown {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.nav-more-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    font-size: 1.25rem;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1;
+    box-sizing: border-box;
+    position: relative;
+}
+
+.nav-more-btn .nav-more-icon {
+    line-height: 1;
+    display: inline-block;
+    transform: translateY(-1px);
+}
+
+.nav-more-btn .nav-more-spinner {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+    font-size: 1.05rem;
+    line-height: 1;
+}
+
+.nav-more-btn.is-updating {
+    background-color: rgba(99, 102, 241, 0.1) !important;
+    border-color: #6366f1 !important;
+    color: #6366f1 !important;
+}
+
+.nav-more-dropdown .dropdown-content {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    left: auto;
+    z-index: 1050;
+    min-width: 170px;
+    background: var(--content-background-color, #ffffff);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    padding: 4px 0;
+    margin: 0;
+}
+
+.nav-more-dropdown .dropdown-content.show {
+    display: block;
+}
+
+.nav-more-dropdown .dropdown-item-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 16px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--border-color, #f1f5f9);
+    text-align: left;
+    font-size: 0.9rem;
+    color: var(--text-color, #333333);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.15s ease, color 0.15s ease;
+    box-sizing: border-box;
+}
+
+.nav-more-dropdown .dropdown-item-btn:last-child {
+    border-bottom: none;
+}
+
+.nav-more-dropdown .dropdown-item-btn:hover {
+    background-color: var(--button-hover-bg-color, #f1f5f9);
+}
+
+.nav-more-dropdown .dropdown-item-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    background: none !important;
+}
+
+/* 更新中止ボタン（更新中のみ赤色アクセント） */
+.nav-more-dropdown .dropdown-item-btn.btn-updating-cancel {
+    border: none !important;
+    border-bottom: 1px solid #fecaca !important;
+    color: #dc2626 !important;
+    background-color: #fef2f2 !important;
+    font-weight: 600;
+}
+
+.nav-more-dropdown .dropdown-item-btn.btn-updating-cancel:hover {
+    background-color: #fee2e2 !important;
+    color: #b91c1c !important;
+}
+
+/* ダークモード対応 */
+[data-theme="dark"] .nav-more-btn.is-updating,
+body.dark-mode .nav-more-btn.is-updating,
+.dark-mode .nav-more-btn.is-updating {
+    background-color: rgba(99, 102, 241, 0.25) !important;
+    border-color: #818cf8 !important;
+    color: #818cf8 !important;
+}
+
+[data-theme="dark"] .nav-more-dropdown .dropdown-content,
+body.dark-mode .nav-more-dropdown .dropdown-content,
+.dark-mode .nav-more-dropdown .dropdown-content {
+    background: #1e293b;
+    border-color: #334155;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+[data-theme="dark"] .nav-more-dropdown .dropdown-item-btn,
+body.dark-mode .nav-more-dropdown .dropdown-item-btn,
+.dark-mode .nav-more-dropdown .dropdown-item-btn {
+    color: #f1f5f9;
+    border-bottom-color: #334155;
+}
+
+[data-theme="dark"] .nav-more-dropdown .dropdown-item-btn:hover,
+body.dark-mode .nav-more-dropdown .dropdown-item-btn:hover,
+.dark-mode .nav-more-dropdown .dropdown-item-btn:hover {
+    background-color: #334155;
+    color: #ffffff;
+}
+
+[data-theme="dark"] .nav-more-dropdown .dropdown-item-btn.btn-updating-cancel,
+body.dark-mode .nav-more-dropdown .dropdown-item-btn.btn-updating-cancel,
+.dark-mode .nav-more-dropdown .dropdown-item-btn.btn-updating-cancel {
+    border: none !important;
+    border-bottom: 1px solid #7f1d1d !important;
+    color: #fca5a5 !important;
+    background-color: #450a0a !important;
+}
+
+[data-theme="dark"] .nav-more-dropdown .dropdown-item-btn.btn-updating-cancel:hover,
+body.dark-mode .nav-more-dropdown .dropdown-item-btn.btn-updating-cancel:hover,
+.dark-mode .nav-more-dropdown .dropdown-item-btn.btn-updating-cancel:hover {
+    background-color: #7f1d1d !important;
+    color: #fecaca !important;
+}

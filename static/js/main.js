@@ -19,6 +19,82 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentFilteredAssets = [];
 
+    // --- 三点リーダー その他操作メニュードロップダウン制御 ---
+    const navMoreToggleBtn = document.getElementById('nav-more-toggle-btn');
+    const navMoreMenu = document.getElementById('nav-more-menu');
+    const navMoreIcon = navMoreToggleBtn ? navMoreToggleBtn.querySelector('.nav-more-icon') : null;
+    const navMoreSpinner = navMoreToggleBtn ? navMoreToggleBtn.querySelector('.nav-more-spinner') : null;
+
+    function closeMoreMenu() {
+        if (navMoreMenu) {
+            navMoreMenu.classList.remove('show');
+        }
+        if (navMoreToggleBtn) {
+            navMoreToggleBtn.setAttribute('aria-expanded', 'false');
+        }
+    }
+
+    if (navMoreToggleBtn && navMoreMenu) {
+        navMoreToggleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = navMoreMenu.classList.toggle('show');
+            navMoreToggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        });
+
+        navMoreMenu.addEventListener('click', (e) => {
+            if (e.target.closest('.dropdown-item-btn')) {
+                closeMoreMenu();
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!navMoreToggleBtn.contains(e.target) && !navMoreMenu.contains(e.target)) {
+                closeMoreMenu();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && navMoreMenu.classList.contains('show')) {
+                closeMoreMenu();
+            }
+        });
+    }
+
+    function setUpdatingState(updating, isCancelable = false) {
+        isUpdating = updating;
+        if (navMoreToggleBtn) {
+            if (updating) {
+                navMoreToggleBtn.classList.add('is-updating');
+                if (navMoreSpinner) navMoreSpinner.style.display = 'inline-block';
+                if (navMoreIcon) navMoreIcon.style.display = 'none';
+            } else {
+                navMoreToggleBtn.classList.remove('is-updating');
+                if (navMoreSpinner) navMoreSpinner.style.display = 'none';
+                if (navMoreIcon) navMoreIcon.style.display = 'inline-block';
+            }
+        }
+
+        if (!refreshAllButton) return;
+
+        if (updating) {
+            if (isCancelable) {
+                refreshAllButton.disabled = false;
+                refreshAllButton.textContent = '⏹️ 更新中止 (クリックでストップ)';
+                refreshAllButton.classList.add('btn-updating-cancel');
+            } else {
+                refreshAllButton.disabled = true;
+                refreshAllButton.textContent = '🔄 更新中...';
+                refreshAllButton.classList.remove('btn-updating-cancel');
+            }
+        } else {
+            refreshAllButton.classList.remove('btn-updating-cancel');
+            if (cooldownTimer === null) {
+                refreshAllButton.disabled = false;
+                refreshAllButton.textContent = '🔄 全件更新';
+            }
+        }
+    }
+
     // --- 最近の銘柄ドロップダウン制御 ---
     if (recentStocksToggleBtn) {
         recentStocksToggleBtn.addEventListener('click', (e) => {
@@ -142,15 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let isExplicitCancel = false;
-        if (force) {
-            isUpdating = true;
-            refreshAllButton.disabled = false;
-            refreshAllButton.textContent = '⏹️ 更新中止 (クリックでストップ)';
-            refreshAllButton.classList.add('btn-updating-cancel');
-        } else {
-            refreshAllButton.disabled = true;
-            refreshAllButton.textContent = '更新中...';
-        }
+        setUpdatingState(true, force);
         
         try {
             const apiFetch = (url) => fetch(url, { signal }).then(handleApiResponse);
@@ -202,12 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             await checkAndShowSplitAlerts(); // 株式分割アラートの確認 (新規)
         } finally {
-            isUpdating = false;
-            refreshAllButton.classList.remove('btn-updating-cancel');
-            if (cooldownTimer === null) {
-                refreshAllButton.disabled = false;
-                refreshAllButton.textContent = '全件更新';
-            }
+            setUpdatingState(false);
         }
     }
     
@@ -266,7 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const updateBtnText = () => {
             const mins = Math.floor(remaining / 60);
             const secs = remaining % 60;
-            refreshAllButton.textContent = `待機中 (${mins}:${secs.toString().padStart(2, '0')})`;
+            refreshAllButton.textContent = `⏳ 待機中 (${mins}:${secs.toString().padStart(2, '0')})`;
         };
         
         updateBtnText();
@@ -277,7 +340,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 clearInterval(cooldownTimer);
                 cooldownTimer = null;
                 refreshAllButton.disabled = false;
-                refreshAllButton.textContent = '全件更新';
+                refreshAllButton.textContent = '🔄 全件更新';
             } else {
                 updateBtnText();
             }

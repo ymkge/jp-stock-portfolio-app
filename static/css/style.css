@@ -5989,3 +5989,66 @@ body.dark-mode .nav-more-dropdown .dropdown-item-btn.btn-updating-cancel:hover,
     background-color: #7f1d1d !important;
     color: #fecaca !important;
 }
+
+/* ==========================================
+   月別配当チャート連動フィルタ UI (#333)
+   ========================================== */
+.chart-click-hint {
+    font-size: 0.78rem;
+    color: var(--text-muted, #64748b);
+    user-select: none;
+    cursor: default;
+}
+
+.active-filter-badge-container {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 4px;
+}
+
+.active-filter-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background-color: rgba(28, 200, 138, 0.15);
+    border: 1px solid #1cc88a;
+    color: #0f766e;
+    border-radius: 9999px;
+    padding: 3px 10px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.btn-clear-filter {
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: bold;
+    padding: 0 2px;
+    line-height: 1;
+    border-radius: 50%;
+    transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.btn-clear-filter:hover {
+    color: #dc2626;
+    transform: scale(1.15);
+}
+
+/* ダークモード対応 */
+[data-theme="dark"] .active-filter-pill,
+body.dark-mode .active-filter-pill,
+.dark-mode .active-filter-pill {
+    background-color: rgba(28, 200, 138, 0.25);
+    border-color: #059669;
+    color: #34d399;
+}
+
+[data-theme="dark"] .chart-click-hint,
+body.dark-mode .chart-click-hint,
+.dark-mode .chart-click-hint {
+    color: #94a3b8;
+}

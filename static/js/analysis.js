@@ -6,10 +6,55 @@ document.addEventListener('DOMContentLoaded', () => {
     let fullAnalysisData = {};
     let highlightRules = null;
     let filteredHoldingsData = [];
+    let baseFilteredHoldingsData = []; // 月フィルタ適用前の母集団 (#333)
+    let selectedDividendMonth = null; // 選択中の配当月 (1~12 または null) (#333)
     let currentSort = { key: 'market_value', order: 'desc' };
     let isAmountVisible = true;
     let fetchController = null; // AbortControllerを保持
     let recentCodes = [];
+
+    // --- 月別配当分布 (予測) 判定ヘルパー (#333) ---
+    function getDividendMonthsForItem(item) {
+        const div = parseFloat(item.estimated_annual_dividend) || 0;
+        if (div <= 0) return [];
+        let base = null;
+        if (item.settlement_month && typeof item.settlement_month === 'string') {
+            const m = item.settlement_month.match(/(\d+)/);
+            if (m) base = parseInt(m[1], 10);
+        }
+        if (base === null || isNaN(base) || base < 1 || base > 12) return [];
+
+        const getMonth = (b, offset) => ((b + offset - 1) % 12) + 1;
+        if (item.asset_type === 'jp_stock') {
+            return [getMonth(base, 3), getMonth(base, 9)];
+        } else if (item.asset_type === 'us_stock') {
+            return [getMonth(base, 3), getMonth(base, 6), getMonth(base, 9), getMonth(base, 12)];
+        } else {
+            return [getMonth(base, 3)];
+        }
+    }
+
+    function hasDividendInMonth(item, targetMonth) {
+        if (targetMonth === null || targetMonth === undefined) return true;
+        const months = getDividendMonthsForItem(item);
+        return months.includes(targetMonth);
+    }
+
+    function toggleDividendMonthFilter(month) {
+        if (selectedDividendMonth === month) {
+            selectedDividendMonth = null;
+        } else {
+            selectedDividendMonth = month;
+        }
+        filterAndRender();
+
+        if (selectedDividendMonth !== null && window.innerWidth <= 1024) {
+            const detailsTab = document.getElementById('details-tab-content');
+            if (detailsTab) {
+                detailsTab.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+    }
 
     // --- DOM要素の取得 ---
     const alertContainer = document.getElementById('alert-container');
@@ -619,7 +664,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        filteredHoldingsData = allHoldingsData.filter(item => {
+        baseFilteredHoldingsData = allHoldingsData.filter(item => {
             let matchesText = true;
             if (filterText) {
                 const keywords = filterText.split(/[\s,，]+/).filter(k => k !== "");
@@ -651,10 +696,28 @@ document.addEventListener('DOMContentLoaded', () => {
             );
             return matchesText && matchesIndustry && matchesAccountType && matchesSecurityCompany && matchesBuySignal;
         });
+
+        // 月別配当フィルタの適用 (#333)
+        filteredHoldingsData = baseFilteredHoldingsData.filter(item => {
+            return hasDividendInMonth(item, selectedDividendMonth);
+        });
+
+        // アクティブ月別配当フィルタバッジの更新 (#333)
+        const badgeContainer = document.getElementById('active-dividend-month-badge-container');
+        const badgeText = document.getElementById('active-dividend-month-text');
+        if (badgeContainer && badgeText) {
+            if (selectedDividendMonth !== null) {
+                badgeText.textContent = `📅 ${selectedDividendMonth}月配当対象 (${filteredHoldingsData.length}件)`;
+                badgeContainer.classList.remove('hidden');
+            } else {
+                badgeContainer.classList.add('hidden');
+            }
+        }
+
         sortHoldings(filteredHoldingsData);
         renderAnalysisTable(filteredHoldingsData);
         renderSummary(filteredHoldingsData);
-        renderCharts(filteredHoldingsData);
+        renderCharts(filteredHoldingsData, baseFilteredHoldingsData);
         if (fullAnalysisData && fullAnalysisData.profit_taking_candidates) {
             renderProfitTakingSection(fullAnalysisData.profit_taking_candidates, isAmountVisible);
         }
@@ -1487,7 +1550,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function renderCharts(holdings) {
+    function renderCharts(holdings, baseHoldings = null) {
         if (holdings.length === 0 && !loadingIndicator.classList.contains('hidden')) return;
         const industryB = {}, accountB = {}, countryB = {}, securityB = {}, divIndB = {};
         holdings.forEach(item => {
@@ -1499,7 +1562,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const getD = (b) => ({ labels: Object.keys(b), datasets: [{ data: Object.values(b), backgroundColor: generateColors(Object.keys(b).length), hoverOffset: 4 }] });
         const canvasMap = { 'industry-chart': industryB, 'account-type-chart': accountB, 'security-company-chart': securityB, 'country-chart': countryB, 'dividend-industry-chart': divIndB };
         Object.entries(canvasMap).forEach(([id, data]) => { const canvas = document.getElementById(id); if (canvas && Object.keys(data).length > 0) { const ex = Chart.getChart(canvas); if (ex) ex.destroy(); new Chart(canvas, { type: 'pie', data: getD(data), options: opts }); } });
-        renderMonthlyDividendChart(holdings);
+        renderMonthlyDividendChart(baseHoldings || holdings);
         const active = document.querySelector('.chart-toggle-btn.active'); updateChart(active ? active.dataset.chartType : 'industry');
     }
 
@@ -1517,12 +1580,51 @@ document.addEventListener('DOMContentLoaded', () => {
         const canvas = document.getElementById('monthly-dividend-chart'); if (!canvas) return;
         const ex = Chart.getChart(canvas); if (ex) ex.destroy();
         const colors = getChartThemeColors();
+
+        const defaultBg = '#1cc88a';
+        const highlightBg = '#059669';
+        const dimBg = 'rgba(28, 200, 138, 0.35)';
+        const bgColors = months.map((_, idx) => {
+            const m = idx + 1;
+            if (selectedDividendMonth === null) return defaultBg;
+            return m === selectedDividendMonth ? highlightBg : dimBg;
+        });
+        const borderColors = months.map((_, idx) => {
+            const m = idx + 1;
+            return m === selectedDividendMonth ? '#047857' : 'transparent';
+        });
+        const borderWidths = months.map((_, idx) => {
+            const m = idx + 1;
+            return m === selectedDividendMonth ? 2 : 0;
+        });
+
         monthlyDividendChart = new Chart(canvas.getContext('2d'), {
             type: 'bar',
-            data: { labels: months, datasets: [{ label: '予想受取額', data: mData, backgroundColor: '#1cc88a', borderRadius: 4 }] },
+            data: {
+                labels: months,
+                datasets: [{
+                    label: '予想受取額',
+                    data: mData,
+                    backgroundColor: bgColors,
+                    borderColor: borderColors,
+                    borderWidth: borderWidths,
+                    borderRadius: 4
+                }]
+            },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                onClick: (event, elements) => {
+                    if (!elements || elements.length === 0) return;
+                    const clickedMonth = elements[0].index + 1;
+                    toggleDividendMonthFilter(clickedMonth);
+                },
+                onHover: (event, elements) => {
+                    const target = event?.native?.target;
+                    if (target) {
+                        target.style.cursor = elements && elements.length > 0 ? 'pointer' : 'default';
+                    }
+                },
                 plugins: {
                     legend: { labels: { color: colors.text } },
                     tooltip: {
@@ -1643,12 +1745,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     [industryFilterSelect, accountTypeFilterSelect, securityCompanyFilterSelect, buySignalFilterSelect].forEach(s => s.addEventListener('change', filterAndRender));
+    const btnClearDividendMonth = document.getElementById('btn-clear-dividend-month');
+    if (btnClearDividendMonth) {
+        btnClearDividendMonth.addEventListener('click', (e) => {
+            e.stopPropagation();
+            selectedDividendMonth = null;
+            filterAndRender();
+        });
+    }
     document.querySelector('#analysis-table thead').addEventListener('click', (e) => { const h = e.target.closest('.sortable'); if (!h) return; const k = h.dataset.key; if (currentSort.key === k) currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc'; else { currentSort.key = k; currentSort.order = 'asc'; } filterAndRender(); });
     toggleVisibilityCheckbox.addEventListener('change', (e) => { 
         isAmountVisible = !e.target.checked; 
         renderAnalysisTable(filteredHoldingsData); 
         renderSummary(filteredHoldingsData); 
-        renderCharts(filteredHoldingsData); 
+        renderCharts(filteredHoldingsData, baseFilteredHoldingsData); 
         fetchAndRenderHistoryData(); 
         if (fullAnalysisData) {
             if (fullAnalysisData.profit_taking_candidates) {

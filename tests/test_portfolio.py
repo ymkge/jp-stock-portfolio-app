@@ -695,9 +695,13 @@ def test_sell_holding_partial_and_full():
         assert res["purchase_amount_jpy"] == 80000.0 # 2000 * 40
         assert res["realized_pl_jpy"] == 38500.0    # 118500 - 80000 (+38,500円)
         assert res["realized_pl_rate"] == 48.12     # 38500 / 80000 * 100 (四捨五入2桁)
+        assert res["tax_jpy"] == 7821.0             # 38500 * 0.20315 = 7821.275 -> 7821.0 (#351)
+        assert res["after_tax_pl_jpy"] == 30679.0   # 38500 - 7821
+        assert res["after_tax_sell_amount_jpy"] == 110679.0 # 118500 - 7821
+        assert res["is_taxable"] is True
         assert res["reinvestment_pool_balance"] == 118500.0
 
-        # DB記録呼び出し検証 (fee_jpy, sold_date が正しく渡されていること)
+        # DB記録呼び出し検証 (fee_jpy, sold_date, tax_jpy, after_tax_pl_jpy が正しく渡されていること #351)
         mock_add_trade.assert_called_once_with(
             code="7203",
             name="トヨタ自動車",
@@ -710,7 +714,9 @@ def test_sell_holding_partial_and_full():
             security_company="SBI証券",
             currency="JPY",
             exchange_rate=1.0,
-            fee_jpy=1500.0
+            fee_jpy=1500.0,
+            tax_jpy=7821.0,
+            after_tax_pl_jpy=30679.0
         )
         mock_update_pool.assert_called_once_with(118500.0)
         mock_save.assert_called_once()

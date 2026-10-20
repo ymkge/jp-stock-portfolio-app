@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>国内株式ポートフォリオ</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=4.3">
+    <link rel="stylesheet" href="/static/css/style.css?v=4.5">
     <script>
         // テーマおよび免責バナー表示の初期適用（チラつき防止）
         (function() {
@@ -350,6 +350,14 @@
                             <span>確定損益 (実現損益・控除後):</span>
                             <strong id="sell-preview-pl" style="font-size: 1rem;">±0円</strong>
                         </div>
+                        <div id="sell-preview-tax-row" style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px; color: var(--text-muted);">
+                            <span>概算税額 (20.315%):</span>
+                            <span id="sell-preview-tax-amount">0円</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.88rem; margin-bottom: 6px;">
+                            <span>税引後想定損益:</span>
+                            <strong id="sell-preview-after-tax-pl" style="font-size: 1rem;">±0円</strong>
+                        </div>
                         <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 8px; border-top: 1px dashed rgba(245, 158, 11, 0.25); padding-top: 6px; line-height: 1.4;">
                             💡 手取受取額は自動的に「再投資待機資金プール」へ加算され、次回別の高配当銘柄購入時に自動相殺されます。総資産は維持されます。
                         </div>
@@ -386,6 +394,10 @@
                     <div class="pool-summary-card">
                         <div style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 4px;">今年度の確定損益 (売却益/損)</div>
                         <div id="modal-realized-pl-val" style="font-size: 1.5rem; font-weight: 700;">±0円</div>
+                        <div id="modal-realized-after-tax-container" style="font-size: 0.78rem; margin-top: 4px; color: var(--text-muted);">
+                            税引後: <strong id="modal-realized-after-tax-val" style="font-weight: 600;">±0円</strong>
+                            <span id="modal-realized-tax-total-val" style="font-size: 0.72rem; margin-left: 4px;">(概算税額: 0円)</span>
+                        </div>
                         <div id="modal-realized-stats-val" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 6px;">0取引 (0勝 0敗 / 勝率 0.0%)</div>
                     </div>
                 </div>
@@ -648,6 +660,6 @@
     <script src="/static/js/stateManager.js?v=3.2"></script>
     <script src="/static/js/marketFibonacci.js?v=1.0"></script>
     <script src="/static/js/marketAnomaly.js?v=1.0"></script>
-    <script src="/static/js/main.js?v=4.6"></script>
+    <script src="/static/js/main.js?v=4.7"></script>
 </body>
 </html>

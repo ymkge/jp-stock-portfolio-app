@@ -425,6 +425,13 @@ def sell_holding(
 
         save_portfolio(portfolio)
 
+        # 概算税金と税引後金額の計算 (#351)
+        tax_info = history_manager.calculate_trade_tax(account_type, realized_pl_jpy, net_sell_amount_jpy)
+        tax_jpy = tax_info["tax_jpy"]
+        after_tax_pl_jpy = tax_info["after_tax_pl_jpy"]
+        after_tax_sell_amount_jpy = tax_info["after_tax_sell_amount_jpy"]
+        is_taxable = tax_info["is_taxable"]
+
         # 確定損益の永続化
         trade_id = history_manager.add_realized_trade(
             code=code,
@@ -438,7 +445,9 @@ def sell_holding(
             security_company=security_company,
             currency=currency,
             exchange_rate=exchange_rate,
-            fee_jpy=fee_jpy
+            fee_jpy=fee_jpy,
+            tax_jpy=tax_jpy,
+            after_tax_pl_jpy=after_tax_pl_jpy
         )
 
         # 再投資待機資金プールへの自動ストック（手数料控除後の手取額を加算）
@@ -448,6 +457,7 @@ def sell_holding(
             f"Successfully sold {sell_qty} of {code} ({name}): "
             f"gross_sell={sell_amount_jpy:.1f} JPY, fee={fee_jpy:.1f} JPY, net_sell={net_sell_amount_jpy:.1f} JPY, "
             f"realized_pl={realized_pl_jpy:+.1f} JPY ({realized_pl_rate:+.2f}%), "
+            f"tax={tax_jpy:.1f} JPY, after_tax_pl={after_tax_pl_jpy:+.1f} JPY, "
             f"new_pool_balance={new_pool_balance:.1f} JPY"
         )
 
@@ -467,6 +477,10 @@ def sell_holding(
             "purchase_amount_jpy": round(purchase_amount_jpy, 1),
             "realized_pl_jpy": round(realized_pl_jpy, 1),
             "realized_pl_rate": round(realized_pl_rate, 2),
+            "tax_jpy": round(tax_jpy, 1),
+            "after_tax_pl_jpy": round(after_tax_pl_jpy, 1),
+            "after_tax_sell_amount_jpy": round(after_tax_sell_amount_jpy, 1),
+            "is_taxable": is_taxable,
             "sold_date": sold_date,
             "reinvestment_pool_balance": round(new_pool_balance, 1)
         }

@@ -1602,6 +1602,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const sellPreviewGrossAmount = document.getElementById('sell-preview-gross-amount') || document.getElementById('sell-preview-amount');
     const sellPreviewNetAmount = document.getElementById('sell-preview-net-amount');
     const sellPreviewPl = document.getElementById('sell-preview-pl');
+    const sellPreviewTaxRow = document.getElementById('sell-preview-tax-row');
+    const sellPreviewTaxAmount = document.getElementById('sell-preview-tax-amount');
+    const sellPreviewAfterTaxPl = document.getElementById('sell-preview-after-tax-pl');
 
     const navPoolBadge = document.getElementById('nav-pool-badge');
     const btnOpenPoolModal = document.getElementById('btn-open-pool-modal');
@@ -1610,6 +1613,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnClosePoolFooter = document.getElementById('btn-close-pool-footer');
     const modalPoolBalanceVal = document.getElementById('modal-pool-balance-val');
     const modalRealizedPlVal = document.getElementById('modal-realized-pl-val');
+    const modalRealizedAfterTaxVal = document.getElementById('modal-realized-after-tax-val');
+    const modalRealizedTaxTotalVal = document.getElementById('modal-realized-tax-total-val');
     const modalRealizedStatsVal = document.getElementById('modal-realized-stats-val');
     const modalRecentTradesList = document.getElementById('modal-recent-trades-list');
     const btnResetPoolZero = document.getElementById('btn-reset-pool-zero');
@@ -1725,6 +1730,26 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sellPreviewPl) {
             sellPreviewPl.innerHTML = `<span class="${plClass}">${sign}${formatNumber(plJpy, 0)}円 (${sign}${plRate.toFixed(2)}%)</span>`;
         }
+
+        // 税金・税引後想定損益のプレビュー計算 (#351)
+        const accType = currentSellingHolding.account_type || '';
+        const isNisa = accType.includes('NISA');
+        let estimatedTax = 0;
+        if (!isNisa && plJpy > 0) {
+            estimatedTax = Math.floor(plJpy * 0.20315);
+        }
+        const afterTaxPl = plJpy - estimatedTax;
+
+        if (sellPreviewTaxAmount) {
+            sellPreviewTaxAmount.innerHTML = isNisa 
+                ? '<span style="color: #059669; font-weight: 600;">非課税 (0円)</span>'
+                : (estimatedTax > 0 ? `<span style="color: #dc2626; font-weight: 600;">-${formatNumber(estimatedTax, 0)}円</span>` : '0円');
+        }
+        if (sellPreviewAfterTaxPl) {
+            const atSign = afterTaxPl >= 0 ? '+' : '';
+            const atClass = afterTaxPl >= 0 ? 'profit' : 'loss';
+            sellPreviewAfterTaxPl.innerHTML = `<span class="${atClass}">${atSign}${formatNumber(afterTaxPl, 0)}円</span>`;
+        }
     }
 
     // イベント登録（入力時のリアルタイム計算）
@@ -1825,6 +1850,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const pl = summary.total_pl_jpy || 0;
         const plSign = pl >= 0 ? '+' : '';
         modalRealizedPlVal.innerHTML = `<span class="${pl >= 0 ? 'profit' : 'loss'}">${plSign}${formatNumber(pl, 0)}円</span>`;
+        
+        // 税引後損益 & 概算税額合計サマリー (#351)
+        const totalTax = summary.total_tax_jpy || 0;
+        const afterTaxPl = summary.total_after_tax_pl_jpy !== undefined ? summary.total_after_tax_pl_jpy : (pl - totalTax);
+        const atPlSign = afterTaxPl >= 0 ? '+' : '';
+        if (modalRealizedAfterTaxVal) {
+            modalRealizedAfterTaxVal.innerHTML = `<span class="${afterTaxPl >= 0 ? 'profit' : 'loss'}">${atPlSign}${formatNumber(afterTaxPl, 0)}円</span>`;
+        }
+        if (modalRealizedTaxTotalVal) {
+            modalRealizedTaxTotalVal.textContent = `(概算税額: -${formatNumber(totalTax, 0)}円)`;
+        }
+
         modalRealizedStatsVal.textContent = `${summary.trade_count || 0}取引 (${summary.win_count || 0}勝 ${summary.loss_count || 0}敗 / 勝率 ${(summary.win_rate || 0).toFixed(1)}%)`;
 
         if (trades.length === 0) {
@@ -1834,15 +1871,39 @@ document.addEventListener('DOMContentLoaded', () => {
                 const tPl = t.realized_pl_jpy || 0;
                 const tSign = tPl >= 0 ? '+' : '';
                 const tCls = tPl >= 0 ? 'profit' : 'loss';
+                
+                const accType = t.account_type || '特定口座';
+                const isNisa = accType.includes('NISA');
+                const badgeClass = isNisa ? 'badge-account-nisa' : (accType.includes('一般') ? 'badge-account-general' : 'badge-account-tokutei');
+                const badgeLabel = isNisa ? '新NISA' : (accType.includes('一般') ? '一般' : '特定');
+
+                const taxJpy = t.tax_jpy || 0;
+                const afterTaxPl = t.after_tax_pl_jpy !== undefined ? t.after_tax_pl_jpy : (tPl - taxJpy);
+                const afterTaxSign = afterTaxPl >= 0 ? '+' : '';
+                const afterTaxSellAmount = t.after_tax_sell_amount_jpy !== undefined ? t.after_tax_sell_amount_jpy : (t.sell_amount_jpy - taxJpy);
+
+                const taxDisplay = isNisa 
+                    ? '<span class="trade-tax-nisa">非課税</span>'
+                    : (taxJpy > 0 ? `<span class="trade-tax-val">税: -${formatNumber(taxJpy, 0)}円</span>` : '<span style="color: var(--text-muted);">税: 0円</span>');
+
                 return `
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--border-color); font-size: 0.85rem;">
+                    <div class="trade-history-item">
                         <div>
                             <strong>${escapeHtml(t.name || t.code)}</strong> <small style="color: var(--text-muted);">(${t.code})</small>
-                            <div style="font-size: 0.75rem; color: var(--text-muted);">${t.sold_date} / ${t.quantity}株 @ ${formatNumber(t.sell_price, 1)}円</div>
+                            <span class="badge-account ${badgeClass}">${badgeLabel}</span>
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+                                ${t.sold_date} / ${formatNumber(t.quantity, 0)}株 @ ${formatNumber(t.sell_price, 1)}円 (売却額: ${formatNumber(t.sell_amount_jpy, 0)}円)
+                            </div>
                         </div>
                         <div style="text-align: right;">
                             <div class="${tCls}" style="font-weight: 700;">${tSign}${formatNumber(tPl, 0)}円</div>
-                            <small style="color: var(--text-muted);">売却額: ${formatNumber(t.sell_amount_jpy, 0)}円</small>
+                            <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 2px;">
+                                ${taxDisplay}
+                                <span class="trade-after-tax-val">税引後: ${afterTaxSign}${formatNumber(afterTaxPl, 0)}円</span>
+                            </div>
+                            <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 1px;">
+                                実質手取: ${formatNumber(afterTaxSellAmount, 0)}円
+                            </div>
                         </div>
                     </div>
                 `;

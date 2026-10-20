@@ -6052,3 +6052,90 @@ body.dark-mode .chart-click-hint,
 .dark-mode .chart-click-hint {
     color: #94a3b8;
 }
+
+/* --- 売却取引履歴 税金・口座種別スタイル (#351) --- */
+.trade-history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.85rem;
+    transition: background-color 0.15s ease;
+}
+.trade-history-item:hover {
+    background-color: var(--hover-bg, rgba(0, 0, 0, 0.02));
+}
+.badge-account {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+.badge-account-tokutei {
+    background-color: rgba(59, 130, 246, 0.12);
+    color: #2563eb;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+}
+.badge-account-nisa {
+    background-color: rgba(16, 185, 129, 0.12);
+    color: #059669;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.badge-account-general {
+    background-color: rgba(100, 116, 139, 0.12);
+    color: #475569;
+    border: 1px solid rgba(100, 116, 139, 0.3);
+}
+.trade-tax-val {
+    font-size: 0.75rem;
+    color: #dc2626;
+}
+.trade-tax-nisa {
+    font-size: 0.75rem;
+    color: #059669;
+    font-weight: 500;
+}
+.trade-after-tax-val {
+    font-size: 0.78rem;
+    color: var(--text-color);
+    font-weight: 600;
+}
+
+/* ダークモード対応 */
+[data-theme="dark"] .badge-account-tokutei,
+body.dark-mode .badge-account-tokutei,
+.dark-mode .badge-account-tokutei {
+    background-color: rgba(59, 130, 246, 0.25);
+    color: #60a5fa;
+    border-color: #3b82f6;
+}
+[data-theme="dark"] .badge-account-nisa,
+body.dark-mode .badge-account-nisa,
+.dark-mode .badge-account-nisa {
+    background-color: rgba(16, 185, 129, 0.25);
+    color: #34d399;
+    border-color: #10b981;
+}
+[data-theme="dark"] .badge-account-general,
+body.dark-mode .badge-account-general,
+.dark-mode .badge-account-general {
+    background-color: rgba(148, 163, 184, 0.2);
+    color: #cbd5e1;
+    border-color: #64748b;
+}
+[data-theme="dark"] .trade-tax-val,
+body.dark-mode .trade-tax-val,
+.dark-mode .trade-tax-val {
+    color: #f87171;
+}
+[data-theme="dark"] .trade-tax-nisa,
+body.dark-mode .trade-tax-nisa,
+.dark-mode .trade-tax-nisa {
+    color: #34d399;
+}
+
+}

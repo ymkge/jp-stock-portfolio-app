@@ -1416,10 +1416,6 @@ body.dark-mode .theme-contrarian-diamond,
 .progress-bar.large { background-color: #36b9cc; } /* Info/Cyan */
 .progress-bar.midSmall { background-color: #6610f2; } /* Indigo */
 
-.portfolio-history {
-    margin-top: 1rem;
-}
-
 .portfolio-history h3 {
     margin-bottom: 1.5rem;
 }

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ポートフォリオ分析</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=4.4">
+    <link rel="stylesheet" href="/static/css/style.css?v=4.6">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         // テーマ表示の初期適用（チラつき防止）
@@ -77,52 +77,6 @@
                         </div>
                     </section>
 
-                    <section class="portfolio-dna card">
-                        <h3>国内株式ポートフォリオ体質 (DNA)</h3>
-                        <div id="dna-content">
-                            <!-- 加重平均指標はここに表示 -->
-                        </div>
-                    </section>
-
-                    <section class="concentration-risk card">
-                        <h3>分散度・リスク分析</h3>
-                        <div id="risk-content">
-                            <!-- 分散度・リスク指標はここに表示 -->
-                        </div>
-                    </section>
-
-                    <section class="portfolio-personality card">
-                        <h3>国内株式ポートフォリオ性格診断</h3>
-                        <div id="personality-content">
-                            <!-- スタイル分析結果はここに表示 -->
-                        </div>
-                    </section>
-
-                    <section class="portfolio-radar card">
-                        <h3>国内株式ポートフォリオ特性 (Radar Chart)</h3>
-                        <div class="chart-container" style="height: 350px;">
-                            <canvas id="radar-chart"></canvas>
-                        </div>
-                    </section>
-    
-                    <section class="portfolio-chart card">
-                        <h3>ポートフォリオ構成</h3>
-                        <div class="chart-controls">
-                            <button class="chart-toggle-btn active" data-chart-type="industry">業種別</button>
-                            <button class="chart-toggle-btn" data-chart-type="account-type">口座種別</button>
-                            <button class="chart-toggle-btn" data-chart-type="security-company">証券会社別</button>
-                            <button class="chart-toggle-btn" data-chart-type="country">国別</button> <!-- 国別ボタンを追加 -->
-                            <button class="chart-toggle-btn" data-chart-type="dividend-industry">配当構成(業種別)</button>
-                        </div>
-                        <div class="chart-container">
-                            <canvas id="industry-chart"></canvas>
-                            <canvas id="account-type-chart" class="hidden"></canvas>
-                            <canvas id="security-company-chart" class="hidden"></canvas>
-                            <canvas id="country-chart" class="hidden"></canvas> <!-- 国別グラフ用のcanvasを追加 -->
-                            <canvas id="dividend-industry-chart" class="hidden"></canvas>
-                        </div>
-                    </section>
-
                     <section class="portfolio-history card">
                         <div class="history-card-header d-flex justify-content-between align-items-center mb-3">
                             <h3 class="m-0">資産推移</h3>
@@ -158,6 +112,52 @@
                                 <li><strong>米国株:</strong> 決算の 3ヶ月後から 3ヶ月ごとに 25%ずつ配当と仮定</li>
                             </ul>
                             <small>※ 実際の入金月や配当額とは異なる場合があります。目安としてご活用ください。</small>
+                        </div>
+                    </section>
+
+                    <section class="portfolio-chart card">
+                        <h3>ポートフォリオ構成</h3>
+                        <div class="chart-controls">
+                            <button class="chart-toggle-btn active" data-chart-type="industry">業種別</button>
+                            <button class="chart-toggle-btn" data-chart-type="account-type">口座種別</button>
+                            <button class="chart-toggle-btn" data-chart-type="security-company">証券会社別</button>
+                            <button class="chart-toggle-btn" data-chart-type="country">国別</button> <!-- 国別ボタンを追加 -->
+                            <button class="chart-toggle-btn" data-chart-type="dividend-industry">配当構成(業種別)</button>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="industry-chart"></canvas>
+                            <canvas id="account-type-chart" class="hidden"></canvas>
+                            <canvas id="security-company-chart" class="hidden"></canvas>
+                            <canvas id="country-chart" class="hidden"></canvas> <!-- 国別グラフ用のcanvasを追加 -->
+                            <canvas id="dividend-industry-chart" class="hidden"></canvas>
+                        </div>
+                    </section>
+
+                    <section class="portfolio-personality card">
+                        <h3>国内株式ポートフォリオ性格診断</h3>
+                        <div id="personality-content">
+                            <!-- スタイル分析結果はここに表示 -->
+                        </div>
+                    </section>
+
+                    <section class="portfolio-radar card">
+                        <h3>国内株式ポートフォリオ特性 (Radar Chart)</h3>
+                        <div class="chart-container" style="height: 350px;">
+                            <canvas id="radar-chart"></canvas>
+                        </div>
+                    </section>
+
+                    <section class="portfolio-dna card">
+                        <h3>国内株式ポートフォリオ体質 (DNA)</h3>
+                        <div id="dna-content">
+                            <!-- 加重平均指標はここに表示 -->
+                        </div>
+                    </section>
+
+                    <section class="concentration-risk card">
+                        <h3>分散度・リスク分析</h3>
+                        <div id="risk-content">
+                            <!-- 分散度・リスク指標はここに表示 -->
                         </div>
                     </section>
                 </div>

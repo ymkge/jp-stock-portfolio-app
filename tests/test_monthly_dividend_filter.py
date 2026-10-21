@@ -73,8 +73,8 @@ def test_analysis_html_elements_and_cachebusters():
     assert 'id="active-dividend-month-text"' in html
     assert 'id="btn-clear-dividend-month"' in html
 
-    # キャッシュバスターの確認 (style.css?v=4.4, analysis.js?v=3.7)
-    assert 'style.css?v=4.4' in html
+    # キャッシュバスターの確認 (style.css?v=4.6, analysis.js?v=3.7)
+    assert 'style.css?v=4.6' in html
     assert 'analysis.js?v=3.7' in html
 
 

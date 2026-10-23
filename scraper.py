@@ -887,6 +887,112 @@ def get_exchange_rate(pair: str = 'USDJPY=X') -> Optional[float]:
             pass
     return None
 
+_market_news_cache: Dict[str, Any] = {
+    "timestamp": 0.0,
+    "items": []
+}
+MARKET_NEWS_TTL = 1800  # 30分
+
+def fetch_market_news_headlines(limit: int = 12, force: bool = False) -> List[Dict[str, str]]:
+    """
+    日経平均・TOPIX・為替（ドル円）等の変動要因を把握するため、
+    公開RSS（Google News 市況/為替検索、Yahoo!ニュース経済）から最新ヘッドラインを収集する (#349)。
+    - force=False の場合は30分間のメモリキャッシュを返却。
+    - 通信エラー・不正XML発生時も例外を送出せず安全に空リストまたは取得済み分を返却。
+    - URLスキーム（http:// または https://）を検証し XSS リスクを排除。
+    """
+    import html as html_lib
+    import xml.etree.ElementTree as ET
+
+    now = time.time()
+    if not force and _market_news_cache["items"] and (now - _market_news_cache["timestamp"]) < MARKET_NEWS_TTL:
+        return _market_news_cache["items"][:limit]
+
+    feeds = [
+        {
+            "category": "株式市況",
+            "url": "https://news.google.com/rss/search?q=%E6%97%A5%E7%B5%8C%E5%B9%B3%E5%9D%87+OR+TOPIX+OR+%E6%9D%B1%E4%BA%AC%E6%A0%AA%E5%BC%8F%E5%B8%82%E5%A0%B4+when:2d&hl=ja&gl=JP&ceid=JP:ja",
+            "max_per_feed": 6
+        },
+        {
+            "category": "為替・ドル円",
+            "url": "https://news.google.com/rss/search?q=%E3%83%89%E3%83%AB%E5%86%86+OR+%E5%A4%96%E5%9B%BD%E7%82%BA%E6%9B%BF%E5%B8%82%E5%A0%B4+OR+%E5%86%86%E7%9B%B8%E5%A0%B4+when:2d&hl=ja&gl=JP&ceid=JP:ja",
+            "max_per_feed": 5
+        },
+        {
+            "category": "経済・市況",
+            "url": "https://news.yahoo.co.jp/rss/categories/business.xml",
+            "max_per_feed": 4
+        }
+    ]
+
+    collected: List[Dict[str, str]] = []
+    seen_titles = set()
+
+    for feed in feeds:
+        try:
+            resp = requests.get(feed["url"], headers=DEFAULT_HEADERS, timeout=5.0)
+            if resp.status_code != 200 or not resp.content:
+                continue
+            root = ET.fromstring(resp.content)
+            count = 0
+            for item in root.findall(".//item"):
+                if count >= feed["max_per_feed"]:
+                    break
+                raw_title = (item.findtext("title") or "").strip()
+                raw_link = (item.findtext("link") or "").strip()
+                raw_pub = (item.findtext("pubDate") or "").strip()
+                raw_source = (item.findtext("source") or "").strip()
+
+                if not raw_title or not raw_link:
+                    continue
+
+                # XSS防止: http:// または https:// で始まるURLのみ許可
+                if not (raw_link.startswith("http://") or raw_link.startswith("https://")):
+                    continue
+
+                clean_title = html_lib.unescape(raw_title)
+                source_name = html_lib.unescape(raw_source) if raw_source else ""
+
+                # Google News 形式 ("タイトル - メディア名") からメディア名を分離
+                if " - " in clean_title:
+                    parts = clean_title.rsplit(" - ", 1)
+                    if len(parts) == 2 and len(parts[1]) <= 30:
+                        clean_title = parts[0].strip()
+                        if not source_name:
+                            source_name = parts[1].strip()
+
+                if not source_name:
+                    source_name = feed["category"]
+
+                # 重複タイトルの排除（先頭25文字でも類似判定）
+                title_key = clean_title[:25]
+                if clean_title in seen_titles or title_key in seen_titles:
+                    continue
+                seen_titles.add(clean_title)
+                seen_titles.add(title_key)
+
+                collected.append({
+                    "title": clean_title,
+                    "url": raw_link,
+                    "link": raw_link,
+                    "source": source_name,
+                    "category": feed["category"],
+                    "published": raw_pub,
+                    "pub_date": raw_pub
+                })
+                count += 1
+        except Exception as e:
+            logger.warning(f"Failed to fetch or parse RSS feed ({feed['category']}): {e}")
+            continue
+
+    if collected:
+        _market_news_cache["timestamp"] = now
+        _market_news_cache["items"] = collected
+
+    return collected[:limit]
+
+
 _scraper_instances = {}
 def get_scraper(asset_type: str) -> BaseScraper:
     if asset_type not in _scraper_instances:

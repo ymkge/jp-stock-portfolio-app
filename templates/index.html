@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>国内株式ポートフォリオ</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=4.5">
+    <link rel="stylesheet" href="/static/css/style.css?v=4.7">
     <script>
         // テーマおよび免責バナー表示の初期適用（チラつき防止）
         (function() {
@@ -657,9 +657,37 @@
         </div>
     </div>
 
+    <!-- 市況・為替 急変動要因 & AI分析モーダル (#349) -->
+    <div id="market-volatility-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="market-volatility-modal-title">
+        <div class="modal-content" style="max-width: 920px; width: 95%;">
+            <div class="modal-header">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <h3 id="market-volatility-modal-title" style="margin: 0; font-size: 1.25rem;">📰 市況・為替 変動要因 &amp; AIサマリー</h3>
+                    <span id="market-volatility-status-badge" class="badge bg-info text-dark" style="font-size: 0.75rem;">リアルタイム要因分析</span>
+                </div>
+                <button type="button" id="btn-close-market-volatility-modal" class="modal-close" aria-label="閉じる">&times;</button>
+            </div>
+            <div class="modal-body" id="market-volatility-modal-body">
+                <div id="market-volatility-loading" class="text-center my-4 hidden">
+                    <div class="spinner-border text-primary" role="status" style="width: 2.5rem; height: 2.5rem;"></div>
+                    <p class="mt-3 text-muted font-weight-bold">最新市況・為替ニュースと業種別動向を収集し、変動要因を分析中...</p>
+                </div>
+                <div id="market-volatility-content-container">
+                    <!-- JSにて動的描画 -->
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+                <button type="button" id="btn-refresh-market-volatility" class="btn-outline" style="font-size: 0.82rem; padding: 6px 12px;" title="ニュースの再取得とAI再分析を実行します">
+                    🔄 最新情報で再分析
+                </button>
+                <button type="button" id="btn-close-market-volatility-modal-footer" class="btn-secondary">閉じる</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/js/stateManager.js?v=3.2"></script>
     <script src="/static/js/marketFibonacci.js?v=1.0"></script>
     <script src="/static/js/marketAnomaly.js?v=1.0"></script>
-    <script src="/static/js/main.js?v=4.7"></script>
+    <script src="/static/js/main.js?v=4.8"></script>
 </body>
 </html>

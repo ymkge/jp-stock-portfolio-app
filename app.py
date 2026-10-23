@@ -1360,6 +1360,83 @@ async def is_client_disconnected(request: Optional[Any]) -> bool:
         return False
 
 
+def evaluate_market_volatility(idx_item: Dict[str, Any], vol_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    市場指標または為替データの前日比から急変動ステータスを判定し、
+    is_volatile, volatility_direction, volatility_label を付与して返す（Issue #349）。
+    """
+    if vol_config is None:
+        vol_config = get_config("market_volatility_monitoring", {}) or {}
+    if not isinstance(vol_config, dict):
+        vol_config = {}
+
+    enabled = bool(vol_config.get("enabled", True))
+    if not enabled:
+        idx_item["is_volatile"] = False
+        idx_item["volatility_direction"] = None
+        idx_item["volatility_label"] = None
+        return idx_item
+
+    try:
+        idx_thresh = float(vol_config.get("index_change_percent_threshold", 1.5))
+    except (ValueError, TypeError):
+        idx_thresh = 1.5
+    try:
+        fx_yen_thresh = float(vol_config.get("fx_change_yen_threshold", 1.0))
+    except (ValueError, TypeError):
+        fx_yen_thresh = 1.0
+    try:
+        fx_pct_thresh = float(vol_config.get("fx_change_percent_threshold", 0.7))
+    except (ValueError, TypeError):
+        fx_pct_thresh = 0.7
+
+    def _parse_float(val: Any) -> Optional[float]:
+        if val is None or val == "" or val == "N/A" or val == "---":
+            return None
+        if isinstance(val, (int, float)):
+            return float(val)
+        try:
+            s = str(val).replace(",", "").replace("%", "").replace("+", "").replace("円", "").strip()
+            return float(s) if s else None
+        except (ValueError, TypeError):
+            return None
+
+    chg_val = _parse_float(idx_item.get("change"))
+    pct_val = _parse_float(idx_item.get("change_percent"))
+    is_fx = bool(idx_item.get("is_fx")) or idx_item.get("code") == "USDJPY=X" or "ドル円" in str(idx_item.get("name", ""))
+
+    is_volatile = False
+    direction = None
+    label = None
+
+    if is_fx:
+        cond_yen = chg_val is not None and abs(chg_val) >= fx_yen_thresh
+        cond_pct = pct_val is not None and abs(pct_val) >= fx_pct_thresh
+        if cond_yen or cond_pct:
+            is_volatile = True
+            ref_val = chg_val if chg_val is not None and chg_val != 0 else (pct_val or 0.0)
+            if ref_val >= 0:
+                direction = "up"
+                label = "⚡ 円安急進"
+            else:
+                direction = "down"
+                label = "⚡ 円高急進"
+    else:
+        if pct_val is not None and abs(pct_val) >= idx_thresh:
+            is_volatile = True
+            if pct_val >= 0:
+                direction = "up"
+                label = "⚡ 急騰"
+            else:
+                direction = "down"
+                label = "⚡ 急落"
+
+    idx_item["is_volatile"] = is_volatile
+    idx_item["volatility_direction"] = direction
+    idx_item["volatility_label"] = label
+    return idx_item
+
+
 async def _get_processed_asset_data(request: Optional[Any] = None, force: bool = False) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
     ポートフォリオ内の全資産のデータを並行して取得し、スコア計算などを行う。
@@ -1691,7 +1768,7 @@ async def _get_processed_asset_data(request: Optional[Any] = None, force: bool =
                     except Exception as e:
                         logger.warning(f"Failed to save FX daily data for {code}: {e}")
 
-            market_indices_results.append({
+            idx_entry = {
                 "name": idx_result.get("name", market_indices_config[i]["name"]),
                 "code": code,
                 "price": idx_result.get("price"),
@@ -1708,7 +1785,9 @@ async def _get_processed_asset_data(request: Optional[Any] = None, force: bool =
                 "mom_date": mom_date,
                 "is_future": "先物" in idx_result.get("name", market_indices_config[i]["name"]) or "Future" in idx_result.get("name", market_indices_config[i]["name"]),
                 "is_fx": code == "USDJPY=X" or "ドル円" in idx_result.get("name", market_indices_config[i]["name"])
-            })
+            }
+            evaluate_market_volatility(idx_entry)
+            market_indices_results.append(idx_entry)
 
     success_count = sum(1 for r in scraped_results if r and "error" not in r)
     fail_count = total_count - success_count
@@ -3150,5 +3229,104 @@ async def get_industry_daily_summary(req: IndustryDailySummaryRequest):
     except Exception as e:
         logger.error(f"Error in get_industry_daily_summary: {e}")
         raise HTTPException(status_code=500, detail=f"業種別AI市況短評の生成に失敗しました: {str(e)}")
+
+
+class MarketVolatilitySummaryRequest(BaseModel):
+    force: bool = False
+
+
+@app.post("/api/market-volatility/summary", tags=["AI Diagnosis"])
+async def get_market_volatility_summary(req: MarketVolatilitySummaryRequest):
+    """
+    日経平均・TOPIX・為替（ドル円）等の変動要因をニュースRSSおよび業種別騰落から収集・AI要約して返す（Issue #349）。
+    """
+    try:
+        res_data = await _get_processed_asset_data(force=False)
+        if isinstance(res_data, tuple):
+            all_assets, metadata = res_data
+        else:
+            all_assets, metadata = res_data, {}
+
+        raw_indices = (metadata or {}).get("market_indices", [])
+        market_indices = []
+        vol_config = get_config("market_volatility_monitoring", {}) or {}
+        for idx in raw_indices:
+            item_copy = dict(idx)
+            if "is_volatile" not in item_copy:
+                evaluate_market_volatility(item_copy, vol_config)
+            market_indices.append(item_copy)
+
+        # 国内株の業種別平均変動率を算出（保有有無を問わず監視銘柄全体からセクター動向を把握）
+        sector_changes: Dict[str, List[float]] = {}
+        for asset in (all_assets or []):
+            if not isinstance(asset, dict) or "error" in asset:
+                continue
+            if asset.get("asset_type", "jp_stock") != "jp_stock":
+                continue
+            ind = asset.get("industry") or "その他"
+            raw_pct = asset.get("change_percent")
+            if raw_pct is None or raw_pct == "N/A" or raw_pct == "---":
+                continue
+            try:
+                pct_val = float(str(raw_pct).replace("%", "").replace("+", "").replace(",", "").strip())
+                sector_changes.setdefault(ind, []).append(pct_val)
+            except (ValueError, TypeError):
+                continue
+
+        sector_averages = []
+        for ind, vals in sector_changes.items():
+            if vals:
+                avg_pct = round(sum(vals) / len(vals), 2)
+                sector_averages.append({
+                    "industry": ind,
+                    "avg_change_percent": avg_pct,
+                    "count": len(vals)
+                })
+
+        sorted_desc = sorted(sector_averages, key=lambda x: x["avg_change_percent"], reverse=True)
+        sorted_asc = sorted(sector_averages, key=lambda x: x["avg_change_percent"])
+        top_gainers = [s for s in sorted_desc if s["avg_change_percent"] > 0][:5]
+        top_losers = [s for s in sorted_asc if s["avg_change_percent"] < 0][:5]
+        sector_summary = {
+            "top_gainers": top_gainers,
+            "top_losers": top_losers
+        }
+
+        # 最新市況・為替ニュースRSSの取得
+        news_headlines = await asyncio.to_thread(
+            scraper.fetch_market_news_headlines, 12, req.force
+        )
+
+        # Gemini AI による要因構造化要約（NO_API_KEYや通信エラー時も安全に辞書返却）
+        try:
+            ai_analysis = await asyncio.to_thread(
+                llm_service_instance.diagnose_market_volatility_factors,
+                market_indices,
+                news_headlines,
+                sector_summary,
+                req.force
+            )
+        except Exception as llm_err:
+            logger.warning(f"LLM diagnosis fallback in get_market_volatility_summary: {llm_err}")
+            ai_analysis = {
+                "error": "AI_ERROR",
+                "message": f"AI要約の生成中にエラーが発生しました（ニュース一覧と指標データは参照可能です）: {str(llm_err)}"
+            }
+
+        has_volatile_index = any(bool(idx.get("is_volatile")) for idx in market_indices)
+
+        return {
+            "market_indices": market_indices,
+            "has_volatile_index": has_volatile_index,
+            "sector_summary": sector_summary,
+            "news_headlines": news_headlines,
+            "ai_analysis": ai_analysis
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in get_market_volatility_summary: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"市況・為替変動要因の取得に失敗しました: {str(e)}")
+
 
 

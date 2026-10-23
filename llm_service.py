@@ -26,6 +26,7 @@ class LLMDiagnosisService:
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._profit_taking_cache: Dict[str, Dict[str, Any]] = {}
         self._industry_daily_cache: Dict[str, Dict[str, Any]] = {}
+        self._market_volatility_cache: Dict[str, Dict[str, Any]] = {}
         self._lock = threading.Lock()
 
     def _get_prompt_hash(self, policy_prompt: str) -> str:
@@ -37,6 +38,7 @@ class LLMDiagnosisService:
             self._cache.clear()
             self._profit_taking_cache.clear()
             self._industry_daily_cache.clear()
+            self._market_volatility_cache.clear()
 
     def diagnose_stock(
         self, 
@@ -1600,4 +1602,177 @@ fit_levelの基準:
         except Exception as e:
             logger.error(f"Failed to generate industry daily summary LLM response: {e}")
             return {"error": True, "message": f"AI短評の生成中にエラーが発生しました: {e}"}
+
+    def diagnose_market_volatility_factors(
+        self,
+        market_indices: List[Dict[str, Any]],
+        news_headlines: List[Dict[str, str]],
+        sector_summary: Optional[Dict[str, Any]] = None,
+        force: bool = False,
+        ttl_seconds: int = 3600
+    ) -> Dict[str, Any]:
+        """
+        日経平均・TOPIX・為替（ドル円）等の市場指標変動データ、最新市況ニュースRSSヘッドライン、
+        およびアプリ内のセクター別騰落状況をもとに、Gemini AI が変動要因と高配当投資家への示唆を構造化要約する (#349)。
+        """
+        api_key = self.policy_manager.get_effective_api_key()
+        if not api_key:
+            return {
+                "error": True,
+                "error_code": "NO_API_KEY",
+                "message": "Google AI Studio の APIキーが設定されていません。「⚙️ 投資方針」から APIキー を設定すると、AIによる市況・為替要因の自動要約が表示されます。"
+            }
+
+        now = time.time()
+        today_str = time.strftime("%Y-%m-%d", time.localtime(now))
+        if hasattr(self.policy_manager, "get_selected_model"):
+            selected_model = self.policy_manager.get_selected_model()
+        else:
+            config = self.policy_manager.load_config()
+            selected_model = config.get("selected_model", "gemini-flash-latest")
+        if selected_model not in ["gemini-flash-latest", "gemini-flash-lite-latest"]:
+            selected_model = "gemini-flash-latest"
+
+        cache_key = f"market_volatility_{today_str}_{selected_model}"
+
+        if not force:
+            with self._lock:
+                entry = self._market_volatility_cache.get(cache_key)
+                if entry:
+                    if (now - entry["timestamp"]) < ttl_seconds:
+                        cached_result = copy.deepcopy(entry["result"])
+                        cached_result["is_cached"] = True
+                        return cached_result
+                    else:
+                        del self._market_volatility_cache[cache_key]
+
+        # 1. 市場指標テキストの構築
+        indices_lines = []
+        for idx in (market_indices or []):
+            name = idx.get("name", "")
+            price = idx.get("price", "--")
+            change = idx.get("change", "--")
+            chg_pct = idx.get("change_percent", "--")
+            wow = idx.get("wow_percent", "--")
+            mom = idx.get("mom_percent", "--")
+            vol_flag = f" 【{idx.get('volatility_label', '急変動')}】" if idx.get("is_volatile") else ""
+            if idx.get("is_fx"):
+                high_52 = idx.get("high_52w", "--")
+                low_52 = idx.get("low_52w", "--")
+                indices_lines.append(
+                    f"- {name}: 現在値 {price}円 (前日比: {change} / {chg_pct}%, 52週レンジ: {low_52}〜{high_52}円){vol_flag}"
+                )
+            else:
+                indices_lines.append(
+                    f"- {name}: 現在値 {price} (前日比: {change} / {chg_pct}%, 前週比: {wow}%, 前月比: {mom}%){vol_flag}"
+                )
+        indices_text = "\n".join(indices_lines) if indices_lines else "- 指標データなし"
+
+        # 2. セクター騰落テキストの構築
+        sector_text = "セクターデータなし"
+        if sector_summary and isinstance(sector_summary, dict):
+            top_gainers = sector_summary.get("top_gainers", [])[:5]
+            top_losers = sector_summary.get("top_losers", [])[:5]
+            g_str = "、".join([f"{g['industry']}({g['avg_change_percent']:+.2f}%)" for g in top_gainers]) if top_gainers else "なし"
+            l_str = "、".join([f"{l['industry']}({l['avg_change_percent']:+.2f}%)" for l in top_losers]) if top_losers else "なし"
+            sector_text = f"- 上昇上位セクター: {g_str}\n- 下落上位セクター: {l_str}"
+
+        # 3. 収集ニュースヘッドラインテキストの構築
+        if news_headlines:
+            news_lines = [
+                f"- [{n.get('source', '市況')}] {n.get('title', '')}"
+                for n in news_headlines[:12]
+            ]
+            news_text = "\n".join(news_lines)
+        else:
+            news_text = "- 直近のヘッドライン取得なし（指標数値およびセクター動向から推定してください）"
+
+        prompt = f"""あなたは日本株および外国為替市場に精通したプロのマーケットエコノミスト兼ポートフォリオストラテジストです。
+以下の「最新の市場指標データ（日経平均・TOPIX・日経先物・ドル円）」「国内株セクター別騰落動向」および「直近の市況・為替ニュースヘッドライン」を統合分析し、なぜ相場や為替が動いているのか、その背景要因と高配当株投資家が取るべきスタンスを簡潔・明快に要約してください。
+
+【1. 市場指標の現在値・変動データ】
+{indices_text}
+
+【2. アプリ内銘柄の業種別騰落動向】
+{sector_text}
+
+【3. 直近の市況・為替ニュースヘッドライン】
+{news_text}
+
+【分析・出力の指示】
+1. ニュースヘッドラインと実際の指標・セクターの動きを照らし合わせ、事実ベースで客観的に要因を整理してください。
+2. 以下のキーを持つ有効なJSONオブジェクトのみを出力してください（Markdownの ```json ... ``` で囲んで構いません）：
+{{
+  "headline_summary": "本日の市場・為替動向の結論を一言で要約（45文字以内）",
+  "key_drivers": ["主要因タグ1 (12文字以内)", "主要因タグ2 (12文字以内)", "主要因タグ3 (12文字以内)"],
+  "equity_factors": "【日経平均・TOPIXの変動要因】なぜ株式市場が上昇/下落/推移しているのか（米株・半導体・日銀政策・企業決算・セクター動向等を120〜180文字程度で解説）",
+  "fx_factors": "【為替（ドル円）の変動要因】なぜドル円が動いているのか、および輸出株・内需株への波及効果（日米金利差・経済指標・要人発言等を100〜150文字程度で解説）",
+  "portfolio_action_hint": "【高配当株投資家への示唆】現在の相場環境において長期・高配当投資家が意識すべき立ち回り（押し目買い好機・過熱警戒・静観等を80〜120文字程度で解説）"
+}}
+"""
+
+        raw_text = ""
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key}"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "maxOutputTokens": 1024,
+                    "responseMimeType": "application/json"
+                }
+            }
+            headers = {"Content-Type": "application/json"}
+
+            resp = requests.post(url, headers=headers, json=payload, timeout=20.0)
+            if resp.status_code != 200:
+                logger.error(f"Gemini API error for market volatility summary: {resp.status_code} - {resp.text}")
+                return {
+                    "error": True,
+                    "error_code": f"HTTP_{resp.status_code}",
+                    "message": f"Gemini API通信エラー ({resp.status_code}): 要因要約を生成できませんでした。"
+                }
+
+            data = resp.json()
+            candidates = data.get("candidates", [])
+            if not candidates:
+                return {"error": True, "error_code": "NO_CANDIDATES", "message": "AIからの有効な応答が得られませんでした。"}
+
+            raw_text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+            json_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', raw_text)
+            json_str = json_match.group(1) if json_match else raw_text
+            parsed = json.loads(json_str)
+
+            key_drivers = parsed.get("key_drivers", [])
+            if not isinstance(key_drivers, list):
+                key_drivers = []
+
+            diagnosed_at_str = time.strftime("%H:%M", time.localtime(now))
+            result = {
+                "error": False,
+                "headline_summary": str(parsed.get("headline_summary", "")).strip(),
+                "key_drivers": [str(k).strip() for k in key_drivers[:4] if str(k).strip()],
+                "equity_factors": str(parsed.get("equity_factors", "")).strip(),
+                "fx_factors": str(parsed.get("fx_factors", "")).strip(),
+                "portfolio_action_hint": str(parsed.get("portfolio_action_hint", "")).strip(),
+                "model_used": selected_model,
+                "diagnosed_at": diagnosed_at_str,
+                "is_cached": False
+            }
+
+            with self._lock:
+                self._market_volatility_cache[cache_key] = {
+                    "result": result,
+                    "timestamp": now,
+                    "model": selected_model
+                }
+
+            return result
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error in market volatility summary: {e}, text: {raw_text}")
+            return {"error": True, "error_code": "JSON_PARSE_ERROR", "message": "AI応答の解析に失敗しました。再試行してください。"}
+        except Exception as e:
+            logger.error(f"Failed to generate market volatility LLM response: {e}")
+            return {"error": True, "error_code": "UNKNOWN_ERROR", "message": f"AI要因分析の生成中にエラーが発生しました: {e}"}
+
 

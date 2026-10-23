@@ -432,12 +432,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? `当日安値: ${idx.low || '--'}円 〜 高値: ${idx.high || '--'}円\n52週安値: ${idx.low_52w || '--'}円 〜 高値: ${idx.high_52w || '--'}円${idx.peak_diff_percent ? '\n直近最高値比: ' + idx.peak_diff_percent : ''}`
                 : '';
 
+            const isVolatile = Boolean(idx.is_volatile);
+            const volDirection = idx.volatility_direction === 'down' ? 'down' : (idx.volatility_direction === 'up' ? 'up' : '');
+            const volCardClass = isVolatile ? (volDirection === 'down' ? 'is-volatile-down' : 'is-volatile-up') : '';
+            const volBadgeHtml = isVolatile
+                ? `<button type="button" class="volatile-factor-badge ${volDirection === 'down' ? 'badge-vol-down' : 'badge-vol-up'}" data-code="${idx.code}" title="クリックして急変動の要因ニュース・AI分析を表示">${idx.volatility_label || '⚡ 急変動'}・要因</button>`
+                : '';
+
             html += `
                 <a href="https://finance.yahoo.co.jp/quote/${idx.code}" target="_blank" class="market-index-link" title="${cardTitle}">
-                    <div class="market-index-card">
+                    <div class="market-index-card ${volCardClass}">
                         <div class="market-index-header">
                             <span class="market-index-name">${idx.name}</span>
-                            <span class="market-index-code" style="font-size: 0.7rem; color: var(--text-muted);">${idx.code}</span>
+                            <div class="market-index-header-right">
+                                ${volBadgeHtml}
+                                <span class="market-index-code" style="font-size: 0.7rem; color: var(--text-muted);">${idx.code}</span>
+                            </div>
                         </div>
                         <div class="market-index-price numeric">${price}</div>
                         <div class="market-index-changes">
@@ -451,8 +461,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 </a>
             `;
         });
+
+        const hasAnyVolatile = indices.some(idx => Boolean(idx.is_volatile));
+        const volatileAlertClass = hasAnyVolatile ? 'has-volatility-alert' : '';
+        const volatileBtnBadge = hasAnyVolatile
+            ? `<span class="volatility-alert-pill">⚡ 急変動あり</span>`
+            : `<span class="volatility-normal-sub">ニュース &amp; AI要約</span>`;
+
+        html += `
+            <div class="market-volatility-trigger-wrapper">
+                <button type="button" id="btn-open-market-volatility" class="btn-market-volatility ${volatileAlertClass}" title="日経平均・TOPIX・ドル円の変動要因ニュースとAI分析サマリーを確認します">
+                    <div class="btn-market-volatility-top">
+                        <span class="btn-market-volatility-icon">📰</span>
+                        <span class="btn-market-volatility-title">市況・為替要因</span>
+                    </div>
+                    <div class="btn-market-volatility-bottom">
+                        ${volatileBtnBadge}
+                    </div>
+                </button>
+            </div>
+        `;
+
         container.innerHTML = html;
         container.classList.remove('hidden');
+
+        // 指標カード内の急変動バッジクリック時は外部リンク遷移を抑止して要因モーダルを開く (#349)
+        container.querySelectorAll('.volatile-factor-badge').forEach(badge => {
+            badge.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openMarketVolatilityModal(false);
+            });
+        });
+
+        const btnOpenVol = document.getElementById('btn-open-market-volatility');
+        if (btnOpenVol) {
+            btnOpenVol.addEventListener('click', (e) => {
+                e.preventDefault();
+                openMarketVolatilityModal(false);
+            });
+        }
     }
 
     async function handleApiResponse(response) {
@@ -3050,5 +3098,282 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- 主要指数フィボナッチ参照モーダル制御 (#231) ---
     if (typeof initMarketFibonacciModal === 'function') {
         initMarketFibonacciModal();
+    }
+
+    // --- 市況・為替 変動要因 & AI分析モーダル制御 (#349) ---
+    const marketVolatilityModal = document.getElementById('market-volatility-modal');
+    const marketVolatilityLoading = document.getElementById('market-volatility-loading');
+    const marketVolatilityContentContainer = document.getElementById('market-volatility-content-container');
+    const marketVolatilityStatusBadge = document.getElementById('market-volatility-status-badge');
+    const btnCloseMarketVolatilityModal = document.getElementById('btn-close-market-volatility-modal');
+    const btnCloseMarketVolatilityModalFooter = document.getElementById('btn-close-market-volatility-modal-footer');
+    const btnRefreshMarketVolatility = document.getElementById('btn-refresh-market-volatility');
+
+    function closeMarketVolatilityModal() {
+        if (marketVolatilityModal) {
+            marketVolatilityModal.classList.add('hidden');
+        }
+    }
+
+    if (btnCloseMarketVolatilityModal) {
+        btnCloseMarketVolatilityModal.addEventListener('click', closeMarketVolatilityModal);
+    }
+    if (btnCloseMarketVolatilityModalFooter) {
+        btnCloseMarketVolatilityModalFooter.addEventListener('click', closeMarketVolatilityModal);
+    }
+    if (marketVolatilityModal) {
+        marketVolatilityModal.addEventListener('click', (e) => {
+            if (e.target === marketVolatilityModal) {
+                closeMarketVolatilityModal();
+            }
+        });
+    }
+    if (btnRefreshMarketVolatility) {
+        btnRefreshMarketVolatility.addEventListener('click', () => {
+            openMarketVolatilityModal(true);
+        });
+    }
+
+    async function openMarketVolatilityModal(force = false) {
+        if (!marketVolatilityModal) return;
+        marketVolatilityModal.classList.remove('hidden');
+
+        if (marketVolatilityLoading) marketVolatilityLoading.classList.remove('hidden');
+        if (marketVolatilityContentContainer) marketVolatilityContentContainer.innerHTML = '';
+        if (btnRefreshMarketVolatility) btnRefreshMarketVolatility.disabled = true;
+
+        try {
+            const response = await fetch('/api/market-volatility/summary', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ force: Boolean(force) })
+            });
+            if (!response.ok) {
+                let errMsg = `HTTP error: ${response.status}`;
+                try {
+                    const errJson = await response.json();
+                    errMsg = errJson.detail || errMsg;
+                } catch (_) {}
+                throw new Error(errMsg);
+            }
+            const data = await response.json();
+            renderMarketVolatilityModalContent(data);
+        } catch (error) {
+            console.error('Market volatility summary fetch failed:', error);
+            if (marketVolatilityContentContainer) {
+                marketVolatilityContentContainer.innerHTML = `
+                    <div class="mv-error-box">
+                        <strong>⚠️ 市況・為替変動要因の取得に失敗しました</strong>
+                        <p style="margin: 6px 0 0 0; font-size: 0.88rem;">${escapeHtml(error.message || '不明なエラー')}</p>
+                    </div>
+                `;
+            }
+        } finally {
+            if (marketVolatilityLoading) marketVolatilityLoading.classList.add('hidden');
+            if (btnRefreshMarketVolatility) btnRefreshMarketVolatility.disabled = false;
+        }
+    }
+
+    function renderMarketVolatilityModalContent(data) {
+        if (!marketVolatilityContentContainer) return;
+
+        const indices = data.market_indices || [];
+        const hasVolatile = Boolean(data.has_volatile_index);
+        const sectorSummary = data.sector_summary || {};
+        const headlines = data.news_headlines || [];
+        const ai = data.ai_analysis || {};
+
+        if (marketVolatilityStatusBadge) {
+            if (hasVolatile) {
+                marketVolatilityStatusBadge.textContent = '⚡ 急変動アラート検知中';
+                marketVolatilityStatusBadge.className = 'badge bg-danger text-white';
+            } else {
+                marketVolatilityStatusBadge.textContent = '📊 平常稼働・市況チェック';
+                marketVolatilityStatusBadge.className = 'badge bg-info text-dark';
+            }
+        }
+
+        // 1. 市場指標ステータス帯
+        const indicesCardsHtml = indices.map(idx => {
+            const isVol = Boolean(idx.is_volatile);
+            const dir = idx.volatility_direction;
+            const chgStr = String(idx.change || '--');
+            const pctRaw = idx.change_percent;
+            const pctStr = (pctRaw !== undefined && pctRaw !== null && pctRaw !== '--')
+                ? (String(pctRaw).includes('%') ? String(pctRaw) : `${Number(pctRaw) > 0 ? '+' : ''}${pctRaw}%`)
+                : '--';
+            const isUp = chgStr.startsWith('+') || (typeof idx.change === 'number' && idx.change > 0) || pctStr.startsWith('+');
+            const isDown = chgStr.startsWith('-') || (typeof idx.change === 'number' && idx.change < 0) || pctStr.startsWith('-');
+            const colorClass = isUp ? 'price-up' : (isDown ? 'price-down' : '');
+            const volCardClass = isVol ? (dir === 'down' ? 'mv-idx-volatile-down' : 'mv-idx-volatile-up') : '';
+            const volPill = isVol
+                ? `<span class="mv-idx-badge ${dir === 'down' ? 'mv-badge-down' : 'mv-badge-up'}">${escapeHtml(idx.volatility_label || '⚡ 急変動')}</span>`
+                : '';
+
+            return `
+                <div class="mv-index-mini-card ${volCardClass}">
+                    <div class="mv-index-mini-top">
+                        <span class="mv-index-mini-name">${escapeHtml(idx.name || idx.code || '')}</span>
+                        ${volPill}
+                    </div>
+                    <div class="mv-index-mini-price numeric">${escapeHtml(String(idx.price || '--'))}</div>
+                    <div class="mv-index-mini-change ${colorClass} numeric">${escapeHtml(chgStr)} (${escapeHtml(pctStr)})</div>
+                </div>
+            `;
+        }).join('');
+
+        // 2. AI 要因分析セクション
+        let aiSectionHtml = '';
+        if (ai && !ai.error) {
+            const keyDrivers = Array.isArray(ai.key_drivers) ? ai.key_drivers : [];
+            const driversHtml = keyDrivers.length > 0
+                ? `<ul class="mv-drivers-list">${keyDrivers.map(d => `<li>${escapeHtml(String(d))}</li>`).join('')}</ul>`
+                : '<p class="text-muted small mb-0">特筆すべき変動ドライバーはありません。</p>';
+
+            const cachedLabel = ai.is_cached ? '（キャッシュ取得）' : '（新規AI生成）';
+            const timeLabel = ai.diagnosed_at ? `${escapeHtml(ai.diagnosed_at)} ${cachedLabel}` : cachedLabel;
+
+            aiSectionHtml = `
+                <div class="mv-section-card mv-ai-card">
+                    <div class="mv-section-header">
+                        <div class="mv-section-title-group">
+                            <span class="mv-section-icon">🤖</span>
+                            <h4 class="mv-section-title">Gemini AI 市況・為替 変動要因サマリー</h4>
+                        </div>
+                        <span class="mv-meta-tag">${escapeHtml(ai.model_used || 'Gemini')} | ${timeLabel}</span>
+                    </div>
+                    <div class="mv-headline-banner">
+                        ${escapeHtml(ai.headline_summary || '市場全体の変動要因を分析しました。')}
+                    </div>
+                    <div class="mv-drivers-box">
+                        <div class="mv-sub-label">🔑 本日の主要変動ドライバー</div>
+                        ${driversHtml}
+                    </div>
+                    <div class="mv-two-col-grid">
+                        <div class="mv-factor-pane">
+                            <div class="mv-sub-label">📈 国内株式（日経平均・TOPIX）の背景</div>
+                            <p class="mv-factor-text">${escapeHtml(ai.equity_factors || '---')}</p>
+                        </div>
+                        <div class="mv-factor-pane">
+                            <div class="mv-sub-label">💱 為替（ドル円・金利）の背景</div>
+                            <p class="mv-factor-text">${escapeHtml(ai.fx_factors || '---')}</p>
+                        </div>
+                    </div>
+                    ${ai.portfolio_action_hint ? `
+                        <div class="mv-action-hint-box">
+                            <div class="mv-sub-label">💡 高配当ポートフォリオ運用への示唆・立ち回りヒント</div>
+                            <p class="mv-factor-text mb-0">${escapeHtml(ai.portfolio_action_hint)}</p>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        } else {
+            const isNoKey = ai && (ai.error === 'NO_API_KEY' || ai.error_code === 'NO_API_KEY');
+            const msg = (ai && ai.message) ? ai.message : 'AI要約の生成をスキップしました。下部の最新市況ニュース一覧および業種別騰落データをご確認ください。';
+            aiSectionHtml = `
+                <div class="mv-section-card mv-ai-fallback-card">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div>
+                            <strong>ℹ️ ${isNoKey ? 'Gemini APIキー未設定のためAI要約はオフです' : 'AI要約メッセージ'}</strong>
+                            <p style="margin: 4px 0 0 0; font-size: 0.85rem;">${escapeHtml(msg)}</p>
+                        </div>
+                        ${isNoKey ? `<button type="button" class="btn-sm btn-outline" id="btn-mv-open-policy">⚙️ 投資方針でAPIキーを設定</button>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        // 3. セクター騰落ハイライト（監視銘柄ベース）
+        const gainers = Array.isArray(sectorSummary.top_gainers) ? sectorSummary.top_gainers : [];
+        const losers = Array.isArray(sectorSummary.top_losers) ? sectorSummary.top_losers : [];
+        let sectorHtml = '';
+        if (gainers.length > 0 || losers.length > 0) {
+            const renderSectorPills = (list, isUp) => {
+                if (!list || list.length === 0) return '<span class="text-muted small">該当なし</span>';
+                return list.map(s => {
+                    const sign = s.avg_change_percent > 0 ? '+' : '';
+                    const cls = isUp ? 'mv-sector-pill-up' : 'mv-sector-pill-down';
+                    return `<span class="mv-sector-pill ${cls}">${escapeHtml(s.industry)} <strong>${sign}${s.avg_change_percent}%</strong></span>`;
+                }).join('');
+            };
+            sectorHtml = `
+                <div class="mv-section-card">
+                    <div class="mv-section-header">
+                        <div class="mv-section-title-group">
+                            <span class="mv-section-icon">🏢</span>
+                            <h4 class="mv-section-title">監視銘柄 セクター別騰落ハイライト（平均前日比）</h4>
+                        </div>
+                    </div>
+                    <div class="mv-two-col-grid">
+                        <div class="mv-sector-group">
+                            <div class="mv-sub-label">📈 上昇けん引セクター</div>
+                            <div class="mv-sector-pills-wrap">${renderSectorPills(gainers, true)}</div>
+                        </div>
+                        <div class="mv-sector-group">
+                            <div class="mv-sub-label">📉 下落主導セクター</div>
+                            <div class="mv-sector-pills-wrap">${renderSectorPills(losers, false)}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 4. 収集した最新市況・為替ニュースヘッドライン一覧
+        let newsListHtml = '';
+        if (headlines.length > 0) {
+            const itemsHtml = headlines.map(item => {
+                const title = escapeHtml(item.title || '');
+                const source = escapeHtml(item.source || '市況ニュース');
+                const pubDate = escapeHtml(item.pub_date || item.published || '');
+                const rawUrl = item.link || item.url || '';
+                const link = rawUrl && (rawUrl.startsWith('https://') || rawUrl.startsWith('http://'))
+                    ? rawUrl
+                    : '';
+                const titleElem = link
+                    ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer" class="mv-news-link">${title} <span class="mv-ext-icon">↗</span></a>`
+                    : `<span class="mv-news-text">${title}</span>`;
+                return `
+                    <li class="mv-news-item">
+                        <div class="mv-news-main">${titleElem}</div>
+                        <div class="mv-news-meta">
+                            <span class="mv-news-source">${source}</span>
+                            ${pubDate ? `<span class="mv-news-date">${pubDate}</span>` : ''}
+                        </div>
+                    </li>
+                `;
+            }).join('');
+            newsListHtml = `<ul class="mv-news-list">${itemsHtml}</ul>`;
+        } else {
+            newsListHtml = `<p class="text-muted small mb-0">現在取得可能な市況ニュースヘッドラインはありません。</p>`;
+        }
+
+        marketVolatilityContentContainer.innerHTML = `
+            <div class="mv-modal-wrapper">
+                <div class="mv-indices-strip">
+                    ${indicesCardsHtml}
+                </div>
+                ${aiSectionHtml}
+                ${sectorHtml}
+                <div class="mv-section-card">
+                    <div class="mv-section-header">
+                        <div class="mv-section-title-group">
+                            <span class="mv-section-icon">📰</span>
+                            <h4 class="mv-section-title">収集した最新市況・為替ニュース（情報ソース）</h4>
+                        </div>
+                        <span class="mv-meta-tag">${headlines.length}件取得</span>
+                    </div>
+                    ${newsListHtml}
+                </div>
+            </div>
+        `;
+
+        const btnMvOpenPolicy = document.getElementById('btn-mv-open-policy');
+        if (btnMvOpenPolicy) {
+            btnMvOpenPolicy.addEventListener('click', () => {
+                closeMarketVolatilityModal();
+                const policyBtn = document.getElementById('btn-open-policy-config');
+                if (policyBtn) policyBtn.click();
+            });
+        }
     }
 });

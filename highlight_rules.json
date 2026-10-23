@@ -266,6 +266,12 @@
       "電力・ガス業", "陸運業", "空運業", "食料品", "小売業", "情報・通信業", "サービス業", "パルプ・紙", "倉庫・運輸関連業"
     ]
   },
+  "market_volatility_monitoring": {
+    "enabled": true,
+    "index_change_percent_threshold": 1.5,
+    "fx_change_yen_threshold": 1.0,
+    "fx_change_percent_threshold": 0.7
+  },
   "market_indices": [
     {
       "code": "998407.O",

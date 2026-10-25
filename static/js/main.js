@@ -351,7 +351,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('market-summary-container');
         if (!container || !indices) return;
 
-        let html = '';
+        let cardsHtml = '';
         indices.forEach(idx => {
             const price = idx.price || '--';
             const change = idx.change || '--';
@@ -439,7 +439,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? `<button type="button" class="volatile-factor-badge ${volDirection === 'down' ? 'badge-vol-down' : 'badge-vol-up'}" data-code="${idx.code}" title="クリックして急変動の要因ニュース・AI分析を表示">${idx.volatility_label || '⚡ 急変動'}・要因</button>`
                 : '';
 
-            html += `
+            cardsHtml += `
                 <a href="https://finance.yahoo.co.jp/quote/${idx.code}" target="_blank" class="market-index-link" title="${cardTitle}">
                     <div class="market-index-card ${volCardClass}">
                         <div class="market-index-header">
@@ -465,20 +465,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const hasAnyVolatile = indices.some(idx => Boolean(idx.is_volatile));
         const volatileAlertClass = hasAnyVolatile ? 'has-volatility-alert' : '';
         const volatileBtnBadge = hasAnyVolatile
-            ? `<span class="volatility-alert-pill">⚡ 急変動あり</span>`
+            ? `<span class="volatility-alert-pill">⚡ 急変動アラート検知中</span>`
             : `<span class="volatility-normal-sub">ニュース &amp; AI要約</span>`;
 
-        html += `
-            <div class="market-volatility-trigger-wrapper">
-                <button type="button" id="btn-open-market-volatility" class="btn-market-volatility ${volatileAlertClass}" title="日経平均・TOPIX・ドル円の変動要因ニュースとAI分析サマリーを確認します">
-                    <div class="btn-market-volatility-top">
+        const html = `
+            <div class="market-summary-header">
+                <div class="market-summary-title-group">
+                    <h3 class="market-summary-title">📈 主要市場指標</h3>
+                </div>
+                <div class="market-volatility-action-group">
+                    <button type="button" id="btn-open-market-volatility" class="btn-market-volatility ${volatileAlertClass}" title="日経平均・TOPIX・ドル円の変動要因ニュースとAI分析サマリーを確認します" aria-label="市況・為替の変動要因ニュースとAI分析サマリーを表示">
                         <span class="btn-market-volatility-icon">📰</span>
-                        <span class="btn-market-volatility-title">市況・為替要因</span>
-                    </div>
-                    <div class="btn-market-volatility-bottom">
+                        <span class="btn-market-volatility-title">市況・為替の変動要因</span>
                         ${volatileBtnBadge}
-                    </div>
-                </button>
+                    </button>
+                </div>
+            </div>
+            <div class="market-indices-grid">
+                ${cardsHtml}
             </div>
         `;
 

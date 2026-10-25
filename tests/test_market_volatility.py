@@ -282,6 +282,9 @@ def test_frontend_market_volatility_ui_elements():
         js_content = f.read()
     assert "volatile-factor-badge" in js_content
     assert "btn-open-market-volatility" in js_content
+    assert "market-summary-header" in js_content
+    assert "market-indices-grid" in js_content
+    assert "market-summary-title" in js_content
     assert "openMarketVolatilityModal" in js_content
     assert "/api/market-volatility/summary" in js_content
     assert "e.preventDefault()" in js_content
@@ -289,8 +292,12 @@ def test_frontend_market_volatility_ui_elements():
 
     with open(os.path.join(base_dir, "static", "css", "style.css"), "r", encoding="utf-8") as f:
         css_content = f.read()
+    assert ".market-summary-header" in css_content
+    assert ".market-indices-grid" in css_content
+    assert ".market-summary-title" in css_content
     assert ".market-index-card.is-volatile-up" in css_content
     assert ".market-index-card.is-volatile-down" in css_content
     assert ".volatile-factor-badge" in css_content
     assert ".btn-market-volatility" in css_content
+    assert '[data-theme="dark"] .btn-market-volatility' in css_content
     assert '[data-theme="dark"] .mv-headline-banner' in css_content

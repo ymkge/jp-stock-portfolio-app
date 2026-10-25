@@ -308,3 +308,8 @@ def test_frontend_market_volatility_ui_elements():
     assert '[data-theme="dark"] .btn-market-volatility' in css_content
     assert '[data-theme="dark"] .mv-headline-banner' in css_content
     assert '[data-theme="dark"] .mv-action-hint-box' in css_content
+    assert '--card-bg: #1e293b;' in css_content
+    assert '[data-theme="dark"] .mv-section-card' in css_content
+    assert '[data-theme="dark"] .mv-index-mini-card' in css_content
+    assert '[data-theme="dark"] .mv-section-title' in css_content
+    assert '[data-theme="dark"] .mv-news-source' in css_content

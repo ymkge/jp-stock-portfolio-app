@@ -3265,8 +3265,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     ${ai.portfolio_action_hint ? `
                         <div class="mv-action-hint-box">
-                            <div class="mv-sub-label">💡 高配当ポートフォリオ運用への示唆・立ち回りヒント</div>
-                            <p class="mv-factor-text mb-0">${escapeHtml(ai.portfolio_action_hint)}</p>
+                            <div class="mv-action-hint-header">
+                                <div class="mv-action-hint-title-group">
+                                    <span class="mv-action-hint-icon">💡</span>
+                                    <h5 class="mv-action-hint-title">高配当ポートフォリオ運用への示唆・立ち回りヒント</h5>
+                                </div>
+                                <span class="mv-action-hint-badge">📌 投資アクション指針</span>
+                            </div>
+                            <p class="mv-action-hint-text">${escapeHtml(ai.portfolio_action_hint)}</p>
                         </div>
                     ` : ''}
                 </div>

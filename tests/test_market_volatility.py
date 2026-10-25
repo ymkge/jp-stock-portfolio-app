@@ -286,6 +286,9 @@ def test_frontend_market_volatility_ui_elements():
     assert "market-indices-grid" in js_content
     assert "market-summary-title" in js_content
     assert "openMarketVolatilityModal" in js_content
+    assert "mv-action-hint-box" in js_content
+    assert "mv-action-hint-badge" in js_content
+    assert "mv-action-hint-text" in js_content
     assert "/api/market-volatility/summary" in js_content
     assert "e.preventDefault()" in js_content
     assert "e.stopPropagation()" in js_content
@@ -299,5 +302,9 @@ def test_frontend_market_volatility_ui_elements():
     assert ".market-index-card.is-volatile-down" in css_content
     assert ".volatile-factor-badge" in css_content
     assert ".btn-market-volatility" in css_content
+    assert ".mv-action-hint-box" in css_content
+    assert ".mv-action-hint-badge" in css_content
+    assert ".mv-action-hint-text" in css_content
     assert '[data-theme="dark"] .btn-market-volatility' in css_content
     assert '[data-theme="dark"] .mv-headline-banner' in css_content
+    assert '[data-theme="dark"] .mv-action-hint-box' in css_content

@@ -1,5 +1,5 @@
 import pytest
-from scraper import BaseScraper, JPStockScraper
+from scraper import BaseScraper, JPStockScraper, InvestTrustScraper
 
 class MockScraper(BaseScraper):
     def fetch_data(self, code):
@@ -110,4 +110,140 @@ def test_jp_stock_scraper_dividend_split_mismatch_correction(mocker):
     assert data["annual_dividend"] == 90.0
     # 90.0 / 3357 * 100 = 2.68% に計算されること
     assert data["yield"] == "2.68"
+
+
+# --- 投資信託の純資産総額・信託報酬 3層フォールバックテスト (#364) ---
+
+def test_invest_trust_parse_and_format_net_assets():
+    """純資産総額の正規化ヘルパー関数の検証"""
+    # 百万円単位
+    m_cap, n_assets = InvestTrustScraper._parse_and_format_net_assets("13,983,739", "百万円")
+    assert m_cap == "13983739000000"
+    assert n_assets == "13.98兆円"
+
+    # 億円単位
+    m_cap, n_assets = InvestTrustScraper._parse_and_format_net_assets("4388.78", "億円")
+    assert m_cap == "438878000000"
+    assert n_assets == "4388.78億円"
+
+    # 兆円単位
+    m_cap, n_assets = InvestTrustScraper._parse_and_format_net_assets("1.25", "兆円")
+    assert m_cap == "1250000000000"
+    assert n_assets == "1.25兆円"
+
+    # 円単位
+    m_cap, n_assets = InvestTrustScraper._parse_and_format_net_assets("50000000", "円")
+    assert m_cap == "50000000"
+    assert n_assets == "50百万円"
+
+    # 不正・無効値
+    assert InvestTrustScraper._parse_and_format_net_assets(None) == ("N/A", "N/A")
+    assert InvestTrustScraper._parse_and_format_net_assets("") == ("N/A", "N/A")
+    assert InvestTrustScraper._parse_and_format_net_assets("abc") == ("N/A", "N/A")
+    assert InvestTrustScraper._parse_and_format_net_assets("-100") == ("N/A", "N/A")
+
+
+def test_invest_trust_format_trust_fee():
+    """信託報酬の正規化ヘルパー関数の検証"""
+    # %なし数値文字列
+    assert InvestTrustScraper._format_trust_fee("0.05775") == "0.05775%"
+    # %あり文字列（二重%防止）
+    assert InvestTrustScraper._format_trust_fee("0.05775%") == "0.05775%"
+    # 空白混入
+    assert InvestTrustScraper._format_trust_fee("  0.0938 % ") == "0.0938%"
+    # 不正・無効値
+    assert InvestTrustScraper._format_trust_fee(None) == "N/A"
+    assert InvestTrustScraper._format_trust_fee("") == "N/A"
+    assert InvestTrustScraper._format_trust_fee("N/A") == "N/A"
+    assert InvestTrustScraper._format_trust_fee("---") == "N/A"
+    assert InvestTrustScraper._format_trust_fee("abc") == "N/A"
+
+
+def test_invest_trust_fetch_tier1_rsc(mocker):
+    """Tier 1: 新形式 JSON (Next.js RSC) からの抽出テスト"""
+    scraper = InvestTrustScraper()
+    mock_res = mocker.Mock()
+    # 新形式 Next.js RSC ペイロード
+    mock_res.text = '''<title>eMAXIS Slim全世界株式(オール・カントリー)【0331418A】：投資信託 - Yahoo!ファイナンス</title>
+self.__next_f.push([1, "{\\"price\\":{\\"value\\":\\"37441\\"},\\"changePrice\\":\\"252\\",\\"changePriceRate\\":\\"0.68\\",\\"items\\":{\\"name\\":\\"純資産残高\\",\\"primary\\":{\\"value\\":\\"13,983,739\\",\\"suffix\\":\\"百万円\\"}},\\"fee_item\\":{\\"name\\":\\"信託報酬\\",\\"primary\\":{\\"value\\":\\"0.05775\\",\\"suffix\\":\\"%\\"}}}\\n"])'''
+
+    mocker.patch.object(scraper, '_make_request', return_value=mock_res)
+
+    data = scraper.fetch_data("0331418A")
+    assert data["code"] == "0331418A"
+    assert data["name"] == "eMAXIS Slim全世界株式(オール・カントリー)"
+    assert data["price"] == "37441"
+    assert data["change"] == "252"
+    assert data["change_percent"] == "0.68"
+    assert data["net_assets"] == "13.98兆円"
+    assert data["market_cap"] == "13983739000000"
+    assert data["trust_fee"] == "0.05775%"
+
+
+def test_invest_trust_fetch_tier2_legacy(mocker):
+    """Tier 2: 旧形式 JSON (Legacy) からの後方互換抽出テスト"""
+    scraper = InvestTrustScraper()
+    mock_res = mocker.Mock()
+    # 旧形式 JSON ペイロード
+    mock_res.text = '''<title>SBI・V・S&P500インデックス・ファンド【89311199】：投資信託 - Yahoo!ファイナンス</title>
+<script>__PRELOADED_STATE__ = {
+        "price": "41424",
+        "changePrice": "322",
+        "changePriceRate": "0.78",
+        "mainFundDetail": {
+            "items": {
+                "netAssetBalance": {"price": "3078221"},
+                "payRateTotal": {"rate": "0.0938"}
+            }
+        }
+    }</script>'''
+
+    mocker.patch.object(scraper, '_make_request', return_value=mock_res)
+
+    data = scraper.fetch_data("89311199")
+    assert data["code"] == "89311199"
+    assert data["name"] == "SBI・V・S&P500インデックス・ファンド"
+    assert data["price"] == "41424"
+    assert data["net_assets"] == "3.08兆円"
+    assert data["market_cap"] == "3078221000000"
+    assert data["trust_fee"] == "0.0938%"
+
+
+def test_invest_trust_fetch_tier3_html(mocker):
+    """Tier 3: HTML 直接抽出フォールバック（順位テキスト混入あり）のテスト"""
+    scraper = InvestTrustScraper()
+    mock_res = mocker.Mock()
+    # JSONなし、HTMLのみのレスポンス
+    mock_res.text = '''<html><body>
+        <h1>eMAXIS Slim米国株式(S&P500)</h1>
+        <dl>
+            <dt><span>基準価額</span></dt><dd>44,590円</dd>
+            <dt><span>純資産残高</span></dt><dd>1位13,074,192百万円</dd>
+            <dt><span>信託報酬</span></dt><dd>10位0.0814%</dd>
+        </dl>
+    </body></html>'''
+
+    mocker.patch.object(scraper, '_make_request', return_value=mock_res)
+
+    data = scraper.fetch_data("03311187")
+    assert data["code"] == "03311187"
+    assert data["net_assets"] == "13.07兆円"
+    assert data["market_cap"] == "13074192000000"
+    assert data["trust_fee"] == "0.0814%"
+
+
+def test_invest_trust_fetch_failure_fallback(mocker):
+    """全層マッチ失敗時（データ欠損時）に N/A を安全に返すフェイルセーフテスト"""
+    scraper = InvestTrustScraper()
+    mock_res = mocker.Mock()
+    mock_res.text = '''<html><body><h1>Empty Fund</h1></body></html>'''
+
+    mocker.patch.object(scraper, '_make_request', return_value=mock_res)
+
+    data = scraper.fetch_data("99999999")
+    assert data["code"] == "99999999"
+    assert data["net_assets"] == "N/A"
+    assert data["market_cap"] == "N/A"
+    assert data["trust_fee"] == "N/A"
+
 

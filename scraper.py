@@ -6,7 +6,7 @@ import time
 import logging
 import asyncio
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from abc import ABC, abstractmethod
 from cachetools import cachedmethod, TTLCache, cached
 import yfinance as yf
@@ -580,6 +580,67 @@ class JPStockScraper(BaseScraper):
         return data
 
 class InvestTrustScraper(BaseScraper):
+    @staticmethod
+    def _parse_and_format_net_assets(value_str: Optional[str], suffix: str = "百万円") -> Tuple[str, str]:
+        """
+        純資産総額の数値文字列と単位から、
+        market_cap（円単位整数文字列）および net_assets（表示用文字列 例: 13.98兆円）を生成する。
+        """
+        if not value_str:
+            return "N/A", "N/A"
+        try:
+            clean_val = str(value_str).replace(',', '').strip()
+            v = float(clean_val)
+            if v <= 0:
+                return "N/A", "N/A"
+
+            clean_suffix = (suffix or "").strip()
+            if "兆" in clean_suffix:
+                multiplier = 1_000_000_000_000
+            elif "億" in clean_suffix:
+                multiplier = 100_000_000
+            elif "百万" in clean_suffix:
+                multiplier = 1_000_000
+            elif "万" in clean_suffix:
+                multiplier = 10_000
+            elif "円" in clean_suffix:
+                multiplier = 1
+            else:
+                multiplier = 1_000_000  # デフォルトは百万円
+
+            raw_value_yen = v * multiplier
+            market_cap_str = str(int(raw_value_yen))
+
+            if raw_value_yen >= 1_000_000_000_000:
+                net_assets_str = f"{(raw_value_yen / 1_000_000_000_000):.2f}兆円"
+            elif raw_value_yen >= 100_000_000:
+                net_assets_str = f"{(raw_value_yen / 100_000_000):.2f}億円"
+            else:
+                net_assets_str = f"{(raw_value_yen / 1_000_000):.0f}百万円"
+
+            return market_cap_str, net_assets_str
+        except (ValueError, TypeError):
+            return "N/A", "N/A"
+
+    @staticmethod
+    def _format_trust_fee(rate_str: Optional[str]) -> str:
+        """
+        信託報酬の数値文字列（例: '0.05775' または '0.05775%'）を正規化し、
+        末尾に1つだけ '%' を持つフォーマットに整える。
+        """
+        if not rate_str:
+            return "N/A"
+        clean_str = str(rate_str).replace('%', '').strip()
+        if not clean_str or clean_str in ['N/A', '---', '--', '-']:
+            return "N/A"
+        try:
+            val = float(clean_str)
+            if val < 0:
+                return "N/A"
+            return f"{clean_str}%"
+        except (ValueError, TypeError):
+            return "N/A"
+
     @cachedmethod(lambda self: self.cache, key=lambda self, code, **kwargs: code)
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
         logger.info(f"Fetching Invest Trust: {code}")
@@ -603,34 +664,90 @@ class InvestTrustScraper(BaseScraper):
         rate_m = re.search(r'\"?changePriceRate\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
         data['change_percent'] = rate_m.group(1) if rate_m else "N/A"
 
-        # 純資産総額 (mainFundDetail.items.netAssetBalance.price)
-        na_m = re.search(r'\"?netAssetBalance\"?:\{[^{}]*?\"?price\"?:\s*\"?([\d\.\,]+)\"?', json_text)
-        if na_m:
-            try:
-                # 百万円単位で取得されることが多い
-                v = float(na_m.group(1).replace(',', ''))
-                raw_value = v * 1_000_000
-                data['market_cap'] = str(int(raw_value))
-                # フロントエンド互換用
-                if v >= 1000000: # 1兆円以上 (1,000,000百万)
-                    data['net_assets'] = f"{(v/1000000):.2f}兆円"
-                elif v >= 100: # 1億円以上 (100百万)
-                    data['net_assets'] = f"{(v/100):.2f}億円"
-                else:
-                    data['net_assets'] = f"{v:.0f}百万円"
-            except: 
-                data['market_cap'] = "N/A"
-                data['net_assets'] = "N/A"
-        else:
-            data['market_cap'] = "N/A"
-            data['net_assets'] = "N/A"
+        # --- 純資産総額の3層フォールバック抽出 (#364) ---
+        na_val_str = None
+        na_suffix_str = "百万円"
 
-        # 信託報酬 (mainFundDetail.items.payRateTotal.rate)
-        tf_m = re.search(r'\"?payRateTotal\"?:\{[^{}]*?\"?rate\"?:\s*\"?([\d\.\,]+)\"?', json_text)
-        if tf_m:
-            data['trust_fee'] = f"{tf_m.group(1)}%"
-        else:
-            data['trust_fee'] = "N/A"
+        # Tier 1: 新形式 JSON (Next.js RSC: "name":"純資産残高" ... "primary":{...})
+        if json_text:
+            rsc_na_block = re.search(r'\"name\":\"純資産残高\"[^{}]*?\"primary\":\{([^}]+)\}', json_text)
+            if rsc_na_block:
+                block_content = rsc_na_block.group(1)
+                v_m = re.search(r'\"value\":\"([\d\.\,]+)\"', block_content)
+                s_m = re.search(r'\"suffix\":\"([^\"]*)\"', block_content)
+                if v_m:
+                    na_val_str = v_m.group(1)
+                    if s_m and s_m.group(1):
+                        na_suffix_str = s_m.group(1)
+
+        # Tier 2: 旧形式 JSON (Legacy: mainFundDetail.items.netAssetBalance.price)
+        if not na_val_str and json_text:
+            legacy_na_m = re.search(r'\"?netAssetBalance\"?:\s*\{[^{}]*?\"?price\"?:\s*\"?([\d\.\,]+)\"?', json_text)
+            if legacy_na_m:
+                na_val_str = legacy_na_m.group(1)
+                na_suffix_str = "百万円"
+
+        # Tier 3: HTML 直接抽出フォールバック (Next.js レンダリング結果)
+        if not na_val_str and res.text:
+            try:
+                soup = BeautifulSoup(res.text, 'html.parser')
+                for label_el in soup.find_all(string=re.compile(r'純資産残高')):
+                    dt_candidate = label_el.find_parent('dt')
+                    if dt_candidate:
+                        dd_el = dt_candidate.find_next_sibling('dd')
+                        if dd_el:
+                            raw_text = dd_el.get_text(strip=True)
+                            cleaned_text = re.sub(r'^[\d,]+位\s*', '', raw_text)
+                            m = re.search(r'([\d\.\,]+)\s*(兆円|億円|百万円|万円|円)?', cleaned_text)
+                            if m:
+                                na_val_str = m.group(1)
+                                if m.group(2):
+                                    na_suffix_str = m.group(2)
+                                break
+            except Exception as e:
+                logger.warning(f"HTML fallback failed for net assets {code}: {e}")
+
+        market_cap, net_assets = self._parse_and_format_net_assets(na_val_str, na_suffix_str)
+        data['market_cap'] = market_cap
+        data['net_assets'] = net_assets
+
+        # --- 信託報酬の3層フォールバック抽出 (#364) ---
+        tf_val_str = None
+
+        # Tier 1: 新形式 JSON (Next.js RSC: "name":"信託報酬" ... "primary":{...})
+        if json_text:
+            rsc_tf_block = re.search(r'\"name\":\"信託報酬\"[^{}]*?\"primary\":\{([^}]+)\}', json_text)
+            if rsc_tf_block:
+                block_content = rsc_tf_block.group(1)
+                v_m = re.search(r'\"value\":\"([\d\.\,]+)\"', block_content)
+                if v_m:
+                    tf_val_str = v_m.group(1)
+
+        # Tier 2: 旧形式 JSON (Legacy: mainFundDetail.items.payRateTotal.rate)
+        if not tf_val_str and json_text:
+            legacy_tf_m = re.search(r'\"?payRateTotal\"?:\s*\{[^{}]*?\"?rate\"?:\s*\"?([\d\.\,]+)\"?', json_text)
+            if legacy_tf_m:
+                tf_val_str = legacy_tf_m.group(1)
+
+        # Tier 3: HTML 直接抽出フォールバック (Next.js レンダリング結果)
+        if not tf_val_str and res.text:
+            try:
+                soup = BeautifulSoup(res.text, 'html.parser')
+                for label_el in soup.find_all(string=re.compile(r'信託報酬')):
+                    dt_candidate = label_el.find_parent('dt')
+                    if dt_candidate:
+                        dd_el = dt_candidate.find_next_sibling('dd')
+                        if dd_el:
+                            raw_text = dd_el.get_text(strip=True)
+                            cleaned_text = re.sub(r'^[\d,]+位\s*', '', raw_text)
+                            m = re.search(r'([\d\.\,]+%?)', cleaned_text)
+                            if m:
+                                tf_val_str = m.group(1)
+                                break
+            except Exception as e:
+                logger.warning(f"HTML fallback failed for trust fee {code}: {e}")
+
+        data['trust_fee'] = self._format_trust_fee(tf_val_str)
         
         data.update({"code": code, "asset_type": "investment_trust", "currency": "JPY"})
         return data

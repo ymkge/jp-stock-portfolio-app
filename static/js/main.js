@@ -3263,6 +3263,22 @@ document.addEventListener('DOMContentLoaded', () => {
                             <p class="mv-factor-text">${escapeHtml(ai.fx_factors || '---')}</p>
                         </div>
                     </div>
+                    ${(ai.anomaly_insight || (data.anomaly_context && data.anomaly_context.title)) ? `
+                        <div class="mv-anomaly-box">
+                            <div class="mv-anomaly-header">
+                                <div class="mv-anomaly-title-group">
+                                    <span class="mv-anomaly-icon">📅</span>
+                                    <h5 class="mv-anomaly-title">季節性・投資アノマリーの視点</h5>
+                                </div>
+                                <div class="mv-anomaly-tags">
+                                    ${(data.anomaly_context && Array.isArray(data.anomaly_context.tags))
+                                        ? data.anomaly_context.tags.map(t => `<span class="mv-anomaly-tag">${escapeHtml(t)}</span>`).join('')
+                                        : ''}
+                                </div>
+                            </div>
+                            <p class="mv-anomaly-text">${escapeHtml(ai.anomaly_insight || (data.anomaly_context ? `${data.anomaly_context.title}: ${data.anomaly_context.summary}（${data.anomaly_context.actions}）` : ''))}</p>
+                        </div>
+                    ` : ''}
                     ${ai.portfolio_action_hint ? `
                         <div class="mv-action-hint-box">
                             <div class="mv-action-hint-header">
@@ -3280,6 +3296,23 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             const isNoKey = ai && (ai.error === 'NO_API_KEY' || ai.error_code === 'NO_API_KEY');
             const msg = (ai && ai.message) ? ai.message : 'AI要約の生成をスキップしました。下部の最新市況ニュース一覧および業種別騰落データをご確認ください。';
+            const anomaly = data.anomaly_context;
+            const anomalyTagsHtml = (anomaly && Array.isArray(anomaly.tags))
+                ? anomaly.tags.map(t => `<span class="mv-anomaly-tag">${escapeHtml(t)}</span>`).join('')
+                : '';
+            const anomalyFallbackHtml = (anomaly && anomaly.title) ? `
+                <div class="mv-anomaly-box" style="margin-top: 10px;">
+                    <div class="mv-anomaly-header">
+                        <div class="mv-anomaly-title-group">
+                            <span class="mv-anomaly-icon">📅</span>
+                            <h5 class="mv-anomaly-title">今月の投資アノマリー（カレンダー）</h5>
+                        </div>
+                        <div class="mv-anomaly-tags">${anomalyTagsHtml}</div>
+                    </div>
+                    <p class="mv-anomaly-text"><strong>${escapeHtml(anomaly.title)}</strong>: ${escapeHtml(anomaly.summary)}<br><small style="opacity: 0.9;">💡 立ち回り方針: ${escapeHtml(anomaly.actions)}</small></p>
+                </div>
+            ` : '';
+
             aiSectionHtml = `
                 <div class="mv-section-card mv-ai-fallback-card">
                     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -3289,6 +3322,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         ${isNoKey ? `<button type="button" class="btn-sm btn-outline" id="btn-mv-open-policy">⚙️ 投資方針でAPIキーを設定</button>` : ''}
                     </div>
+                    ${anomalyFallbackHtml}
                 </div>
             `;
         }

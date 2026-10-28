@@ -3036,6 +3036,81 @@ def diagnose_market_anomaly(req: AnomalyLLMRequest):
         raise HTTPException(status_code=500, detail=f"アノマリーAI診断の実行に失敗しました: {str(e)}")
 
 
+def _build_current_anomaly_context(dt: Optional[datetime] = None) -> Dict[str, Any]:
+    """
+    現在日時（JST基準）に基づき、当月の月次アノマリーおよび日柄・需給特性
+    （旬、五十日、SQ週、月末月初）のコンテキストを構築する (#363)。
+    """
+    if dt is None:
+        dt = history_manager.get_now_jst()
+
+    month = dt.month
+    day = dt.day
+
+    # 1. 月次アノマリーデータの取得
+    try:
+        anomalies_res = get_market_anomalies()
+        monthly_map = anomalies_res.get("monthly_anomalies", {})
+    except Exception as e:
+        logger.warning(f"Failed to fetch anomalies for context: {e}")
+        monthly_map = {}
+
+    month_info = monthly_map.get(str(month)) or monthly_map.get(month) or {}
+
+    # 2. 旬の判定
+    if day <= 10:
+        period = "上旬"
+    elif day <= 20:
+        period = "中旬"
+    else:
+        period = "下旬"
+
+    # 3. 五十日判定 (5, 10, 15, 20, 25, 30日)
+    is_gotobi = (day % 5 == 0) and (day <= 30)
+
+    # 4. SQ週判定（第2金曜日の週: 月曜日〜金曜日）
+    first_day = datetime(dt.year, month, 1)
+    days_to_first_friday = (4 - first_day.weekday()) % 7
+    first_friday_day = 1 + days_to_first_friday
+    second_friday_day = first_friday_day + 7
+
+    sq_week_start = second_friday_day - 4
+    sq_week_end = second_friday_day
+    is_sq_week = (sq_week_start <= day <= sq_week_end)
+    is_major_sq = is_sq_week and (month in [3, 6, 9, 12])
+
+    # 5. 月末月初フロー判定（27日以降または1日〜2日）
+    is_month_turn = (day >= 27) or (day <= 2)
+
+    # 特性タグの生成
+    tags = [f"{month}月{period}"]
+    if is_major_sq:
+        tags.append("⚡ メジャーSQ週 (先物乱高下注意)")
+    elif is_sq_week:
+        tags.append("📊 オプションSQ週")
+    if is_month_turn:
+        tags.append("🔄 月末月初需給フロー")
+    if is_gotobi:
+        tags.append("💴 五十日 (仲値フロー)")
+
+    return {
+        "month": month,
+        "day": day,
+        "period": period,
+        "tags": tags,
+        "is_major_sq": is_major_sq,
+        "is_sq_week": is_sq_week,
+        "is_month_turn": is_month_turn,
+        "is_gotobi": is_gotobi,
+        "title": month_info.get("title", f"{month}月のアノマリー"),
+        "summary": month_info.get("summary", ""),
+        "trend_direction": month_info.get("trend_direction", "neutral"),
+        "risk_level": month_info.get("risk_level", "medium"),
+        "reasons": month_info.get("reasons", []),
+        "actions": month_info.get("actions", "")
+    }
+
+
 class FilteredRecommendationRequest(BaseModel):
     filtered_codes: List[str]
     asset_type: str = "jp_stock"
@@ -3297,6 +3372,9 @@ async def get_market_volatility_summary(req: MarketVolatilitySummaryRequest):
             scraper.fetch_market_news_headlines, 12, req.force
         )
 
+        # 季節性・投資アノマリーコンテキストの構築 (#363)
+        anomaly_context = _build_current_anomaly_context()
+
         # Gemini AI による要因構造化要約（NO_API_KEYや通信エラー時も安全に辞書返却）
         try:
             ai_analysis = await asyncio.to_thread(
@@ -3304,6 +3382,7 @@ async def get_market_volatility_summary(req: MarketVolatilitySummaryRequest):
                 market_indices,
                 news_headlines,
                 sector_summary,
+                anomaly_context,
                 req.force
             )
         except Exception as llm_err:
@@ -3320,6 +3399,7 @@ async def get_market_volatility_summary(req: MarketVolatilitySummaryRequest):
             "has_volatile_index": has_volatile_index,
             "sector_summary": sector_summary,
             "news_headlines": news_headlines,
+            "anomaly_context": anomaly_context,
             "ai_analysis": ai_analysis
         }
     except HTTPException as he:

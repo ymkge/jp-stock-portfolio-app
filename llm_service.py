@@ -1608,12 +1608,14 @@ fit_levelの基準:
         market_indices: List[Dict[str, Any]],
         news_headlines: List[Dict[str, str]],
         sector_summary: Optional[Dict[str, Any]] = None,
+        anomaly_context: Optional[Dict[str, Any]] = None,
         force: bool = False,
         ttl_seconds: int = 3600
     ) -> Dict[str, Any]:
         """
         日経平均・TOPIX・為替（ドル円）等の市場指標変動データ、最新市況ニュースRSSヘッドライン、
-        およびアプリ内のセクター別騰落状況をもとに、Gemini AI が変動要因と高配当投資家への示唆を構造化要約する (#349)。
+        アプリ内のセクター別騰落状況、および当月・日柄の投資アノマリー情報をもとに、
+        Gemini AI が変動要因と高配当投資家への示唆を構造化要約する (#349, #363)。
         """
         api_key = self.policy_manager.get_effective_api_key()
         if not api_key:
@@ -1642,6 +1644,8 @@ fit_levelの基準:
                     if (now - entry["timestamp"]) < ttl_seconds:
                         cached_result = copy.deepcopy(entry["result"])
                         cached_result["is_cached"] = True
+                        if "anomaly_insight" not in cached_result:
+                            cached_result["anomaly_insight"] = ""
                         return cached_result
                     else:
                         del self._market_volatility_cache[cache_key]
@@ -1687,8 +1691,31 @@ fit_levelの基準:
         else:
             news_text = "- 直近のヘッドライン取得なし（指標数値およびセクター動向から推定してください）"
 
+        # 4. 季節性・投資アノマリーおよび需給イベントテキストの構築 (#363)
+        anomaly_text = "- 季節性・アノマリーデータなし"
+        if anomaly_context and isinstance(anomaly_context, dict):
+            a_title = anomaly_context.get("title", "")
+            a_trend = anomaly_context.get("trend_direction", "neutral")
+            trend_label = "上昇傾向" if a_trend == "up" else ("下落・調整傾向" if a_trend == "down" else "中立・もみ合い")
+            a_risk = anomaly_context.get("risk_level", "medium")
+            risk_label = "高め" if a_risk == "high" else ("中程度" if a_risk == "medium" else "低め")
+            a_summary = anomaly_context.get("summary", "")
+            a_actions = anomaly_context.get("actions", "")
+            a_tags = ", ".join(anomaly_context.get("tags", []))
+            
+            reasons = anomaly_context.get("reasons", [])
+            reasons_str = " / ".join(reasons[:2]) if reasons else ""
+
+            anomaly_lines = [
+                f"- 当月（{anomaly_context.get('month', '')}月）のアノマリー: {a_title} (傾向: {trend_label}, リスク水準: {risk_label})",
+                f"- 季節的な需給背景: {a_summary}" + (f" ({reasons_str})" if reasons_str else ""),
+                f"- 本日の時期・日柄特性: {a_tags}",
+                f"- 季節的な定石アクション: {a_actions}"
+            ]
+            anomaly_text = "\n".join(anomaly_lines)
+
         prompt = f"""あなたは日本株および外国為替市場に精通したプロのマーケットエコノミスト兼ポートフォリオストラテジストです。
-以下の「最新の市場指標データ（日経平均・TOPIX・日経先物・ドル円）」「国内株セクター別騰落動向」および「直近の市況・為替ニュースヘッドライン」を統合分析し、なぜ相場や為替が動いているのか、その背景要因と高配当株投資家が取るべきスタンスを簡潔・明快に要約してください。
+以下の「最新の市場指標データ（日経平均・TOPIX・日経先物・ドル円）」「国内株セクター別騰落動向」「直近の市況・為替ニュースヘッドライン」および「当月の季節性・投資アノマリーと日柄需給イベント」を統合分析し、なぜ相場や為替が動いているのか、その背景要因と高配当株投資家が取るべきスタンスを簡潔・明快に要約してください。
 
 【1. 市場指標の現在値・変動データ】
 {indices_text}
@@ -1699,14 +1726,18 @@ fit_levelの基準:
 【3. 直近の市況・為替ニュースヘッドライン】
 {news_text}
 
+【4. 季節性・投資アノマリーおよび需給イベントの背景】
+{anomaly_text}
+
 【分析・出力の指示】
-1. ニュースヘッドラインと実際の指標・セクターの動きを照らし合わせ、事実ベースで客観的に要因を整理してください。
+1. ニュースヘッドラインや数値変動だけでなく、現在の月次・季節性アノマリーや日柄要因（月末月初・SQ・五十日等）の需給影響も踏まえて客観的に要因を整理してください。
 2. 以下のキーを持つ有効なJSONオブジェクトのみを出力してください（Markdownの ```json ... ``` で囲んで構いません）：
 {{
   "headline_summary": "本日の市場・為替動向の結論を一言で要約（45文字以内）",
   "key_drivers": ["主要因タグ1 (12文字以内)", "主要因タグ2 (12文字以内)", "主要因タグ3 (12文字以内)"],
   "equity_factors": "【日経平均・TOPIXの変動要因】なぜ株式市場が上昇/下落/推移しているのか（米株・半導体・日銀政策・企業決算・セクター動向等を120〜180文字程度で解説）",
   "fx_factors": "【為替（ドル円）の変動要因】なぜドル円が動いているのか、および輸出株・内需株への波及効果（日米金利差・経済指標・要人発言等を100〜150文字程度で解説）",
+  "anomaly_insight": "【アノマリー・日柄の視点】現在の時期特有の需給（月次アノマリー、日柄、月末月初・SQ等）が本日の相場・為替に与えている影響や、数日〜数週間の先行きで意識すべき季節的な注意点を80〜120文字程度で解説",
   "portfolio_action_hint": "【高配当株投資家への示唆】現在の相場環境において長期・高配当投資家が意識すべき立ち回り（押し目買い好機・過熱警戒・静観等を80〜120文字程度で解説）"
 }}
 """
@@ -1754,6 +1785,7 @@ fit_levelの基準:
                 "key_drivers": [str(k).strip() for k in key_drivers[:4] if str(k).strip()],
                 "equity_factors": str(parsed.get("equity_factors", "")).strip(),
                 "fx_factors": str(parsed.get("fx_factors", "")).strip(),
+                "anomaly_insight": str(parsed.get("anomaly_insight", "")).strip(),
                 "portfolio_action_hint": str(parsed.get("portfolio_action_hint", "")).strip(),
                 "model_used": selected_model,
                 "diagnosed_at": diagnosed_at_str,

@@ -172,6 +172,7 @@ def test_llm_diagnose_market_volatility_success_and_cache():
         ],
         "equity_factors": "米国市場でのハイテク株高と円安進行を好感し、輸出関連株を中心に買い優勢となりました。",
         "fx_factors": "米経済指標の堅調さを背景に日米金利差拡大が意識され、ドル買い・円売りが進行しました。",
+        "anomaly_insight": "10月下旬のアノマリー通り大底形成後の反転基調。年末ラリーを意識した仕込み好機です。",
         "portfolio_action_hint": "急騰局面での高値掴みを避け、出遅れている内需ディフェンシブ高配当株の押し目を待つのが有効です。"
     }
     mock_post_resp = MagicMock()
@@ -194,16 +195,27 @@ def test_llm_diagnose_market_volatility_success_and_cache():
         headlines = [{"title": "日経平均600円超高、円安が追い風", "source": "経済新聞", "pub_date": "15:00"}]
         sectors = {"top_gainers": [{"industry": "輸送用機器", "avg_change_percent": 2.45}], "top_losers": [{"industry": "小売業", "avg_change_percent": -0.5}]}
 
-        res1 = service.diagnose_market_volatility_factors(indices, headlines, sectors, force=True)
+        res1 = service.diagnose_market_volatility_factors(
+            indices, headlines, sectors,
+            anomaly_context={"month": 10, "title": "大底形成 (October Bottom)", "summary": "絶好の仕込み月", "tags": ["10月下旬", "月末月初需給フロー"]},
+            force=True
+        )
         assert res1["error"] is False
         assert res1["headline_summary"] == mock_ai_json["headline_summary"]
+        assert res1["anomaly_insight"] == mock_ai_json["anomaly_insight"]
         assert len(res1["key_drivers"]) == 3
         assert res1["is_cached"] is False
         assert mock_post.call_count == 1
+        # プロンプトにアノマリー情報が含まれていること
+        sent_payload = mock_post.call_args[1]["json"]
+        prompt_text = sent_payload["contents"][0]["parts"][0]["text"]
+        assert "大底形成 (October Bottom)" in prompt_text
+        assert "10月下旬" in prompt_text
 
         # 2回目はキャッシュから返却されること
         res2 = service.diagnose_market_volatility_factors(indices, headlines, sectors, force=False)
         assert res2["is_cached"] is True
+        assert res2["anomaly_insight"] == mock_ai_json["anomaly_insight"]
         assert mock_post.call_count == 1
 
         # clear_cache() でクリアされること
@@ -263,10 +275,65 @@ def test_api_market_volatility_summary_endpoint():
         assert data["sector_summary"]["top_losers"][0]["industry"] == "情報・通信業"
         assert data["news_headlines"] == fake_news
         assert data["ai_analysis"]["headline_summary"] == fake_ai["headline_summary"]
+        assert "anomaly_context" in data
+        assert "title" in data["anomaly_context"]
+        assert "tags" in data["anomaly_context"]
+        assert isinstance(data["anomaly_context"]["tags"], list)
 
 
 # ==========================================
-# 5. フロントエンドUI・HTML・CSS構成検証テスト
+# 5. 投資アノマリーコンテキスト生成 (_build_current_anomaly_context) のテスト (#363)
+# ==========================================
+def test_build_current_anomaly_context():
+    """旬・五十日・SQ週・月末月初の判定とアノマリー情報の統合テスト"""
+    from datetime import datetime
+
+    # 1. 2026年3月13日 (3月第2金曜日 = メジャーSQ)
+    dt_mar_sq = datetime(2026, 3, 13)
+    ctx1 = app._build_current_anomaly_context(dt_mar_sq)
+    assert ctx1["month"] == 3
+    assert ctx1["period"] == "中旬"
+    assert ctx1["is_sq_week"] is True
+    assert ctx1["is_major_sq"] is True
+    assert any("メジャーSQ週" in t for t in ctx1["tags"])
+    assert "彼岸底" in ctx1["title"]
+
+    # 2. 2026年5月15日 (5月第3金曜日、五十日)
+    dt_may_gotobi = datetime(2026, 5, 15)
+    ctx2 = app._build_current_anomaly_context(dt_may_gotobi)
+    assert ctx2["month"] == 5
+    assert ctx2["period"] == "中旬"
+    assert ctx2["is_gotobi"] is True
+    assert any("五十日" in t for t in ctx2["tags"])
+    assert "Sell in May" in ctx2["title"]
+
+    # 3. 2026年10月28日 (10月下旬、月末月初需給フロー)
+    dt_oct_late = datetime(2026, 10, 28)
+    ctx3 = app._build_current_anomaly_context(dt_oct_late)
+    assert ctx3["month"] == 10
+    assert ctx3["period"] == "下旬"
+    assert ctx3["is_month_turn"] is True
+    assert any("月末月初" in t for t in ctx3["tags"])
+    assert "大底形成" in ctx3["title"]
+
+    # 4. 2026年1月5日 (1月上旬、五十日、通常日)
+    dt_jan_early = datetime(2026, 1, 5)
+    ctx4 = app._build_current_anomaly_context(dt_jan_early)
+    assert ctx4["month"] == 1
+    assert ctx4["period"] == "上旬"
+    assert ctx4["is_gotobi"] is True
+    assert ctx4["is_month_turn"] is False
+    assert "1月効果" in ctx4["title"]
+
+    # 5. 2026年12月1日 (月初フロー)
+    dt_dec_first = datetime(2026, 12, 1)
+    ctx5 = app._build_current_anomaly_context(dt_dec_first)
+    assert ctx5["is_month_turn"] is True
+    assert any("月末月初" in t for t in ctx5["tags"])
+
+
+# ==========================================
+# 6. フロントエンドUI・HTML・CSS構成検証テスト
 # ==========================================
 def test_frontend_market_volatility_ui_elements():
     """index.html, main.js, style.css に急変動バッジ・モーダル・イベント伝播抑止が実装されているか検証"""
@@ -289,6 +356,11 @@ def test_frontend_market_volatility_ui_elements():
     assert "mv-action-hint-box" in js_content
     assert "mv-action-hint-badge" in js_content
     assert "mv-action-hint-text" in js_content
+    assert "mv-anomaly-box" in js_content
+    assert "mv-anomaly-title" in js_content
+    assert "mv-anomaly-tag" in js_content
+    assert "mv-anomaly-text" in js_content
+    assert "季節性・投資アノマリーの視点" in js_content
     assert "/api/market-volatility/summary" in js_content
     assert "e.preventDefault()" in js_content
     assert "e.stopPropagation()" in js_content
@@ -305,9 +377,16 @@ def test_frontend_market_volatility_ui_elements():
     assert ".mv-action-hint-box" in css_content
     assert ".mv-action-hint-badge" in css_content
     assert ".mv-action-hint-text" in css_content
+    assert ".mv-anomaly-box" in css_content
+    assert ".mv-anomaly-title" in css_content
+    assert ".mv-anomaly-tag" in css_content
+    assert ".mv-anomaly-text" in css_content
     assert '[data-theme="dark"] .btn-market-volatility' in css_content
     assert '[data-theme="dark"] .mv-headline-banner' in css_content
     assert '[data-theme="dark"] .mv-action-hint-box' in css_content
+    assert '[data-theme="dark"] .mv-anomaly-box' in css_content
+    assert '[data-theme="dark"] .mv-anomaly-title' in css_content
+    assert '[data-theme="dark"] .mv-anomaly-text' in css_content
     assert '--card-bg: #1e293b;' in css_content
     assert '[data-theme="dark"] .mv-section-card' in css_content
     assert '[data-theme="dark"] .mv-index-mini-card' in css_content

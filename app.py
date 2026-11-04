@@ -22,7 +22,7 @@ from llm_service import LLMDiagnosisService
 import json
 import logging
 import sqlite3
-from market_calendar import is_jp_market_holiday
+from market_calendar import is_jp_market_holiday, get_previous_business_day
 
 # --- ロギング設定 ---
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -1753,6 +1753,7 @@ async def _get_processed_asset_data(request: Optional[Any] = None, force: bool =
                 if fx_detail:
                     if fx_detail.get("price"):
                         idx_result["price"] = fx_detail.get("price")
+                        current_price = safe_float(fx_detail.get("price"))
                     if fx_detail.get("change") is not None:
                         idx_result["change"] = fx_detail.get("change")
                     if fx_detail.get("change_percent") is not None:
@@ -1767,6 +1768,39 @@ async def _get_processed_asset_data(request: Optional[Any] = None, force: bool =
                         history_manager.save_daily_data(code, 'market_index', idx_result)
                     except Exception as e:
                         logger.warning(f"Failed to save FX daily data for {code}: {e}")
+
+            # 前日比 (DoD) の欠損検知と前営業日終値からの自律計算・自己修復 (#368)
+            chg_val_raw = idx_result.get("change")
+            chg_pct_raw = idx_result.get("change_percent")
+            is_chg_missing = chg_val_raw in [None, "", "--", "N/A"] or chg_pct_raw in [None, "", "--", "N/A"]
+
+            if is_chg_missing and current_price > 0:
+                is_fx_index = code == "USDJPY=X" or "USD" in code or "ドル円" in market_indices_config[i]["name"]
+                if is_fx_index:
+                    # 為替は日本の祝日中も動くため前日日付を参照
+                    base_prev_date = (now_jst - timedelta(days=1)).strftime("%Y-%m-%d")
+                else:
+                    # 国内指数・先物は東証休業日・祝日を考慮した前営業日を参照
+                    prev_bday = get_previous_business_day(now_jst)
+                    base_prev_date = prev_bday.strftime("%Y-%m-%d")
+
+                hist_prev = history_manager.get_historical_data_before(code, base_prev_date)
+                if hist_prev:
+                    prev_close = safe_float(hist_prev.get("price"))
+                    if prev_close > 0:
+                        diff = current_price - prev_close
+                        diff_pct = (diff / prev_close) * 100.0
+                        if is_fx_index:
+                            idx_result["change"] = f"{diff:+.4f}" if abs(diff) < 1.0 else f"{diff:+.2f}"
+                        else:
+                            idx_result["change"] = f"{diff:+.2f}"
+                        idx_result["change_percent"] = f"{diff_pct:+.2f}%"
+
+                        # 欠損補完データをDBにも自己修復保存
+                        try:
+                            history_manager.save_daily_data(code, 'market_index', idx_result)
+                        except Exception as e:
+                            logger.warning(f"Failed to auto-heal save daily data for {code}: {e}")
 
             idx_entry = {
                 "name": idx_result.get("name", market_indices_config[i]["name"]),

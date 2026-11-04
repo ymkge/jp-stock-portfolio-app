@@ -247,3 +247,74 @@ def test_invest_trust_fetch_failure_fallback(mocker):
     assert data["trust_fee"] == "N/A"
 
 
+def test_index_scraper_previous_close_fallback(mocker):
+    """祝日明け等で前日比 (priceChange) が欠損している場合、前日終値から自律算出されること (#368)"""
+    from scraper import IndexScraper
+    scraper = IndexScraper()
+    mock_res = mocker.Mock()
+    # priceChange は欠損、previousClose または previousPrice のみ存在
+    mock_res.text = '''<html>
+        <head><title>日経平均株価【998407.O】</title></head>
+        <body>
+        <script>
+        window.__PRELOADED_STATE__ = {
+            "mainDomesticIndexPriceBoard": {
+                "price": "62,188.63",
+                "previousClose": "63,081.86"
+            }
+        }
+        </script>
+        </body>
+    </html>'''
+
+    mocker.patch.object(scraper, '_make_request', return_value=mock_res)
+    data = scraper.fetch_data("998407.O")
+
+    assert data["code"] == "998407.O"
+    assert data["price"] == "62188.63"
+    assert data["previous_price"] == "63081.86"
+    # 62188.63 - 63081.86 = -893.23 (-1.42%)
+    assert data["change"] == "-893.23"
+    assert data["change_percent"] == "-1.42%"
+
+
+def test_get_exchange_rate_detail_previous_close_fallback(mocker):
+    """為替レート取得で前日比欠損時に 0.0 固定代入せず yfinance previous_close から算出されること (#368)"""
+    from scraper import get_exchange_rate_detail
+
+    # 先行テストの影響を排除するためキャッシュをクリア
+    if hasattr(get_exchange_rate_detail, "cache") and get_exchange_rate_detail.cache:
+        get_exchange_rate_detail.cache.clear()
+
+    # IndexScraper は change なしで返却
+    mock_scraper = mocker.Mock()
+    mock_scraper.fetch_data.return_value = {"price": "158.13", "code": "USDJPY=X"}
+    mocker.patch("scraper.get_scraper", return_value=mock_scraper)
+
+    # HTML スクレイピングは 200 だが change なし
+    mock_res = mocker.Mock()
+    mock_res.status_code = 200
+    mock_res.text = '{"price": 158.13}'
+    mocker.patch("requests.get", return_value=mock_res)
+
+    # yfinance の previous_close を 157.50 にモック
+    mock_ticker = mocker.Mock()
+    mock_info = mocker.Mock()
+    mock_info.previous_close = 157.50
+    mock_info.year_high = 163.98
+    mock_info.year_low = 152.28
+    mock_info.day_high = 158.50
+    mock_info.day_low = 157.90
+    mock_info.last_price = 158.13
+    mock_ticker.fast_info = mock_info
+    mocker.patch("yfinance.Ticker", return_value=mock_ticker)
+
+    detail = get_exchange_rate_detail("USDJPY=X")
+    assert detail["price"] == "158.13"
+    # 158.13 - 157.50 = +0.63
+    assert detail["change"] == "+0.63"
+    assert detail["change_percent"] == "+0.40%"
+    assert detail["is_up"] is True
+
+
+

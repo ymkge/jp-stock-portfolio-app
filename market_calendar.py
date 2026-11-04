@@ -205,3 +205,30 @@ def is_jp_market_holiday(dt_or_date: Union[datetime, date, str]) -> bool:
 
     # jpholiday が無い、またはフォールバック時
     return _is_holiday_fallback(d)
+
+
+def get_previous_business_day(dt_or_date: Union[datetime, date, str]) -> date:
+    """
+    指定された日の直前の市場営業日（前営業日）を返す (#368)。
+    祝日、振替休日、年末年始、土日をスキップして過去方向に最も近い市場営業日を特定する。
+    """
+    if isinstance(dt_or_date, datetime):
+        d = dt_or_date.date()
+    elif isinstance(dt_or_date, str):
+        try:
+            d = datetime.strptime(dt_or_date[:10], "%Y-%m-%d").date()
+        except ValueError:
+            d = datetime.now().date()
+    elif isinstance(dt_or_date, date):
+        d = dt_or_date
+    else:
+        d = datetime.now().date()
+
+    curr = d - timedelta(days=1)
+    # 最大30日遡って営業日を探す（GW・年末年始等の長期連休対策）
+    for _ in range(30):
+        if not is_jp_market_holiday(curr):
+            return curr
+        curr -= timedelta(days=1)
+    return curr
+

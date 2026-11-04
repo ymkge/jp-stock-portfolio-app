@@ -247,3 +247,32 @@ def test_history_manager_get_daily_data_fallback_on_holiday(tmp_path):
             # 明示的に未来の日付（2026-09-22）を指定した場合はフォールバックせず None を返すこと
             res_explicit = history_manager.get_daily_data("7203", date_str="2026-09-22")
             assert res_explicit is None
+
+
+# =====================================================================
+# 4. 直前市場営業日（前営業日）特定テスト (#368)
+# =====================================================================
+
+def test_get_previous_business_day():
+    """祝日・連休・週末を考慮した前営業日特定ロジックの検証 (#368)"""
+    from market_calendar import get_previous_business_day
+
+    # 1. 通常の平日（火曜日の前営業日は月曜日）
+    assert get_previous_business_day(date(2026, 9, 15)) == date(2026, 9, 14)
+
+    # 2. 週明け月曜日の前営業日は前週金曜日（土日スキップ）
+    assert get_previous_business_day(date(2026, 9, 14)) == date(2026, 9, 11)
+    assert get_previous_business_day("2026-09-14") == date(2026, 9, 11)
+
+    # 3. 祝日明け（2026-11-03 文化の日 の翌日 11-04 水曜日の前営業日は 11-02 月曜日）
+    assert get_previous_business_day(date(2026, 11, 4)) == date(2026, 11, 2)
+    assert get_previous_business_day(datetime(2026, 11, 4, 15, 0)) == date(2026, 11, 2)
+
+    # 4. シルバーウィーク5連休（土、日、敬老、国民の休日、秋分）明けの 9月24日（木）
+    # 2026-09-19(土)〜2026-09-23(水)がすべて休業日 ➔ 前営業日は 2026-09-18(金)
+    assert get_previous_business_day(date(2026, 9, 24)) == date(2026, 9, 18)
+
+    # 5. 年始大発会（2027-01-04 月曜日）の前営業日 ➔ 2026-12-30（水曜日、大納会）
+    # 12/31(休), 1/1(祝), 1/2(休), 1/3(休) がスキップされること
+    assert get_previous_business_day(date(2027, 1, 4)) == date(2026, 12, 30)
+

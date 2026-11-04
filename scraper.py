@@ -123,19 +123,38 @@ class BaseScraper(ABC):
             return data
             
         # 指数・先物の価格 (indexPrices / futurePrices)
-        idx_p_match = re.search(r'\"?(indexPrices|futurePrices|mainDomesticIndexPriceBoard)\"?:\{[^{}]*?\"?price\"?:\s*\"?([\d\.\,]+)\"?', json_text)
+        idx_p_match = re.search(r'\"?(indexPrices|futurePrices|mainDomesticIndexPriceBoard)\"?\s*:\s*\{[^{}]*?\"?price\"?\s*:\s*\"?([\d\.\,]+)\"?', json_text)
         if idx_p_match:
             data['price'] = idx_p_match.group(2).replace(',', '')
             # 前日比 (priceChange または changePrice)
-            idx_c_match = re.search(r'\"?(indexPrices|futurePrices|mainDomesticIndexPriceBoard)\"?:\{[^{}]*?\"?(priceChange|changePrice)\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
+            idx_c_match = re.search(r'\"?(indexPrices|futurePrices|mainDomesticIndexPriceBoard)\"?\s*:\s*\{[^{}]*?\"?(priceChange|changePrice)\"?\s*:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
             if idx_c_match: data['change'] = idx_c_match.group(3).replace(',', '')
             
             # 前日比率 (priceChangeRate または changePriceRate)
-            idx_r_match = re.search(r'\"?(indexPrices|futurePrices|mainDomesticIndexPriceBoard)\"?:\{[^{}]*?\"?(priceChangeRate|changePriceRate)\"?:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
+            idx_r_match = re.search(r'\"?(indexPrices|futurePrices|mainDomesticIndexPriceBoard)\"?\s*:\s*\{[^{}]*?\"?(priceChangeRate|changePriceRate)\"?\s*:\s*\"?([\+\-\d\.\,]+)\"?', json_text)
             if idx_r_match: data['change_percent'] = idx_r_match.group(3)
+
+            # 前日終値 (previousClose, previousPrice, previousClosePrice, basePrice) (#368)
+            idx_prev_match = re.search(r'\"?(indexPrices|futurePrices|mainDomesticIndexPriceBoard)\"?\s*:\s*\{[^{}]*?\"?(previousClose|previousPrice|previousClosePrice|basePrice)\"?\s*:\s*\"?([\d\.\,]+)\"?', json_text)
+            if idx_prev_match:
+                data['previous_price'] = idx_prev_match.group(3).replace(',', '')
+
+            # 祝日明け等で change が欠損している場合、前日終値から自律算出 (#368)
+            if data.get('price') and (not data.get('change') or data.get('change') in ['--', 'N/A', '']) and data.get('previous_price'):
+                try:
+                    p_curr = float(data['price'])
+                    p_prev = float(data['previous_price'])
+                    if p_prev > 0:
+                        diff = p_curr - p_prev
+                        pct = (diff / p_prev) * 100.0
+                        data['change'] = f"{diff:+.2f}"
+                        data['change_percent'] = f"{pct:+.2f}%"
+                except (ValueError, TypeError, ZeroDivisionError):
+                    pass
+            return data
         elif not it_p_match:
             # フォールバック: previousPrice (本来は現在値が取れない場合の最終手段)
-            idx_p_match_fallback = re.search(r'\"?(indexPrices|futurePrices)\"?:\{[^{}]*?\"?previousPrice\"?:\s*\"?([\d\.\,]+)\"?', json_text)
+            idx_p_match_fallback = re.search(r'\"?(indexPrices|futurePrices)\"?\s*:\s*\{[^{}]*?\"?(previousClose|previousPrice|basePrice)\"?\s*:\s*\"?([\d\.\,]+)\"?', json_text)
             if idx_p_match_fallback:
                 data['price'] = idx_p_match_fallback.group(2).replace(',', '')
 
@@ -931,13 +950,19 @@ def get_exchange_rate_detail(pair: str = 'USDJPY=X') -> Dict[str, Any]:
             price_str = data.get("price")
             if price_str:
                 result["price"] = str(price_str)
-                result["change"] = data.get("change", "0.0")
-                result["change_percent"] = data.get("change_percent", "0.0%")
-                try:
-                    chg_val = float(str(result["change"]).replace('+', '').replace(',', ''))
-                    result["is_up"] = chg_val >= 0
-                except (ValueError, TypeError):
-                    result["is_up"] = not str(result["change_percent"]).startswith('-')
+                # 祝日明け等で change が欠損している場合に "0.0" を固定代入せず None を保持 (#368)
+                raw_change = data.get("change")
+                raw_change_pct = data.get("change_percent")
+                if raw_change not in [None, "", "--", "N/A"]:
+                    result["change"] = str(raw_change)
+                if raw_change_pct not in [None, "", "--", "N/A"]:
+                    result["change_percent"] = str(raw_change_pct)
+                if result["change"] is not None:
+                    try:
+                        chg_val = float(str(result["change"]).replace('+', '').replace(',', ''))
+                        result["is_up"] = chg_val >= 0
+                    except (ValueError, TypeError):
+                        result["is_up"] = not str(result.get("change_percent", "")).startswith('-')
 
         # Yahoo! Finance HTML / Next.js JSON or yfinance fallback for high/low/52w
         try:
@@ -961,15 +986,15 @@ def get_exchange_rate_detail(pair: str = 'USDJPY=X') -> Dict[str, Any]:
         except Exception as ex:
             logger.warning(f"HTML scraping for {pair} details failed: {ex}")
 
-        # yfinance fallback for 52-week range if missing
-        if not result["high_52w"] or not result["low_52w"]:
+        # yfinance fallback for 52-week range or change if missing
+        if not result["high_52w"] or not result["low_52w"] or not result["change"]:
             try:
                 yf_pair = "JPY=X" if pair == "USDJPY=X" else pair
                 ticker = yf.Ticker(yf_pair)
                 info = ticker.fast_info
-                if hasattr(info, "year_high") and info.year_high:
+                if hasattr(info, "year_high") and info.year_high and not result["high_52w"]:
                     result["high_52w"] = f"{float(info.year_high):.2f}"
-                if hasattr(info, "year_low") and info.year_low:
+                if hasattr(info, "year_low") and info.year_low and not result["low_52w"]:
                     result["low_52w"] = f"{float(info.year_low):.2f}"
                 if hasattr(info, "day_high") and info.day_high and not result["high"]:
                     result["high"] = f"{float(info.day_high):.2f}"
@@ -977,6 +1002,19 @@ def get_exchange_rate_detail(pair: str = 'USDJPY=X') -> Dict[str, Any]:
                     result["low"] = f"{float(info.day_low):.2f}"
                 if hasattr(info, "last_price") and info.last_price and not result["price"]:
                     result["price"] = f"{float(info.last_price):.2f}"
+                # 前日終値からの前日比補完 (#368)
+                if not result["change"] and hasattr(info, "previous_close") and info.previous_close and result["price"]:
+                    try:
+                        curr_p = float(result["price"])
+                        prev_c = float(info.previous_close)
+                        if prev_c > 0:
+                            chg = curr_p - prev_c
+                            pct = (chg / prev_c) * 100.0
+                            result["change"] = f"{chg:+.2f}"
+                            result["change_percent"] = f"{pct:+.2f}%"
+                            result["is_up"] = chg >= 0
+                    except (ValueError, TypeError, ZeroDivisionError):
+                        pass
             except Exception as ex:
                 logger.warning(f"yfinance fallback for {pair} details failed: {ex}")
 

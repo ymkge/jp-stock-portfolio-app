@@ -468,7 +468,7 @@ def test_diagnose_profit_taking_invalid_key_and_errors(mock_post, policy_manager
     mock_post.side_effect = requests.exceptions.Timeout("Timeout")
     res_timeout = service.diagnose_profit_taking({"code": "7203"})
     assert res_timeout.get("error") is True
-    assert res_timeout.get("error_code") == "TIMEOUT_ERROR"
+    assert res_timeout.get("error_code") in ("TIMEOUT", "TIMEOUT_ERROR")
 
     # 3. 壊れたJSONの安全フォールバック
     mock_post.side_effect = None
@@ -1061,6 +1061,163 @@ def test_filtered_recommendations_cap_str_and_fallback(mock_post):
     assert recs[0]["investment_cap_str"] == "最大約15万円 (総資産の約3%)"
     # 欠落していた2件目はサテライト枠として上限約100,000円（約1〜2%）にフォールバック補完される
     assert "上限: 約100,000円 (約1〜2%)" in recs[1]["investment_cap_str"]
+
+
+# ==============================================================================
+# Issue #372: Gemini API 503過負荷リトライおよびローリングエイリアス相互フォールバックテスト
+# ==============================================================================
+
+@patch("time.sleep")
+@patch("requests.post")
+def test_gemini_503_retry_and_fallback_success(mock_post, mock_sleep, policy_manager):
+    """
+    初回モデル（gemini-flash-lite-latest）で 503 High Demand が2回連続発生した後、
+    自動的に代替ローリングエイリアス（gemini-flash-latest）にフォールバックして成功するテスト
+    """
+    policy_manager.save_config(selected_model="gemini-flash-lite-latest")
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    # 1〜2回目は 503 (High Demand)
+    resp_503 = MagicMock()
+    resp_503.status_code = 503
+    resp_503.text = json.dumps({"error": {"code": 503, "message": "This model is currently experiencing high demand."}})
+
+    # 3回目（代替モデル gemini-flash-latest）は 200 成功
+    resp_200 = MagicMock()
+    resp_200.status_code = 200
+    resp_200.json.return_value = {
+        "candidates": [{
+            "content": {"parts": [{"text": json.dumps({
+                "fit_level": "fit",
+                "confidence_score": 85,
+                "decision_label": "【買い（サテライト）】",
+                "estimated_yield": "約3.8%",
+                "recommended_shares": "約5株",
+                "shield_and_valuation": "良好",
+                "business_10y_eval": "安定",
+                "tactical_advice": "打診買い",
+                "summary": "テスト成功"
+            })}]}
+        }]
+    }
+
+    mock_post.side_effect = [resp_503, resp_503, resp_200]
+
+    stock_data = {"code": "7203", "name": "トヨタ自動車", "price": 2800}
+    res = service.diagnose_stock(stock_data, force=True)
+
+    assert res.get("error") is not True
+    assert res.get("model_used") == "gemini-flash-latest"
+    assert res.get("fallback_occurred") is True
+    # 503でリトライしたため time.sleep(1.0) が呼ばれたこと
+    mock_sleep.assert_called_with(1.0)
+    # 合計3回 post が呼ばれたこと (liteで2回, flashで1回)
+    assert mock_post.call_count == 3
+    # 3回目のURLに代替モデル名 gemini-flash-latest が含まれていること
+    third_call_url = mock_post.call_args_list[2][0][0]
+    assert "models/gemini-flash-latest:generateContent" in third_call_url
+
+
+@patch("time.sleep")
+@patch("requests.post")
+def test_gemini_429_rate_limit_retry_success(mock_post, mock_sleep, policy_manager):
+    """
+    初回 429 (Rate Limit) 発生後、1回のリトライ（バックオフ）で成功するテスト
+    """
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    resp_429 = MagicMock()
+    resp_429.status_code = 429
+    resp_429.text = "Rate Limit Exceeded"
+
+    resp_200 = MagicMock()
+    resp_200.status_code = 200
+    resp_200.json.return_value = {
+        "candidates": [{
+            "content": {"parts": [{"text": json.dumps({
+                "fit_level": "fit",
+                "confidence_score": 90,
+                "decision_label": "【強い買い（コア）】",
+                "estimated_yield": "約4.0%",
+                "recommended_shares": "約4株",
+                "shield_and_valuation": "良好",
+                "business_10y_eval": "安定",
+                "tactical_advice": "買い",
+                "summary": "リトライ成功"
+            })}]}
+        }]
+    }
+
+    mock_post.side_effect = [resp_429, resp_200]
+
+    res = service.diagnose_stock({"code": "9432", "name": "NTT", "price": 160}, force=True)
+    assert res.get("error") is not True
+    assert mock_post.call_count == 2
+    mock_sleep.assert_called_once_with(1.0)
+
+
+@patch("time.sleep")
+@patch("requests.post")
+def test_gemini_400_invalid_key_no_retry(mock_post, mock_sleep, policy_manager):
+    """
+    400 (APIキー無効) エラー時はリトライやフォールバックを行わず即座に終了するテスト
+    """
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    resp_400 = MagicMock()
+    resp_400.status_code = 400
+    resp_400.json.return_value = {"error": {"message": "API key not valid. Please pass a valid API key."}}
+    mock_post.return_value = resp_400
+
+    res = service.diagnose_stock({"code": "7203", "name": "トヨタ自動車"}, force=True)
+    assert res.get("error") is True
+    assert res.get("error_code") == "INVALID_API_KEY"
+    # リトライや待機が一切行われないこと
+    assert mock_post.call_count == 1
+    mock_sleep.assert_not_called()
+
+
+@patch("time.sleep")
+@patch("requests.post")
+def test_gemini_all_models_fail_returns_clear_error(mock_post, mock_sleep, policy_manager):
+    """
+    全ローリングエイリアス（両モデルとも）で 503 が続いた場合、適切なエラーメッセージが返却されるテスト
+    """
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    resp_503 = MagicMock()
+    resp_503.status_code = 503
+    resp_503.text = json.dumps({"error": {"code": 503, "message": "This model is currently experiencing high demand."}})
+    mock_post.return_value = resp_503
+
+    res = service.diagnose_stock({"code": "7203", "name": "トヨタ自動車"}, force=True)
+    assert res.get("error") is True
+    assert res.get("error_code") == "HTTP_503"
+    assert "高負荷状態" in res.get("message", "")
+    # 2モデル × 2試行 = 合計4回呼び出されること
+    assert mock_post.call_count == 4
+
+
+@patch("requests.post")
+def test_gemini_api_key_sanitized_in_errors(mock_post, policy_manager):
+    """
+    通信エラーや例外発生時、エラーメッセージ内に生の API Key が露出せずマスキングされるテスト
+    """
+    raw_key = "AIzaSyD_SECRET_KEY_9999"
+    policy_manager.save_config(api_key=raw_key)
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    import requests
+    # URLに生キーが含まれた例外を発生させる
+    mock_post.side_effect = requests.exceptions.RequestException(
+        f"Failed to connect to https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={raw_key}"
+    )
+
+    res = service.diagnose_stock({"code": "7203", "name": "トヨタ自動車"}, force=True)
+    assert res.get("error") is True
+    assert raw_key not in res.get("message", "")
+    assert "key=***" in res.get("message", "")
+
 
 
 

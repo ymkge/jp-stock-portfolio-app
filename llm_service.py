@@ -115,6 +115,188 @@ class LLMDiagnosisService:
 
         return result
 
+    @staticmethod
+    def _sanitize_error_message(text: str) -> str:
+        """APIキーがエラーメッセージやログに含まれるのを防ぐサニタイズ関数"""
+        if not text:
+            return ""
+        return re.sub(r'key=[a-zA-Z0-9_\-]+', 'key=***', str(text))
+
+    @staticmethod
+    def _get_fallback_model_chain(selected_model: str) -> List[str]:
+        """
+        ローリングエイリアス相互フォールバックチェーンを生成。
+        固定バージョン名は将来のサービス終了に伴う保守コストを招くため指定NG。
+        常に最新版へ自動追従するローリングエイリアス間（Lite ⇄ 通常Flash）でのみ切り替える。
+        """
+        default_chain = ["gemini-flash-latest", "gemini-flash-lite-latest"]
+        if selected_model == "gemini-flash-lite-latest":
+            return ["gemini-flash-lite-latest", "gemini-flash-latest"]
+        elif selected_model == "gemini-flash-latest":
+            return ["gemini-flash-latest", "gemini-flash-lite-latest"]
+        else:
+            chain = [selected_model]
+            for m in default_chain:
+                if m not in chain:
+                    chain.append(m)
+            return chain
+
+    def _request_gemini_with_fallback(
+        self,
+        payload: Dict[str, Any],
+        selected_model: str,
+        api_key: str,
+        timeout: float = 20.0,
+        headers: Optional[Dict[str, str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Gemini API 呼び出しを実行。
+        503 (過負荷 / High Demand) / 429 (レート制限) / 一時的通信障害時に、
+        1.0秒の指数バックオフリトライ（最大1回）およびローリングエイリアス相互フォールバックを実行する。
+        """
+        model_chain = self._get_fallback_model_chain(selected_model)
+        req_headers = headers.copy() if headers else {"Content-Type": "application/json"}
+        if "Content-Type" not in req_headers:
+            req_headers["Content-Type"] = "application/json"
+
+        last_error: Dict[str, Any] = {
+            "error": True,
+            "error_code": "UNKNOWN_ERROR",
+            "message": "AI診断実行中に予期せぬエラーが発生しました。"
+        }
+
+        for model in model_chain:
+            endpoint_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            is_fallback = (model != selected_model)
+            
+            # 各モデルにつき最大2回（初回 + リトライ1回）試行
+            for attempt in range(2):
+                if attempt > 0:
+                    time.sleep(1.0)  # 指数バックオフ待機
+                
+                try:
+                    response = requests.post(endpoint_url, json=payload, headers=req_headers, timeout=timeout)
+                    status_code = response.status_code
+
+                    # 1. 成功時 (200)
+                    if status_code == 200:
+                        try:
+                            res_data = response.json()
+                        except Exception as e:
+                            last_error = {
+                                "error": True,
+                                "error_code": "JSON_DECODE_ERROR",
+                                "message": f"Gemini API からの応答JSONの解析に失敗しました: {self._sanitize_error_message(str(e))}"
+                            }
+                            break
+
+                        candidates = res_data.get("candidates", [])
+                        if not candidates:
+                            last_error = {
+                                "error": True,
+                                "error_code": "NO_CANDIDATES",
+                                "message": "Gemini API からの有効な回答候補が得られませんでした。"
+                            }
+                            break
+
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if not parts:
+                            last_error = {
+                                "error": True,
+                                "error_code": "NO_PARTS",
+                                "message": "Gemini API の応答パーツが空でした。"
+                            }
+                            break
+
+                        raw_text = parts[0].get("text", "")
+                        return {
+                            "error": False,
+                            "data": res_data,
+                            "raw_text": raw_text,
+                            "model_used": model,
+                            "fallback_occurred": is_fallback
+                        }
+
+                    # 2. 恒久的クライアントエラー (400, 403) ➔ リトライ・フォールバックせず即時返却
+                    if status_code == 400:
+                        err_json = {}
+                        try:
+                            err_json = response.json()
+                        except Exception:
+                            pass
+                        err_msg = err_json.get("error", {}).get("message", "")
+                        if "API key not valid" in err_msg or "INVALID_ARGUMENT" in err_msg or "API_KEY_INVALID" in response.text:
+                            return {
+                                "error": True,
+                                "error_code": "INVALID_API_KEY",
+                                "message": "Google AI Studio APIキーが無効です。「⚙️ 投資方針」設定画面で正しい API Key を入力して保存してください。"
+                            }
+                        return {
+                            "error": True,
+                            "error_code": f"HTTP_{status_code}",
+                            "message": f"Gemini API リクエストエラー (HTTP {status_code}): {self._sanitize_error_message(err_msg or response.text)}"
+                        }
+
+                    if status_code == 403:
+                        return {
+                            "error": True,
+                            "error_code": "HTTP_403",
+                            "message": "Gemini API 権限エラー (HTTP 403): アクセスが拒否されました。"
+                        }
+
+                    # 3. 一時的な過負荷・レート制限 (503, 429, 500, 502, 504)
+                    if status_code in (429, 500, 502, 503, 504):
+                        logger.warning(
+                            f"Gemini API HTTP {status_code} on model '{model}' (attempt {attempt+1}/2). "
+                            f"Response: {self._sanitize_error_message(response.text[:200])}"
+                        )
+                        if status_code == 503:
+                            last_error = {
+                                "error": True,
+                                "error_code": "HTTP_503",
+                                "message": "Gemini API が世界的な高負荷状態（HTTP 503: High Demand）です。時間をおいて再試行してください。"
+                            }
+                        elif status_code == 429:
+                            last_error = {
+                                "error": True,
+                                "error_code": "HTTP_429",
+                                "message": "Gemini API レート制限（HTTP 429: Rate Limit Exceeded）に達しました。時間をおいて再試行してください。"
+                            }
+                        else:
+                            last_error = {
+                                "error": True,
+                                "error_code": f"HTTP_{status_code}",
+                                "message": f"Gemini API サーバーエラー (HTTP {status_code})。時間をおいて再試行してください。"
+                            }
+                        continue
+
+                    # その他のエラーステータス
+                    last_error = {
+                        "error": True,
+                        "error_code": f"HTTP_{status_code}",
+                        "message": f"Gemini API 通信エラー (HTTP {status_code}): {self._sanitize_error_message(response.text[:200])}"
+                    }
+                    break
+
+                except requests.exceptions.Timeout:
+                    logger.warning(f"Gemini API timeout on model '{model}' (attempt {attempt+1}/2).")
+                    last_error = {
+                        "error": True,
+                        "error_code": "TIMEOUT",
+                        "message": "Gemini API 通信がタイムアウトしました。しばらく時間をおいて再試行してください。"
+                    }
+                    continue
+                except requests.exceptions.RequestException as e:
+                    logger.warning(f"Gemini API network error on model '{model}' (attempt {attempt+1}/2): {self._sanitize_error_message(str(e))}")
+                    last_error = {
+                        "error": True,
+                        "error_code": "NETWORK_ERROR",
+                        "message": f"Gemini API ネットワーク通信エラー: {self._sanitize_error_message(str(e))}"
+                    }
+                    continue
+
+        return last_error
+
     def _execute_gemini_request(
         self, 
         stock_data: Dict[str, Any], 
@@ -124,7 +306,6 @@ class LLMDiagnosisService:
         api_key: str
     ) -> Dict[str, Any]:
         prompt_text = self._build_prompt(stock_data, portfolio_summary, policy_prompt)
-        endpoint_url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key}"
 
         payload = {
             "contents": [
@@ -140,71 +321,16 @@ class LLMDiagnosisService:
             }
         }
 
-        headers = {
-            "Content-Type": "application/json"
-        }
+        api_res = self._request_gemini_with_fallback(payload, selected_model, api_key, timeout=20.0)
+        if api_res.get("error"):
+            return api_res
 
-        try:
-            response = requests.post(endpoint_url, json=payload, headers=headers, timeout=20.0)
-            
-            if response.status_code == 400:
-                err_json = {}
-                try:
-                    err_json = response.json()
-                except Exception:
-                    pass
-                err_msg = err_json.get("error", {}).get("message", "")
-                if "API key not valid" in err_msg or "INVALID_ARGUMENT" in err_msg:
-                    return {
-                        "error": True,
-                        "error_code": "INVALID_API_KEY",
-                        "message": "Google AI Studio APIキーが無効です。「⚙️ 投資方針」設定画面で正しい API Key を入力して保存してください。"
-                    }
-                return {
-                    "error": True,
-                    "error_code": f"HTTP_{response.status_code}",
-                    "message": f"Gemini API リクエストエラー (HTTP {response.status_code}): {err_msg or response.text}"
-                }
-
-            if response.status_code != 200:
-                return {
-                    "error": True,
-                    "error_code": f"HTTP_{response.status_code}",
-                    "message": f"Gemini API 通信エラー (HTTP {response.status_code}): {response.text}"
-                }
-
-            res_data = response.json()
-            candidates = res_data.get("candidates", [])
-            if not candidates:
-                return {
-                    "error": True,
-                    "error_code": "NO_CANDIDATES",
-                    "message": "Gemini API からの有効な回答候補が得られませんでした。"
-                }
-
-            parts = candidates[0].get("content", {}).get("parts", [])
-            if not parts:
-                return {
-                    "error": True,
-                    "error_code": "NO_PARTS",
-                    "message": "Gemini API の応答パーツが空でした。"
-                }
-
-            raw_text = parts[0].get("text", "")
-            return self._parse_llm_json(raw_text)
-
-        except requests.exceptions.Timeout:
-            return {
-                "error": True,
-                "error_code": "TIMEOUT",
-                "message": "Gemini API 通信がタイムアウトしました。しばらく時間をおいて再試行してください。"
-            }
-        except Exception as e:
-            return {
-                "error": True,
-                "error_code": "UNKNOWN_ERROR",
-                "message": f"AI診断実行中に予期せぬエラーが発生しました: {str(e)}"
-            }
+        parsed = self._parse_llm_json(api_res["raw_text"])
+        if not parsed.get("error"):
+            parsed["model_used"] = api_res.get("model_used", selected_model)
+            if api_res.get("fallback_occurred"):
+                parsed["fallback_occurred"] = True
+        return parsed
 
     def _calculate_portfolio_cap_metrics(
         self, 
@@ -769,7 +895,6 @@ fit_levelの基準:
 
         prompt_text = self._build_profit_taking_prompt(holding_item, policy_prompt)
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key}"
         payload = {
             "contents": [{
                 "parts": [{"text": prompt_text}]
@@ -780,42 +905,21 @@ fit_levelの基準:
             }
         }
 
+        api_res = self._request_gemini_with_fallback(payload, selected_model, api_key, timeout=20.0)
+        if api_res.get("error"):
+            return api_res
+
         try:
-            resp = requests.post(url, json=payload, timeout=20)
-            if resp.status_code == 400 and "API_KEY_INVALID" in resp.text:
-                return {
-                    "error": True,
-                    "error_code": "INVALID_API_KEY",
-                    "message": "Google AI Studio の APIキーが無効です。「⚙️ 投資方針設定」で正しい APIキー を設定してください。"
-                }
-            resp.raise_for_status()
-
-            res_json = resp.json()
-            candidates = res_json.get("candidates", [])
-            if not candidates:
-                return {
-                    "error": True,
-                    "error_code": "EMPTY_RESPONSE",
-                    "message": "AIからの応答が空でした。再度お試しください。"
-                }
-
-            parts = candidates[0].get("content", {}).get("parts", [])
-            if not parts:
-                return {
-                    "error": True,
-                    "error_code": "EMPTY_RESPONSE",
-                    "message": "AIからの応答テキストが含まれていません。"
-                }
-
-            raw_text = parts[0].get("text", "")
-            parsed = self._parse_profit_taking_llm_json(raw_text)
+            parsed = self._parse_profit_taking_llm_json(api_res["raw_text"])
             parsed["error"] = False
             parsed["code"] = code
             parsed["name"] = holding_item.get("name", "")
             parsed["is_cached"] = False
             diagnosed_at_str = time.strftime("%H:%M", time.localtime(now))
             parsed["diagnosed_at"] = diagnosed_at_str
-            parsed["model_used"] = selected_model
+            parsed["model_used"] = api_res.get("model_used", selected_model)
+            if api_res.get("fallback_occurred"):
+                parsed["fallback_occurred"] = True
 
             if cache_key:
                 with self._lock:
@@ -831,31 +935,11 @@ fit_levelの基準:
                     }
 
             return parsed
-
-        except requests.exceptions.Timeout:
-            return {
-                "error": True,
-                "error_code": "TIMEOUT_ERROR",
-                "message": "Gemini API との通信がタイムアウトしました (20秒)。ネットワーク環境を確認の上、再実行してください。"
-            }
-        except requests.exceptions.HTTPError as e:
-            status_code = e.response.status_code if e.response is not None else "Unknown"
-            if status_code == 429:
-                return {
-                    "error": True,
-                    "error_code": "RATE_LIMIT",
-                    "message": "Gemini API の利用制限 (429) に達しました。しばらく時間をおいてから再実行してください。"
-                }
-            return {
-                "error": True,
-                "error_code": f"HTTP_{status_code}",
-                "message": f"Gemini API 通信エラー (HTTP {status_code}) が発生しました。"
-            }
         except Exception as e:
             return {
                 "error": True,
                 "error_code": "UNKNOWN_ERROR",
-                "message": f"利確AI診断中に予期せぬエラーが発生しました: {str(e)}"
+                "message": f"利確AI診断の応答解析中に予期せぬエラーが発生しました: {str(e)}"
             }
 
     def _build_profit_taking_prompt(self, item: Dict[str, Any], policy_prompt: str) -> str:
@@ -1024,21 +1108,13 @@ fit_levelの基準:
 }}
 ```
 """
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key}"
         payload = {"contents": [{"parts": [{"text": prompt.strip()}]}]}
+        api_res = self._request_gemini_with_fallback(payload, selected_model, api_key, timeout=25.0)
+        if api_res.get("error"):
+            return api_res
 
         try:
-            resp = requests.post(url, json=payload, timeout=25)
-            if resp.status_code != 200:
-                logger.error(f"Gemini API Market Fibonacci Error ({resp.status_code}): {resp.text}")
-                return {"error": True, "message": f"API Error: HTTP {resp.status_code}"}
-
-            res_json = resp.json()
-            candidates = res_json.get("candidates", [])
-            if not candidates:
-                return {"error": True, "message": "AIからの応答が得られませんでした"}
-
-            raw_text = candidates[0]["content"]["parts"][0]["text"]
+            raw_text = api_res.get("raw_text", "")
             cleaned = raw_text.strip()
             match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned)
             if match:
@@ -1139,7 +1215,6 @@ fit_levelの基準:
 
 上記の{month}月のアノマリーに基づき、個人投資家に向けた今月の立ち回りワンポイント解説（200文字程度）を生成してください。"""
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key}"
         payload = {
             "contents": [{"parts": [{"text": user_content}]}],
             "systemInstruction": {"parts": [{"text": system_instruction}]},
@@ -1149,26 +1224,23 @@ fit_levelの基準:
             }
         }
 
+        api_res = self._request_gemini_with_fallback(payload, selected_model, api_key, timeout=20.0)
+        if api_res.get("error"):
+            return api_res
+
         try:
-            resp = requests.post(url, json=payload, timeout=20)
-            if resp.status_code != 200:
-                logger.error(f"Gemini API error for anomaly diagnosis: {resp.status_code} - {resp.text}")
-                return {"error": True, "message": f"Gemini APIエラー ({resp.status_code}): アノマリー診断を生成できませんでした"}
-
-            data = resp.json()
-            candidates = data.get("candidates", [])
-            if not candidates:
-                return {"error": True, "message": "AIからの応答が得られませんでした"}
-
-            commentary = candidates[0]["content"]["parts"][0]["text"].strip()
+            commentary = api_res.get("raw_text", "").strip()
             diagnosed_at_str = time.strftime("%H:%M", time.localtime(now))
             result = {
                 "error": False,
                 "month": month,
                 "commentary": commentary,
                 "is_cached": False,
-                "diagnosed_at": diagnosed_at_str
+                "diagnosed_at": diagnosed_at_str,
+                "model_used": api_res.get("model_used", selected_model)
             }
+            if api_res.get("fallback_occurred"):
+                result["fallback_occurred"] = True
 
             with self._lock:
                 self._cache[cache_key] = {
@@ -1382,7 +1454,6 @@ fit_levelの基準:
 2. `fit_score` は 0〜100 の数値、`fit_stars` は ★1〜5表記としてください。
 """
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key}"
         payload = {
             "contents": [{"parts": [{"text": user_content}]}],
             "systemInstruction": {"parts": [{"text": system_instruction}]},
@@ -1392,18 +1463,13 @@ fit_levelの基準:
             }
         }
 
+        api_res = self._request_gemini_with_fallback(payload, selected_model, api_key, timeout=30.0)
+        if api_res.get("error"):
+            return api_res
+
+        raw_text = ""
         try:
-            resp = requests.post(url, json=payload, timeout=30)
-            if resp.status_code != 200:
-                logger.error(f"Gemini API error for filtered recommendations: {resp.status_code} - {resp.text}")
-                return {"error": True, "message": f"Gemini APIエラー ({resp.status_code}): 購入推奨レポートを生成できませんでした"}
-
-            data = resp.json()
-            candidates = data.get("candidates", [])
-            if not candidates:
-                return {"error": True, "message": "AIからの応答が得られませんでした"}
-
-            raw_text = candidates[0]["content"]["parts"][0]["text"].strip()
+            raw_text = api_res.get("raw_text", "").strip()
             
             # JSON パース
             json_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', raw_text)
@@ -1441,8 +1507,11 @@ fit_levelの基準:
                 "recommendations": recs,
                 "overall_summary": parsed_res.get("overall_summary", ""),
                 "is_cached": False,
-                "diagnosed_at": diagnosed_at_str
+                "diagnosed_at": diagnosed_at_str,
+                "model_used": api_res.get("model_used", selected_model)
             }
+            if api_res.get("fallback_occurred"):
+                result["fallback_occurred"] = True
 
             with self._lock:
                 self._cache[cache_key] = {
@@ -1550,30 +1619,21 @@ fit_levelの基準:
 }}
 """
 
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 1024,
+                "responseMimeType": "application/json"
+            }
+        }
+        api_res = self._request_gemini_with_fallback(payload, selected_model, api_key, timeout=20.0)
+        if api_res.get("error"):
+            return api_res
+
         raw_text = ""
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key}"
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "maxOutputTokens": 1024,
-                    "responseMimeType": "application/json"
-                }
-            }
-            headers = {"Content-Type": "application/json"}
-
-            resp = requests.post(url, headers=headers, json=payload, timeout=20)
-            if resp.status_code != 200:
-                logger.error(f"Gemini API error for industry daily summary: {resp.status_code} - {resp.text}")
-                return {"error": True, "message": f"Gemini APIエラー ({resp.status_code}): 市況短評を生成できませんでした"}
-
-            data = resp.json()
-            candidates = data.get("candidates", [])
-            if not candidates:
-                return {"error": True, "message": "AIからの応答が得られませんでした"}
-
-            raw_text = candidates[0]["content"]["parts"][0]["text"].strip()
+            raw_text = api_res.get("raw_text", "").strip()
             json_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', raw_text)
             json_str = json_match.group(1) if json_match else raw_text
             parsed = json.loads(json_str)
@@ -1585,8 +1645,11 @@ fit_levelの基準:
                 "portfolio_impact_summary": parsed.get("portfolio_impact_summary", ""),
                 "key_takeaway": parsed.get("key_takeaway", ""),
                 "diagnosed_at": diagnosed_at_str,
-                "is_cached": False
+                "is_cached": False,
+                "model_used": api_res.get("model_used", selected_model)
             }
+            if api_res.get("fallback_occurred"):
+                result["fallback_occurred"] = True
 
             with self._lock:
                 self._industry_daily_cache[cache_key] = {
@@ -1742,34 +1805,22 @@ fit_levelの基準:
 }}
 """
 
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 1024,
+                "responseMimeType": "application/json"
+            }
+        }
+
+        api_res = self._request_gemini_with_fallback(payload, selected_model, api_key, timeout=20.0)
+        if api_res.get("error"):
+            return api_res
+
         raw_text = ""
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key}"
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "maxOutputTokens": 1024,
-                    "responseMimeType": "application/json"
-                }
-            }
-            headers = {"Content-Type": "application/json"}
-
-            resp = requests.post(url, headers=headers, json=payload, timeout=20.0)
-            if resp.status_code != 200:
-                logger.error(f"Gemini API error for market volatility summary: {resp.status_code} - {resp.text}")
-                return {
-                    "error": True,
-                    "error_code": f"HTTP_{resp.status_code}",
-                    "message": f"Gemini API通信エラー ({resp.status_code}): 要因要約を生成できませんでした。"
-                }
-
-            data = resp.json()
-            candidates = data.get("candidates", [])
-            if not candidates:
-                return {"error": True, "error_code": "NO_CANDIDATES", "message": "AIからの有効な応答が得られませんでした。"}
-
-            raw_text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+            raw_text = api_res.get("raw_text", "").strip()
             json_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', raw_text)
             json_str = json_match.group(1) if json_match else raw_text
             parsed = json.loads(json_str)
@@ -1787,10 +1838,12 @@ fit_levelの基準:
                 "fx_factors": str(parsed.get("fx_factors", "")).strip(),
                 "anomaly_insight": str(parsed.get("anomaly_insight", "")).strip(),
                 "portfolio_action_hint": str(parsed.get("portfolio_action_hint", "")).strip(),
-                "model_used": selected_model,
+                "model_used": api_res.get("model_used", selected_model),
                 "diagnosed_at": diagnosed_at_str,
                 "is_cached": False
             }
+            if api_res.get("fallback_occurred"):
+                result["fallback_occurred"] = True
 
             with self._lock:
                 self._market_volatility_cache[cache_key] = {

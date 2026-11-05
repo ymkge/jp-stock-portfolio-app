@@ -2853,17 +2853,17 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (filteredRecResultsContainer) {
                 filteredRecResultsContainer.innerHTML = `
-                    <div class="alert alert-warning my-3 text-center p-4">
-                        <h5 class="fw-bold mb-2">⚠️ 該当する銘柄が 0 件です</h5>
-                        <p class="mb-0">現在のフィルタ条件（${escapeHtml(presetName)}）に合致する銘柄がポートフォリオ内に存在しません。<br>他のプリセットを選択するか、検索キーワード・フィルタ条件を変更して再試行してください。</p>
+                    <div class="rec-warning-box text-center p-3">
+                        <div class="rec-box-header justify-content-center">⚠️ 該当する銘柄が 0 件です</div>
+                        <p class="rec-box-message mb-0">現在のフィルタ条件（${escapeHtml(presetName)}）に合致する銘柄がポートフォリオ内に存在しません。<br>他のプリセットを選択するか、検索キーワード・フィルタ条件を変更して再試行してください。</p>
                     </div>
                 `;
             }
             if (filteredRecCopyBtn) filteredRecCopyBtn.disabled = true;
+            if (filteredRecRefreshBtn) filteredRecRefreshBtn.disabled = false;
             return;
         }
 
-        if (filteredRecCopyBtn) filteredRecCopyBtn.disabled = false;
         const codes = currentFilteredAssets.map(a => String(a.code));
 
         openFilteredRecModal();
@@ -2876,6 +2876,9 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }
 
+        // 診断開始時のボタン状態制御 (#370)
+        if (filteredRecCopyBtn) filteredRecCopyBtn.disabled = true;
+        if (filteredRecRefreshBtn) filteredRecRefreshBtn.disabled = true;
         if (filteredRecLoading) filteredRecLoading.classList.remove('hidden');
         if (filteredRecResultsContainer) filteredRecResultsContainer.innerHTML = '';
 
@@ -2891,42 +2894,98 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
             });
 
-            const data = await res.json();
+            // safe JSON parse: HTMLエラーページ等の場合でもクラッシュせずステータス付きメッセージ生成 (#370)
+            let data = {};
+            try {
+                data = await res.json();
+            } catch (jsonErr) {
+                data = {
+                    error: true,
+                    message: `サーバー通信エラー (HTTP ${res.status}: ${res.statusText || '応答の解析に失敗しました'})`
+                };
+            }
+
             if (filteredRecLoading) filteredRecLoading.classList.add('hidden');
 
             if (!res.ok || data.error) {
-                if (data.error_code === 'NO_API_KEY') {
+                const errorCode = data.error_code || '';
+                const rawDetail = data.detail || data.message || `AI購入推奨レポートの生成に失敗しました (HTTP ${res.status})`;
+
+                if (errorCode === 'NO_API_KEY' || String(rawDetail).includes('APIキー')) {
                     if (filteredRecResultsContainer) {
                         filteredRecResultsContainer.innerHTML = `
-                            <div class="alert alert-warning my-3 text-center">
-                                <h5>⚠️ APIキー未設定</h5>
-                                <p>${escapeHtml(data.message)}</p>
-                                <button type="button" class="btn btn-primary btn-sm mt-2" onclick="closeFilteredRecModal(); document.getElementById('btn-open-investment-policy-modal').click();">
-                                    ⚙️ 投資方針設定を開く
-                                </button>
+                            <div class="rec-warning-box text-center">
+                                <div class="rec-box-header justify-content-center">⚠️ Gemini APIキー未設定</div>
+                                <p class="rec-box-message">${escapeHtml(rawDetail)}</p>
+                                <div class="rec-box-actions justify-content-center">
+                                    <button type="button" class="btn btn-primary btn-sm btn-rec-settings" onclick="closeFilteredRecModal(); document.getElementById('btn-open-investment-policy-modal').click();">
+                                        ⚙️ 投資方針設定を開いてAPIキーを入力
+                                    </button>
+                                </div>
                             </div>
                         `;
                     }
+                    if (filteredRecCopyBtn) filteredRecCopyBtn.disabled = true;
+                    if (filteredRecRefreshBtn) filteredRecRefreshBtn.disabled = false;
                     return;
                 }
-                throw new Error(data.message || 'AI購入推奨レポートの生成に失敗しました');
+
+                // レート制限の親切なガイダンス判定
+                let guideText = '';
+                if (res.status === 429 || String(rawDetail).includes('429') || String(rawDetail).includes('Quota') || String(rawDetail).includes('ResourceExhausted')) {
+                    guideText = '※ Gemini APIの利用上限（レート制限）に達した可能性があります。1〜2分待ってから再試行してください。';
+                }
+
+                if (filteredRecResultsContainer) {
+                    filteredRecResultsContainer.innerHTML = `
+                        <div class="rec-error-box">
+                            <div class="rec-box-header">❌ AI診断エラー</div>
+                            <p class="rec-box-message">${escapeHtml(rawDetail)}</p>
+                            ${guideText ? `<p style="font-size: 0.82rem; opacity: 0.9; margin: -6px 0 10px 0;">${escapeHtml(guideText)}</p>` : ''}
+                            <div class="rec-box-actions">
+                                <button type="button" class="btn-rec-retry" onclick="window.fetchAndRenderFilteredRecommendations ? window.fetchAndRenderFilteredRecommendations(true) : document.getElementById('btn-refresh-filtered-rec').click();">
+                                    🔄 もう一度試す（強制再取得）
+                                </button>
+                                <button type="button" class="btn-rec-settings" onclick="closeFilteredRecModal(); document.getElementById('btn-open-investment-policy-modal').click();">
+                                    ⚙️ 投資方針設定を確認
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }
+                if (filteredRecCopyBtn) filteredRecCopyBtn.disabled = true;
+                if (filteredRecRefreshBtn) filteredRecRefreshBtn.disabled = false;
+                return;
             }
 
             currentRecReportData = data;
             renderFilteredRecommendationReport(data);
+            if (filteredRecCopyBtn) filteredRecCopyBtn.disabled = false;
+            if (filteredRecRefreshBtn) filteredRecRefreshBtn.disabled = false;
 
         } catch (err) {
             console.error('AI購入推奨診断エラー:', err);
             if (filteredRecLoading) filteredRecLoading.classList.add('hidden');
             if (filteredRecResultsContainer) {
                 filteredRecResultsContainer.innerHTML = `
-                    <div class="alert alert-danger my-3">
-                        ❌ エラー: ${escapeHtml(err.message)}
+                    <div class="rec-error-box">
+                        <div class="rec-box-header">❌ エラーが発生しました</div>
+                        <p class="rec-box-message">${escapeHtml(err.message || 'AI購入推奨診断中に予期せぬエラーが発生しました。')}</p>
+                        <div class="rec-box-actions">
+                            <button type="button" class="btn-rec-retry" onclick="window.fetchAndRenderFilteredRecommendations ? window.fetchAndRenderFilteredRecommendations(true) : document.getElementById('btn-refresh-filtered-rec').click();">
+                                🔄 もう一度試す（強制再取得）
+                            </button>
+                        </div>
                     </div>
                 `;
             }
+            if (filteredRecCopyBtn) filteredRecCopyBtn.disabled = true;
+            if (filteredRecRefreshBtn) filteredRecRefreshBtn.disabled = false;
         }
     }
+
+    // グローバル公開 (インラインonclick連携用 #370)
+    window.fetchAndRenderFilteredRecommendations = fetchAndRenderFilteredRecommendations;
 
     function renderFilteredRecommendationReport(data) {
         if (!filteredRecResultsContainer) return;
@@ -2936,10 +2995,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (recs.length === 0) {
             filteredRecResultsContainer.innerHTML = `
-                <div class="alert alert-info my-3 text-center">
-                    推薦条件に合致する銘柄が見つかりませんでした。
+                <div class="rec-empty-box text-center">
+                    <div class="rec-box-header justify-content-center">ℹ️ 推薦候補なし</div>
+                    <p class="rec-box-message mb-0">絞り込まれた銘柄群の中に、現在の投資方針（利回り3.5%以上、還元の盾など）の条件を満たす購入推奨銘柄が見つかりませんでした。<br>フィルタ条件を広げるか、投資方針設定を調整してください。</p>
                 </div>
             `;
+            if (filteredRecCopyBtn) filteredRecCopyBtn.disabled = true;
             return;
         }
 

@@ -427,6 +427,15 @@ button {
     border-color: #991b1b;
 }
 
+/* モーダル内のインライン .alert はトースト用アニメーションをリセットして常時可視化 (#370) */
+.modal-body .alert,
+.modal-content .alert {
+    opacity: 1 !important;
+    transform: none !important;
+    box-shadow: none !important;
+    margin-bottom: 1rem;
+}
+
 .main-header {
     padding: 1.5rem 2rem 0;
     background-color: var(--background-color);
@@ -4957,6 +4966,132 @@ body.dark-mode .rec-mini-badge.badge-role,
     background-color: rgba(192, 132, 252, 0.15);
     color: #c084fc;
     border-color: rgba(192, 132, 252, 0.3);
+}
+
+/* AI購入推奨モーダル用 エラー・警告・空状態インラインボックス (#370) */
+.rec-error-box,
+.rec-warning-box,
+.rec-empty-box {
+    border-radius: 8px;
+    padding: 16px 18px;
+    margin: 14px 0;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.rec-error-box {
+    background-color: #fef2f2;
+    border: 1px solid #f87171;
+    color: #991b1b;
+}
+
+.rec-warning-box {
+    background-color: #fefce8;
+    border: 1px solid #facc15;
+    color: #854d0e;
+}
+
+.rec-empty-box {
+    background-color: #eff6ff;
+    border: 1px solid #93c5fd;
+    color: #1e40af;
+}
+
+.rec-box-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.98rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.rec-box-message {
+    margin: 0 0 12px 0;
+    font-size: 0.86rem;
+    opacity: 0.95;
+    word-break: break-word;
+}
+
+.rec-box-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 10px;
+}
+
+.btn-rec-retry {
+    background-color: #ef4444;
+    color: #ffffff !important;
+    border: 1px solid #dc2626;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-rec-retry:hover {
+    background-color: #dc2626;
+    transform: translateY(-1px);
+}
+
+.btn-rec-settings {
+    background-color: #ffffff;
+    color: #334155 !important;
+    border: 1px solid #cbd5e1;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-rec-settings:hover {
+    background-color: #f1f5f9;
+}
+
+/* ダークモード対応 (トリプルセレクタ) */
+[data-theme="dark"] .rec-error-box,
+body.dark-mode .rec-error-box,
+.dark-mode .rec-error-box {
+    background-color: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #fca5a5;
+}
+
+[data-theme="dark"] .rec-warning-box,
+body.dark-mode .rec-warning-box,
+.dark-mode .rec-warning-box {
+    background-color: rgba(234, 179, 8, 0.12);
+    border-color: rgba(234, 179, 8, 0.4);
+    color: #fde047;
+}
+
+[data-theme="dark"] .rec-empty-box,
+body.dark-mode .rec-empty-box,
+.dark-mode .rec-empty-box {
+    background-color: rgba(59, 130, 246, 0.12);
+    border-color: rgba(59, 130, 246, 0.4);
+    color: #93c5fd;
+}
+
+[data-theme="dark"] .btn-rec-settings,
+body.dark-mode .btn-rec-settings,
+.dark-mode .btn-rec-settings {
+    background-color: #1e293b;
+    border-color: #475569;
+    color: #e2e8f0 !important;
+}
+
+[data-theme="dark"] .btn-rec-settings:hover,
+body.dark-mode .btn-rec-settings:hover,
+.dark-mode .btn-rec-settings:hover {
+    background-color: #334155;
 }
 
 /* ==========================================================================

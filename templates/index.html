@@ -496,14 +496,32 @@
     <!-- AI投資方針適合診断 モーダル -->
     <div id="llm-diagnosis-modal" class="modal-overlay hidden">
         <div class="modal-content large-modal" style="max-width: 800px;">
-            <div class="modal-header">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <h2 id="llm-modal-title" style="margin: 0;">🤖 AI投資方針適合診断</h2>
-                    <span id="llm-cache-badge" class="badge-cached hidden" style="background: #e2e8f0; color: #475569; font-size: 0.75rem; padding: 3px 10px; border-radius: 12px; font-weight: 600; border: 1px solid #cbd5e1;">
-                        ⚡ キャッシュ表示 (12:34)
-                    </span>
+            <div class="modal-header llm-draggable-header" id="llm-modal-header" title="ヘッダーをドラッグして移動できます">
+                <div class="llm-header-left" style="display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0;">
+                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                        <span class="drag-handle-indicator" title="ドラッグしてモーダルを移動">⠿</span>
+                        <h2 id="llm-modal-title" style="margin: 0; font-size: 1.25rem;">🤖 AI投資方針適合診断</h2>
+                        <span id="llm-cache-badge" class="badge-cached hidden" style="background: #e2e8f0; color: #475569; font-size: 0.75rem; padding: 3px 10px; border-radius: 12px; font-weight: 600; border: 1px solid #cbd5e1;">
+                            ⚡ キャッシュ表示 (12:34)
+                        </span>
+                    </div>
+                    <!-- 現在株価・前日比・利回りバッジ表示領域 (#374) -->
+                    <div id="llm-modal-price-header" class="llm-price-header hidden">
+                        <div class="llm-price-badge-item">
+                            <span class="llm-price-label">現在値:</span>
+                            <span id="llm-modal-current-price" class="llm-price-val numeric">--</span>
+                        </div>
+                        <div class="llm-price-badge-item">
+                            <span class="llm-price-label">前日比:</span>
+                            <span id="llm-modal-price-change" class="llm-change-val numeric">--</span>
+                        </div>
+                        <div class="llm-price-badge-item">
+                            <span class="llm-price-label">配当利回り:</span>
+                            <span id="llm-modal-dividend-yield" class="llm-yield-val numeric">--</span>
+                        </div>
+                    </div>
                 </div>
-                <button type="button" id="btn-close-llm-modal" class="modal-close">&times;</button>
+                <button type="button" id="btn-close-llm-modal" class="modal-close" title="閉じる">&times;</button>
             </div>
             <div class="modal-body">
                 <div id="llm-loading-container" class="hidden" style="text-align: center; padding: 40px 20px;">

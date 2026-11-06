@@ -2456,6 +2456,99 @@ body.dark-mode .llm-card,
     max-width: 860px;
 }
 
+/* --- Issue #374: AI診断モーダル ドラッグ操作＆株価バッジスタイル --- */
+#llm-diagnosis-modal.modal-overlay {
+    background-color: rgba(0, 0, 0, 0.45); /* 背景テーブルが透けて見えるよう適度に調整 */
+}
+
+#llm-diagnosis-modal .modal-header.llm-draggable-header {
+    cursor: grab;
+    cursor: -webkit-grab;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    background: var(--card-background, #f8fafc);
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+}
+
+#llm-diagnosis-modal .modal-header.llm-draggable-header:active,
+#llm-diagnosis-modal .modal-content.is-dragging .modal-header.llm-draggable-header {
+    cursor: grabbing;
+    cursor: -webkit-grabbing;
+}
+
+#llm-diagnosis-modal .modal-content.is-dragging {
+    transition: none !important; /* ドラッグ中の追従遅延（ゴム紐感）を排除 */
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.35);
+}
+
+.drag-handle-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    color: var(--text-muted, #94a3b8);
+    cursor: grab;
+    padding: 0 2px;
+}
+
+/* ヘッダー内現在株価バッジコンテナ (#374) */
+.llm-price-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: rgba(241, 245, 249, 0.85);
+    border: 1px solid var(--border-color, #e2e8f0);
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 0.86rem;
+    width: fit-content;
+    margin-top: 2px;
+}
+
+[data-theme="dark"] .llm-price-header,
+body.dark-mode .llm-price-header,
+.dark-mode .llm-price-header {
+    background: rgba(30, 41, 59, 0.7);
+    border-color: #334155;
+}
+
+.llm-price-badge-item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.llm-price-label {
+    font-size: 0.75rem;
+    color: var(--text-muted, #64748b);
+    font-weight: 500;
+}
+
+.llm-price-val {
+    font-weight: bold;
+    font-size: 1rem;
+    color: var(--text-color, #0f172a);
+}
+
+.llm-change-val {
+    font-weight: 600;
+    font-size: 0.88rem;
+}
+
+.llm-yield-val {
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: #2563eb;
+}
+
+[data-theme="dark"] .llm-yield-val,
+body.dark-mode .llm-yield-val,
+.dark-mode .llm-yield-val {
+    color: #60a5fa;
+}
+
 .llm-grid-container {
     display: grid;
     grid-template-columns: 1fr 1fr;

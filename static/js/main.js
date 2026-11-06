@@ -2457,8 +2457,112 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 4. AI診断モーダルの閉鎖
+    // --- Issue #374: AI投資方針適合診断モーダルのドラッグ移動＆位置リセット ---
+    let llmModalDragState = {
+        isDragging: false,
+        currentTranslateX: 0,
+        currentTranslateY: 0
+    };
+
+    function resetLlmModalPosition() {
+        if (!llmDiagnosisModal) return;
+        const modalContent = llmDiagnosisModal.querySelector('.modal-content');
+        if (modalContent) {
+            modalContent.classList.remove('is-dragging');
+            modalContent.style.transform = '';
+        }
+        llmModalDragState.currentTranslateX = 0;
+        llmModalDragState.currentTranslateY = 0;
+        llmModalDragState.isDragging = false;
+    }
+
+    function initDraggableLlmModal() {
+        if (!llmDiagnosisModal) return;
+        const modalContent = llmDiagnosisModal.querySelector('.modal-content');
+        const header = document.getElementById('llm-modal-header');
+        if (!modalContent || !header) return;
+
+        let startPointerX = 0;
+        let startPointerY = 0;
+        let startTranslateX = 0;
+        let startTranslateY = 0;
+
+        header.addEventListener('pointerdown', (e) => {
+            // 左クリック（または単一タッチ）以外、あるいはボタン・閉じるアイコン等の操作時は除外
+            if (e.button !== 0 && e.pointerType === 'mouse') return;
+            if (e.target.closest('button, .modal-close, a, input, select, textarea')) return;
+
+            llmModalDragState.isDragging = true;
+            modalContent.classList.add('is-dragging');
+
+            startPointerX = e.clientX;
+            startPointerY = e.clientY;
+            startTranslateX = llmModalDragState.currentTranslateX;
+            startTranslateY = llmModalDragState.currentTranslateY;
+
+            try {
+                header.setPointerCapture(e.pointerId);
+            } catch (err) {
+                // ignore
+            }
+
+            e.preventDefault();
+        });
+
+        header.addEventListener('pointermove', (e) => {
+            if (!llmModalDragState.isDragging) return;
+
+            const deltaX = e.clientX - startPointerX;
+            const deltaY = e.clientY - startPointerY;
+
+            let nextX = startTranslateX + deltaX;
+            let nextY = startTranslateY + deltaY;
+
+            // バウンダリガード（画面外への飛び出し防止）
+            const rect = modalContent.getBoundingClientRect();
+            const baseLeft = rect.left - llmModalDragState.currentTranslateX;
+            const baseTop = rect.top - llmModalDragState.currentTranslateY;
+
+            const minX = -baseLeft + 20;
+            const maxX = window.innerWidth - (baseLeft + rect.width) - 20;
+            const minY = -baseTop + 10;
+            const maxY = window.innerHeight - (baseTop + 60);
+
+            if (minX <= maxX) {
+                nextX = Math.max(minX, Math.min(maxX, nextX));
+            }
+            if (minY <= maxY) {
+                nextY = Math.max(minY, Math.min(maxY, nextY));
+            }
+
+            llmModalDragState.currentTranslateX = nextX;
+            llmModalDragState.currentTranslateY = nextY;
+            modalContent.style.transform = `translate(${nextX}px, ${nextY}px)`;
+        });
+
+        const stopDrag = (e) => {
+            if (!llmModalDragState.isDragging) return;
+            llmModalDragState.isDragging = false;
+            modalContent.classList.remove('is-dragging');
+            try {
+                if (header.hasPointerCapture(e.pointerId)) {
+                    header.releasePointerCapture(e.pointerId);
+                }
+            } catch (err) {
+                // ignore
+            }
+        };
+
+        header.addEventListener('pointerup', stopDrag);
+        header.addEventListener('pointercancel', stopDrag);
+    }
+
+    // ドラッグ移動の初期化
+    initDraggableLlmModal();
+
     const closeLlmModal = () => {
         if (llmDiagnosisModal) llmDiagnosisModal.classList.add('hidden');
+        resetLlmModalPosition();
     };
     if (btnCloseLlmModal) btnCloseLlmModal.addEventListener('click', closeLlmModal);
     if (btnCloseLlmModalFooter) btnCloseLlmModalFooter.addEventListener('click', closeLlmModal);
@@ -2486,15 +2590,79 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentDiagnoseAssetType = 'jp_stock';
     const llmCacheBadge = document.getElementById('llm-cache-badge');
     const btnReDiagnoseLlm = document.getElementById('btn-re-diagnose-llm');
+    const llmModalPriceHeader = document.getElementById('llm-modal-price-header');
+    const llmModalCurrentPrice = document.getElementById('llm-modal-current-price');
+    const llmModalPriceChange = document.getElementById('llm-modal-price-change');
+    const llmModalDividendYield = document.getElementById('llm-modal-dividend-yield');
 
     async function runLlmDiagnosis(code, assetType, triggerBtn, force = false) {
         currentDiagnoseCode = code;
         currentDiagnoseAssetType = assetType;
 
+        resetLlmModalPosition();
+
         const asset = allAssetsData.find(a => a.code === code);
         const stockName = asset ? asset.name : code;
         
         if (llmModalTitle) llmModalTitle.textContent = `🤖 AI投資方針適合診断 (${code} ${stockName})`;
+        
+        // ヘッダー現在株価・前日比バッジの描画 (#374)
+        if (asset && llmModalPriceHeader) {
+            const isUs = (assetType === 'us_stock' || asset.asset_type === 'us_stock');
+            const currencySymbol = isUs ? '$' : '円';
+            
+            // 1. 現在株価
+            if (asset.price !== undefined && asset.price !== null && asset.price !== 'N/A' && asset.price !== '--') {
+                const priceNum = parseFloat(asset.price);
+                const priceStr = !isNaN(priceNum) ? formatNumber(priceNum, isUs ? 2 : (priceNum >= 1000 ? 0 : 1)) : String(asset.price);
+                if (llmModalCurrentPrice) {
+                    llmModalCurrentPrice.textContent = `${priceStr}${currencySymbol}`;
+                }
+            } else {
+                if (llmModalCurrentPrice) llmModalCurrentPrice.textContent = '--';
+            }
+
+            // 2. 前日比・騰落率
+            if (llmModalPriceChange) {
+                const chg = asset.change;
+                const chgPct = asset.change_percent;
+                if (chg !== undefined && chg !== null && chg !== 'N/A' && chg !== '--') {
+                    const chgStr = String(chg);
+                    const isUp = chgStr.startsWith('+') || (!chgStr.startsWith('-') && parseFloat(chg) > 0);
+                    const isDown = chgStr.startsWith('-') || parseFloat(chg) < 0;
+                    
+                    llmModalPriceChange.className = 'llm-change-val numeric ' + (isUp ? 'price-up' : (isDown ? 'price-down' : ''));
+                    
+                    let displayChg = chgStr;
+                    if (isUp && !displayChg.startsWith('+')) displayChg = '+' + displayChg;
+                    if (chgPct && chgPct !== 'N/A' && chgPct !== '--') {
+                        let pctStr = String(chgPct).replace('%', '');
+                        if (isUp && !pctStr.startsWith('+')) pctStr = '+' + pctStr;
+                        displayChg += ` (${pctStr}%)`;
+                    }
+                    llmModalPriceChange.textContent = displayChg;
+                } else {
+                    llmModalPriceChange.className = 'llm-change-val numeric';
+                    llmModalPriceChange.textContent = '--';
+                }
+            }
+
+            // 3. 配当利回り
+            if (llmModalDividendYield) {
+                const yld = asset.yield;
+                if (yld !== undefined && yld !== null && yld !== 'N/A' && yld !== '--') {
+                    const yldStr = String(yld).includes('%') ? String(yld) : `${yld}%`;
+                    llmModalDividendYield.textContent = yldStr;
+                } else {
+                    llmModalDividendYield.textContent = '--';
+                }
+            }
+
+            llmModalPriceHeader.classList.remove('hidden');
+        } else if (llmModalPriceHeader) {
+            llmModalPriceHeader.classList.add('hidden');
+        }
+
         if (llmLoadingContainer) llmLoadingContainer.classList.remove('hidden');
         if (llmResultContainer) llmResultContainer.innerHTML = '';
         if (llmCacheBadge) llmCacheBadge.classList.add('hidden');

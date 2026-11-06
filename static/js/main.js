@@ -2457,30 +2457,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 4. AI診断モーダルの閉鎖
-    // --- Issue #374: AI投資方針適合診断モーダルのドラッグ移動＆位置リセット ---
-    let llmModalDragState = {
-        isDragging: false,
-        currentTranslateX: 0,
-        currentTranslateY: 0
-    };
+    // --- Issue #374 & #376: 汎用モーダルドラッグ移動ヘルパー ---
+    function makeModalDraggable(modalOverlay, headerSelector = '.modal-header') {
+        if (!modalOverlay) return { resetPosition: () => {} };
+        const modalContent = modalOverlay.querySelector('.modal-content');
+        const header = typeof headerSelector === 'string' ? modalOverlay.querySelector(headerSelector) : headerSelector;
+        if (!modalContent || !header) return { resetPosition: () => {} };
 
-    function resetLlmModalPosition() {
-        if (!llmDiagnosisModal) return;
-        const modalContent = llmDiagnosisModal.querySelector('.modal-content');
-        if (modalContent) {
+        let dragState = {
+            isDragging: false,
+            currentTranslateX: 0,
+            currentTranslateY: 0
+        };
+
+        const resetPosition = () => {
             modalContent.classList.remove('is-dragging');
             modalContent.style.transform = '';
-        }
-        llmModalDragState.currentTranslateX = 0;
-        llmModalDragState.currentTranslateY = 0;
-        llmModalDragState.isDragging = false;
-    }
-
-    function initDraggableLlmModal() {
-        if (!llmDiagnosisModal) return;
-        const modalContent = llmDiagnosisModal.querySelector('.modal-content');
-        const header = document.getElementById('llm-modal-header');
-        if (!modalContent || !header) return;
+            dragState.currentTranslateX = 0;
+            dragState.currentTranslateY = 0;
+            dragState.isDragging = false;
+        };
 
         let startPointerX = 0;
         let startPointerY = 0;
@@ -2492,13 +2488,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.button !== 0 && e.pointerType === 'mouse') return;
             if (e.target.closest('button, .modal-close, a, input, select, textarea')) return;
 
-            llmModalDragState.isDragging = true;
+            dragState.isDragging = true;
             modalContent.classList.add('is-dragging');
 
             startPointerX = e.clientX;
             startPointerY = e.clientY;
-            startTranslateX = llmModalDragState.currentTranslateX;
-            startTranslateY = llmModalDragState.currentTranslateY;
+            startTranslateX = dragState.currentTranslateX;
+            startTranslateY = dragState.currentTranslateY;
 
             try {
                 header.setPointerCapture(e.pointerId);
@@ -2510,7 +2506,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         header.addEventListener('pointermove', (e) => {
-            if (!llmModalDragState.isDragging) return;
+            if (!dragState.isDragging) return;
 
             const deltaX = e.clientX - startPointerX;
             const deltaY = e.clientY - startPointerY;
@@ -2520,8 +2516,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // バウンダリガード（画面外への飛び出し防止）
             const rect = modalContent.getBoundingClientRect();
-            const baseLeft = rect.left - llmModalDragState.currentTranslateX;
-            const baseTop = rect.top - llmModalDragState.currentTranslateY;
+            const baseLeft = rect.left - dragState.currentTranslateX;
+            const baseTop = rect.top - dragState.currentTranslateY;
 
             const minX = -baseLeft + 20;
             const maxX = window.innerWidth - (baseLeft + rect.width) - 20;
@@ -2535,14 +2531,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 nextY = Math.max(minY, Math.min(maxY, nextY));
             }
 
-            llmModalDragState.currentTranslateX = nextX;
-            llmModalDragState.currentTranslateY = nextY;
+            dragState.currentTranslateX = nextX;
+            dragState.currentTranslateY = nextY;
             modalContent.style.transform = `translate(${nextX}px, ${nextY}px)`;
         });
 
         const stopDrag = (e) => {
-            if (!llmModalDragState.isDragging) return;
-            llmModalDragState.isDragging = false;
+            if (!dragState.isDragging) return;
+            dragState.isDragging = false;
             modalContent.classList.remove('is-dragging');
             try {
                 if (header.hasPointerCapture(e.pointerId)) {
@@ -2555,10 +2551,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         header.addEventListener('pointerup', stopDrag);
         header.addEventListener('pointercancel', stopDrag);
+
+        return { resetPosition };
     }
 
-    // ドラッグ移動の初期化
-    initDraggableLlmModal();
+    // 個別AI診断モーダルのドラッグ初期化
+    const llmModalDraggable = makeModalDraggable(llmDiagnosisModal, '#llm-modal-header');
+    function resetLlmModalPosition() {
+        if (llmModalDraggable) llmModalDraggable.resetPosition();
+    }
 
     const closeLlmModal = () => {
         if (llmDiagnosisModal) llmDiagnosisModal.classList.add('hidden');
@@ -2971,12 +2972,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentRecReportData = null;
 
+    // おすすめ5選モーダルのドラッグ初期化 (#376)
+    const filteredRecModalDraggable = makeModalDraggable(filteredRecModal, '#filtered-rec-modal-header');
+
     function openFilteredRecModal() {
+        if (filteredRecModalDraggable) filteredRecModalDraggable.resetPosition();
         if (filteredRecModal) filteredRecModal.classList.remove('hidden');
     }
 
     function closeFilteredRecModal() {
         if (filteredRecModal) filteredRecModal.classList.add('hidden');
+        if (filteredRecModalDraggable) filteredRecModalDraggable.resetPosition();
     }
 
     if (filteredRecCloseBtn) filteredRecCloseBtn.addEventListener('click', closeFilteredRecModal);
@@ -3181,8 +3187,37 @@ document.addEventListener('DOMContentLoaded', () => {
             const fitStars = item.fit_stars || '★★★★☆';
             const fitScore = item.fit_score !== undefined ? item.fit_score : 85;
 
-            // 銘柄データからの配当指標補完 (#316)
-            const matchedAsset = (currentFilteredAssets || []).find(a => String(a.code) === String(item.code));
+            // 銘柄データからの配当指標・現在株価補完 (#316, #376)
+            const matchedAsset = (currentFilteredAssets || []).find(a => String(a.code) === String(item.code))
+                || (allAssetsData || []).find(a => String(a.code) === String(item.code));
+
+            // 現在株価・前日比バッジ (#376)
+            let currentPriceBadge = '';
+            if (matchedAsset && matchedAsset.price !== undefined && matchedAsset.price !== null && matchedAsset.price !== 'N/A' && matchedAsset.price !== '--') {
+                const isUs = (matchedAsset.asset_type === 'us_stock');
+                const currSym = isUs ? '$' : '円';
+                const priceNum = parseFloat(matchedAsset.price);
+                const priceStr = !isNaN(priceNum) ? formatNumber(priceNum, isUs ? 2 : (priceNum >= 1000 ? 0 : 1)) : String(matchedAsset.price);
+
+                let diffStr = '';
+                const chg = matchedAsset.change;
+                const chgPct = matchedAsset.change_percent;
+                if (chg !== undefined && chg !== null && chg !== 'N/A' && chg !== '--') {
+                    const chgVal = String(chg);
+                    const isUp = chgVal.startsWith('+') || (!chgVal.startsWith('-') && parseFloat(chg) > 0);
+                    const isDown = chgVal.startsWith('-') || parseFloat(chg) < 0;
+                    const diffColor = isUp ? 'price-up' : (isDown ? 'price-down' : '');
+                    let sign = isUp && !chgVal.startsWith('+') ? '+' : '';
+                    let pctPart = '';
+                    if (chgPct && chgPct !== 'N/A' && chgPct !== '--') {
+                        let pctVal = String(chgPct).replace('%', '');
+                        if (isUp && !pctVal.startsWith('+')) pctVal = '+' + pctVal;
+                        pctPart = ` / ${pctVal}%`;
+                    }
+                    diffStr = ` <span class="${diffColor}" style="font-weight: normal; font-size: 0.72rem;">(${sign}${chgVal}${pctPart})</span>`;
+                }
+                currentPriceBadge = `<span class="rec-mini-badge badge-current-price">💹 現在値: <strong>${priceStr}${currSym}</strong>${diffStr}</span>`;
+            }
 
             const rawYield = item.dividend_yield_str || item.dividend_yield_val || (matchedAsset ? (matchedAsset.dividend_yield || matchedAsset.yield) : null);
             const yieldBadge = rawYield ? `<span class="rec-mini-badge badge-yield">💰 利回り ${escapeHtml(String(rawYield).replace('%', ''))}%</span>` : '';
@@ -3233,12 +3268,13 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <span class="badge bg-primary ms-1" style="font-size: 0.8rem;">適合度 ${fitScore}%</span>
                             </div>
                         </div>
-                        ${(roleBadge || yieldBadge || shieldBadge || contribBadge || targetBuyBadge || capLimitBadge) ? `
+                        ${(roleBadge || yieldBadge || shieldBadge || contribBadge || currentPriceBadge || targetBuyBadge || capLimitBadge) ? `
                             <div class="rec-badge-strip">
                                 ${roleBadge}
                                 ${yieldBadge}
                                 ${shieldBadge}
                                 ${contribBadge}
+                                ${currentPriceBadge}
                                 ${targetBuyBadge}
                                 ${capLimitBadge}
                             </div>

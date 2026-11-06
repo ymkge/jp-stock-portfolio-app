@@ -639,12 +639,13 @@
     <!-- 絞り込み銘柄 AI購入推奨 Top 5 レポート モーダル (#313) -->
     <div id="filtered-recommendation-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
         <div class="modal-content" style="max-width: 900px; width: 95%;">
-            <div class="modal-header">
+            <div class="modal-header draggable-header" id="filtered-rec-modal-header" title="ヘッダーをドラッグして移動できます">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="drag-handle-indicator" title="ドラッグしてモーダルを移動">⠿</span>
                     <h3 style="margin: 0; font-size: 1.25rem;">🤖 AI厳選！購入推奨銘柄 Top 5 レポート</h3>
                     <span id="filtered-rec-target-badge" class="badge bg-info text-dark" style="font-size: 0.75rem;">絞り込み銘柄から抽出</span>
                 </div>
-                <button type="button" id="btn-close-filtered-rec-modal" class="modal-close">&times;</button>
+                <button type="button" id="btn-close-filtered-rec-modal" class="modal-close" title="閉じる">&times;</button>
             </div>
             <div class="modal-body">
                 <div id="filtered-rec-summary-box" class="preset-filter-bar mb-3" style="font-size: 0.85rem; padding: 10px 14px;">

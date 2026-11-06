@@ -2456,29 +2456,36 @@ body.dark-mode .llm-card,
     max-width: 860px;
 }
 
-/* --- Issue #374: AI診断モーダル ドラッグ操作＆株価バッジスタイル --- */
-#llm-diagnosis-modal.modal-overlay {
+/* --- Issue #374 & #376: モーダル ドラッグ操作＆株価バッジスタイル共通化 --- */
+#llm-diagnosis-modal.modal-overlay,
+#filtered-recommendation-modal.modal-overlay {
     background-color: rgba(0, 0, 0, 0.45); /* 背景テーブルが透けて見えるよう適度に調整 */
 }
 
-#llm-diagnosis-modal .modal-header.llm-draggable-header {
+.modal-header.draggable-header,
+.modal-header.llm-draggable-header {
     cursor: grab;
     cursor: -webkit-grab;
     user-select: none;
     -webkit-user-select: none;
     touch-action: none;
+}
+
+#llm-diagnosis-modal .modal-header.llm-draggable-header {
     background: var(--card-background, #f8fafc);
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
 }
 
-#llm-diagnosis-modal .modal-header.llm-draggable-header:active,
-#llm-diagnosis-modal .modal-content.is-dragging .modal-header.llm-draggable-header {
+.modal-header.draggable-header:active,
+.modal-header.llm-draggable-header:active,
+.modal-content.is-dragging .modal-header.draggable-header,
+.modal-content.is-dragging .modal-header.llm-draggable-header {
     cursor: grabbing;
     cursor: -webkit-grabbing;
 }
 
-#llm-diagnosis-modal .modal-content.is-dragging {
+.modal-content.is-dragging {
     transition: none !important; /* ドラッグ中の追従遅延（ゴム紐感）を排除 */
     box-shadow: 0 15px 35px rgba(0, 0, 0, 0.35);
 }
@@ -5806,6 +5813,14 @@ body.dark-mode .ind-bar.ind-bar-loser,
     margin-top: 2px;
 }
 
+/* おすすめ5選カード: 現在株価バッジ (#376) */
+.rec-mini-badge.badge-current-price {
+    background-color: rgba(99, 102, 241, 0.12);
+    color: #4338ca;
+    border: 1px solid rgba(99, 102, 241, 0.28);
+    font-weight: 700;
+}
+
 /* おすすめ5選カード: 仕込み目安バッジ */
 .rec-mini-badge.badge-target-price {
     background-color: rgba(14, 165, 233, 0.12);
@@ -5860,6 +5875,14 @@ body.dark-mode .dip-tactical-note,
     background: rgba(245, 158, 11, 0.12);
     border-color: rgba(245, 158, 11, 0.4);
     color: #fde68a;
+}
+
+[data-theme="dark"] .rec-mini-badge.badge-current-price,
+body.dark-mode .rec-mini-badge.badge-current-price,
+.dark-mode .rec-mini-badge.badge-current-price {
+    background-color: rgba(129, 140, 248, 0.2);
+    color: #a5b4fc;
+    border-color: rgba(129, 140, 248, 0.4);
 }
 
 [data-theme="dark"] .rec-mini-badge.badge-target-price,

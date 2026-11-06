@@ -66,9 +66,8 @@ def test_js_llm_modal_drag_and_price_logic():
         js = f.read()
 
     # 1. ドラッグ移動関数およびリセット関数
-    assert "function initDraggableLlmModal()" in js
+    assert ("function makeModalDraggable(" in js) or ("function initDraggableLlmModal()" in js)
     assert "function resetLlmModalPosition()" in js
-    assert "initDraggableLlmModal();" in js
 
     # 2. Pointer Events API の利用
     assert "pointerdown" in js

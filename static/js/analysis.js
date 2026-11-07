@@ -2302,8 +2302,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // バックエンドキー名のフォールバック抽出
             const marketTrend = data.market_trend_summary || data.market_summary || '';
+            const downsideFactors = data.downside_factors || '';
+            const upsideFactors = data.upside_factors || '';
             const portfolioImpact = data.portfolio_impact_summary || data.impact_summary || '';
             const keyTakeaway = data.key_takeaway || data.takeaway || '';
+
+            // 確信度バッジ生成ヘルパー (#380)
+            const renderFactorConfidenceBadge = (confidence) => {
+                if (confidence === null || confidence === undefined || isNaN(confidence)) return '';
+                const score = parseInt(confidence, 10);
+                let badgeClass = 'is-caution';
+                let label = '参考';
+                if (score >= 80) {
+                    badgeClass = 'is-high';
+                    label = '高';
+                } else if (score >= 50) {
+                    badgeClass = 'is-mid';
+                    label = '標準';
+                }
+                return `<span class="ind-factor-confidence-badge ${badgeClass}" title="要因分析の客観的裏付け・確信度">🎯 確信度: ${score}%【${label}】</span>`;
+            };
+
+            const downsideBadgeHtml = renderFactorConfidenceBadge(data.downside_confidence);
+            const upsideBadgeHtml = renderFactorConfidenceBadge(data.upside_confidence);
 
             const cacheBadge = data.is_cached
                 ? `<span class="badge bg-secondary-subtle text-muted" style="font-size: 0.72rem;">⚡ キャッシュ (${data.diagnosed_at || ''})</span>`
@@ -2315,6 +2336,24 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="ai-section-title">🌐 マクロ市況とセクター動向</div>
                         <div class="ai-section-text">${escapeHtml(marketTrend)}</div>
                     </div>
+                    ${downsideFactors ? `
+                    <div class="industry-ai-section industry-ai-downside-box mb-2">
+                        <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
+                            <div class="ai-section-title text-danger mb-0">📉 主な下落・軟調要因</div>
+                            ${downsideBadgeHtml}
+                        </div>
+                        <div class="ai-section-text">${escapeHtml(downsideFactors)}</div>
+                    </div>
+                    ` : ''}
+                    ${upsideFactors ? `
+                    <div class="industry-ai-section industry-ai-upside-box mb-2">
+                        <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
+                            <div class="ai-section-title text-success mb-0">📈 主な上昇・牽引要因</div>
+                            ${upsideBadgeHtml}
+                        </div>
+                        <div class="ai-section-text">${escapeHtml(upsideFactors)}</div>
+                    </div>
+                    ` : ''}
                     <div class="industry-ai-section mb-2">
                         <div class="ai-section-title">📊 保有ポートフォリオへの影響</div>
                         <div class="ai-section-text">${escapeHtml(portfolioImpact)}</div>

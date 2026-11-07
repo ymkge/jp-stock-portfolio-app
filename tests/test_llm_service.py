@@ -732,6 +732,94 @@ def test_diagnose_industry_daily_changes_success_and_model_fallback(policy_manag
         assert "gemini-flash-latest" in call_url2
 
 
+def test_diagnose_industry_daily_changes_with_factors_and_confidence(policy_manager):
+    """案件 #380: 下落・上昇要因の具体化、政治・政策引き金指示、および確信度バッジの検証"""
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    mock_ai_response = json.dumps({
+        "market_trend_summary": "米大統領選後の政策懸念と為替変動によりセクター間で明暗が分かれました。",
+        "downside_factors": "大統領選を受けた民主党優勢の報道からAI半導体規制の強化懸念が浮上し、関連ハイテク株が急落しました。",
+        "downside_confidence": "85%",
+        "upside_factors": "円安恩恵を受ける輸送用機器や高利回り内需株に資金が流入しました。",
+        "upside_confidence": 0.80,
+        "portfolio_impact_summary": "半導体・化学株の下落がポートフォリオ全体を圧迫する一方、自動車株が下支えしました。",
+        "key_takeaway": "政策動向を見極めつつ押し目を慎重に探る局面。"
+    })
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [{"text": mock_ai_response}]
+                }
+            }
+        ]
+    }
+
+    dummy_industry_data = {
+        "gainers": [{"industry": "輸送用機器", "daily_change_jpy": 30000, "daily_change_rate": 1.5}],
+        "losers": [{"industry": "電気機器", "daily_change_jpy": -80000, "daily_change_rate": -3.2}],
+        "total_daily_change_jpy": -50000
+    }
+    dummy_top_losers = [
+        {"code": "6857", "name": "アドバンテスト", "industry": "電気機器", "daily_change_jpy": -50000, "change_percent": -4.5}
+    ]
+    dummy_top_gainers = [
+        {"code": "7203", "name": "トヨタ自動車", "industry": "輸送用機器", "daily_change_jpy": 30000, "change_percent": 1.5}
+    ]
+    dummy_news = [
+        {"title": "米大統領選受けAI半導体規制強化の観測、東京市場でも半導体株に売り", "source": "ロイター"}
+    ]
+
+    with patch("requests.post", return_value=mock_resp) as mock_post:
+        res = service.diagnose_industry_daily_changes(
+            daily_industry_data=dummy_industry_data,
+            top_losing_assets=dummy_top_losers,
+            top_gaining_assets=dummy_top_gainers,
+            news_headlines=dummy_news,
+            force=True
+        )
+
+        assert res.get("error") is False
+        assert "大統領選" in res.get("downside_factors")
+        assert res.get("downside_confidence") == 85  # "85%" -> 85
+        assert res.get("upside_confidence") == 80    # 0.80 -> 80
+        assert res.get("upside_factors") == "円安恩恵を受ける輸送用機器や高利回り内需株に資金が流入しました。"
+
+        # プロンプトにニュースやトリガー指示、個別銘柄情報が含まれているか検証
+        sent_payload = mock_post.call_args[1]["json"]
+        prompt_text = sent_payload["contents"][0]["parts"][0]["text"]
+        assert "米大統領選受けAI半導体規制強化の観測" in prompt_text
+        assert "アドバンテスト" in prompt_text
+        assert "トヨタ自動車" in prompt_text
+        assert "根本的な引き金" in prompt_text
+        assert "AI・先端半導体輸出規制" in prompt_text
+        assert "downside_confidence" in prompt_text
+        assert "upside_confidence" in prompt_text
+
+
+@pytest.mark.parametrize("input_val, expected", [
+    (85, 85),
+    ("85%", 85),
+    (" 90 ", 90),
+    (0.80, 80),
+    (0.65, 65),
+    (120, 100),       # 100上限クランプ
+    (-10, 0),         # 0下限クランプ
+    (0, 0),
+    (100, 100),
+    (None, None),     # NoneはNone
+    ("", None),       # 空文字はNone
+    ("invalid", None) # 不正文字列はNone
+])
+def test_normalize_confidence_robustness(input_val, expected):
+    """案件 #380: _normalize_confidence の型揺らぎ堅牢性テスト"""
+    service = LLMDiagnosisService()
+    assert service._normalize_confidence(input_val) == expected
+
+
 def test_calculate_downside_metrics_normal():
     """案件 #303: 有配・黒字銘柄における下値参考指標の正常系算出テスト"""
     service = LLMDiagnosisService()

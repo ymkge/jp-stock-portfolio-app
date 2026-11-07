@@ -1773,6 +1773,10 @@ def test_api_industry_daily_summary_endpoint():
 
     mock_ai_result = {
         "market_trend_summary": "本日は日経平均が反発し、輸出ハイテク株が主導しました。",
+        "downside_factors": "米大統領選後の規制懸念からAI半導体関連が一時軟調となりました。",
+        "downside_confidence": 80,
+        "upside_factors": "円安進行により輸送用機器など輸出関連株が牽引しました。",
+        "upside_confidence": 85,
         "portfolio_impact_summary": "保有ポートフォリオでは電気機器・機械セクターが好調に推移しました。",
         "key_takeaway": "円安基調の恩恵を受けるセクターのホールドを継続。",
         "is_cached": False,
@@ -1797,6 +1801,10 @@ def test_api_industry_daily_summary_endpoint():
         assert resp.status_code == 200
         data = resp.json()
         assert data["market_trend_summary"] == "本日は日経平均が反発し、輸出ハイテク株が主導しました。"
+        assert data["downside_factors"] == "米大統領選後の規制懸念からAI半導体関連が一時軟調となりました。"
+        assert data["downside_confidence"] == 80
+        assert data["upside_factors"] == "円安進行により輸送用機器など輸出関連株が牽引しました。"
+        assert data["upside_confidence"] == 85
         assert data["portfolio_impact_summary"] == "保有ポートフォリオでは電気機器・機械セクターが好調に推移しました。"
         assert data["key_takeaway"] == "円安基調の恩恵を受けるセクターのホールドを継続。"
         assert data["is_cached"] is False

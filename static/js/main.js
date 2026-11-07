@@ -3544,18 +3544,37 @@ document.addEventListener('DOMContentLoaded', () => {
                             <p class="mv-anomaly-text">${escapeHtml(ai.anomaly_insight || (data.anomaly_context ? `${data.anomaly_context.title}: ${data.anomaly_context.summary}（${data.anomaly_context.actions}）` : ''))}</p>
                         </div>
                     ` : ''}
-                    ${ai.portfolio_action_hint ? `
+                    ${ai.portfolio_action_hint ? (() => {
+                        let confidenceBadgeHtml = '';
+                        if (typeof ai.action_confidence === 'number' && !isNaN(ai.action_confidence)) {
+                            const conf = Math.max(0, Math.min(100, Math.round(ai.action_confidence)));
+                            let levelClass = 'is-caution';
+                            let levelLabel = '慎重';
+                            if (conf >= 80) {
+                                levelClass = 'is-high';
+                                levelLabel = '高';
+                            } else if (conf >= 65) {
+                                levelClass = 'is-mid';
+                                levelLabel = '標準';
+                            }
+                            confidenceBadgeHtml = `<span class="mv-action-confidence-badge ${levelClass}" title="相場環境・アノマリーを踏まえた立ち回り方針のAI確信度">🎯 確信度: ${conf}%【${levelLabel}】</span>`;
+                        }
+                        return `
                         <div class="mv-action-hint-box">
                             <div class="mv-action-hint-header">
                                 <div class="mv-action-hint-title-group">
                                     <span class="mv-action-hint-icon">💡</span>
                                     <h5 class="mv-action-hint-title">高配当ポートフォリオ運用への示唆・立ち回りヒント</h5>
                                 </div>
-                                <span class="mv-action-hint-badge">📌 投資アクション指針</span>
+                                <div class="mv-action-hint-badge-group">
+                                    ${confidenceBadgeHtml}
+                                    <span class="mv-action-hint-badge">📌 投資アクション指針</span>
+                                </div>
                             </div>
                             <p class="mv-action-hint-text">${escapeHtml(ai.portfolio_action_hint)}</p>
                         </div>
-                    ` : ''}
+                        `;
+                    })() : ''}
                 </div>
             `;
         } else {

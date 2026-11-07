@@ -3313,6 +3313,75 @@ async def get_industry_daily_summary(req: IndustryDailySummaryRequest):
 
         daily_industry_data = portfolio_manager.calculate_daily_industry_changes(raw_holdings_list, exchange_rates)
 
+        # 銘柄ごとの当日資産増減額の集約・牽引＆軟調銘柄抽出 (Issue #380)
+        stock_change_map = {}
+        for item in raw_holdings_list:
+            code = item.get("code") or item.get("name") or "unknown"
+            qty = float(item.get("quantity") or 0.0)
+            if qty <= 0:
+                continue
+            change_raw = item.get("change")
+            change_val = None
+            if isinstance(change_raw, (int, float)):
+                change_val = float(change_raw)
+            elif isinstance(change_raw, str):
+                c_str = change_raw.replace(',', '').replace('+', '').replace('円', '').replace('$', '').strip()
+                if c_str and c_str not in ['N/A', '---', '']:
+                    try:
+                        change_val = float(c_str)
+                    except ValueError:
+                        pass
+            if change_val is None:
+                continue
+
+            curr = item.get("currency", "JPY")
+            rate = exchange_rates.get(curr, 1.0)
+            asset_type = item.get("asset_type", "jp_stock")
+            if asset_type == "investment_trust":
+                chg_per_unit = (change_val / 10000.0) * rate
+            else:
+                chg_per_unit = change_val * rate
+            item_chg_jpy = chg_per_unit * qty
+
+            chg_pct = item.get("change_percent")
+            try:
+                chg_pct_val = float(str(chg_pct).replace('%', '').replace('+', '').strip()) if chg_pct else 0.0
+            except ValueError:
+                chg_pct_val = 0.0
+
+            if code not in stock_change_map:
+                stock_change_map[code] = {
+                    "code": item.get("code", ""),
+                    "name": item.get("name", code),
+                    "industry": item.get("industry", "その他"),
+                    "daily_change_jpy": 0.0,
+                    "change_percent": chg_pct_val
+                }
+            stock_change_map[code]["daily_change_jpy"] += item_chg_jpy
+
+        stocks_list = list(stock_change_map.values())
+        top_losing_assets = sorted(
+            [s for s in stocks_list if s["daily_change_jpy"] < 0],
+            key=lambda x: x["daily_change_jpy"]
+        )[:5]
+        top_gaining_assets = sorted(
+            [s for s in stocks_list if s["daily_change_jpy"] > 0],
+            key=lambda x: x["daily_change_jpy"],
+            reverse=True
+        )[:5]
+
+        # 最新の市況ニュースヘッドライン取得 (Issue #380)
+        news_headlines = []
+        try:
+            news_headlines = await asyncio.to_thread(
+                scraper.fetch_market_news_headlines,
+                limit=5,
+                force=req.force
+            )
+        except Exception as e:
+            logger.warning(f"Failed to fetch market news headlines for industry summary: {e}")
+            news_headlines = []
+
         # 市場サマリーの取得 (metadata.market_indices から抽出)
         market_summary = None
         if metadata and "market_indices" in metadata:
@@ -3330,6 +3399,9 @@ async def get_industry_daily_summary(req: IndustryDailySummaryRequest):
         res = llm_service_instance.diagnose_industry_daily_changes(
             daily_industry_data=daily_industry_data,
             market_summary=market_summary,
+            top_losing_assets=top_losing_assets,
+            top_gaining_assets=top_gaining_assets,
+            news_headlines=news_headlines,
             force=req.force
         )
         return res

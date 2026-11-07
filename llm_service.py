@@ -1531,16 +1531,40 @@ fit_levelの基準:
             logger.error(f"Failed to generate filtered recommendations LLM response: {e}")
             return {"error": True, "message": f"AI診断の実行中にエラーが発生しました: {e}"}
 
+    def _normalize_confidence(self, val: Any) -> Optional[int]:
+        """確信度（confidence）の型揺らぎ（文字列、小数、null等）を安全に0〜100の整数またはNoneに変換 (#380)"""
+        if val is None or val == "":
+            return None
+        try:
+            if isinstance(val, (int, float)):
+                num = float(val)
+            else:
+                cleaned = str(val).replace("%", "").strip()
+                m = re.search(r"[-+]?\d*\.?\d+", cleaned)
+                num = float(m.group(0)) if m else None
+
+            if num is None:
+                return None
+            # 0.0〜1.0 の小数の場合はパーセント換算 (例: 0.85 -> 85)
+            if 0.0 < num <= 1.0:
+                num = num * 100.0
+            return max(0, min(100, int(round(num))))
+        except (ValueError, TypeError, AttributeError):
+            return None
+
     def diagnose_industry_daily_changes(
         self,
         daily_industry_data: Dict[str, Any],
         market_summary: Optional[Dict[str, Any]] = None,
+        top_losing_assets: Optional[List[Dict[str, Any]]] = None,
+        top_gaining_assets: Optional[List[Dict[str, Any]]] = None,
+        news_headlines: Optional[List[Dict[str, Any]]] = None,
         force: bool = False,
         ttl_seconds: int = DEFAULT_TTL_SECONDS
     ) -> Dict[str, Any]:
         """
         保有銘柄の本日の業種別増減データをもとに、
-        Gemini AI によって市況要因とポートフォリオへの影響をまとめた短評レポートを生成する (#317)。
+        Gemini AI によって市況要因とポートフォリオへの影響をまとめた短評レポートを生成する (#317, #380)。
         """
         api_key = self.policy_manager.get_effective_api_key()
         if not api_key:
@@ -1559,7 +1583,7 @@ fit_levelの基準:
             selected_model = config.get("selected_model", "gemini-flash-latest")
         if selected_model not in ["gemini-flash-latest", "gemini-flash-lite-latest"]:
             selected_model = "gemini-flash-latest"
-        cache_key = f"industry_daily_{today_str}_{selected_model}"
+        cache_key = f"industry_daily_v2_{today_str}_{selected_model}"
 
         # キャッシュの確認
         if not force:
@@ -1582,6 +1606,27 @@ fit_levelの基準:
         gainers_text = "、".join([f"{g['industry']} (+{g['daily_change_jpy']:,.0f}円, {g['daily_change_rate']:+.2f}%)" for g in gainers]) if gainers else "なし"
         losers_text = "、".join([f"{l['industry']} ({l['daily_change_jpy']:,.0f}円, {l['daily_change_rate']:+.2f}%)" for l in losers]) if losers else "なし"
 
+        def _format_asset_item(a: Dict[str, Any]) -> str:
+            name = a.get("name") or a.get("code") or "銘柄"
+            code = a.get("code", "")
+            ind = a.get("industry", "")
+            chg_jpy = float(a.get("daily_change_jpy") or 0.0)
+            chg_rate = float(a.get("change_percent") or a.get("daily_change_rate") or 0.0)
+            code_str = f"({code}, {ind})" if code else f"({ind})"
+            sign = "+" if chg_jpy > 0 else ""
+            return f"- {name} {code_str}: {sign}{chg_jpy:,.0f}円 ({chg_rate:+.2f}%)"
+
+        top_gainers_assets_text = "\n".join([_format_asset_item(a) for a in (top_gaining_assets or [])[:5]]) if top_gaining_assets else "（特筆する急騰銘柄なし）"
+        top_losers_assets_text = "\n".join([_format_asset_item(a) for a in (top_losing_assets or [])[:5]]) if top_losing_assets else "（特筆する急落銘柄なし）"
+
+        news_lines = []
+        for n in (news_headlines or [])[:5]:
+            title = n.get("title", "") if isinstance(n, dict) else str(n)
+            src = n.get("source", "") if isinstance(n, dict) else ""
+            if title:
+                news_lines.append(f"- {title}" + (f" ({src})" if src else ""))
+        news_headlines_text = "\n".join(news_lines) if news_lines else "（当日の特筆ニュースなし）"
+
         market_info_text = ""
         if market_summary and isinstance(market_summary, dict):
             indices = market_summary.get("indices", {})
@@ -1595,27 +1640,47 @@ fit_levelの基準:
             if parts:
                 market_info_text = f"【本日の市場参考データ】: " + " / ".join(parts)
 
-        prompt = f"""あなたは日本株に精通したプロのポートフォリオアナリストです。
-ユーザーが保有している銘柄群の本日の業種別資産増減データに基づき、本日のセクター市況の背景と、保有ポートフォリオへの影響を簡潔かつ的確に分析した短評レポートを作成してください。
+        prompt = f"""あなたは日本株およびグローバルマクロに精通したプロのポートフォリオアナリストです。
+ユーザーが保有している銘柄群の本日の業種別資産増減データ、牽引・軟調銘柄、および最新の市況ニュースに基づき、
+株価変動の「根本的な引き金（政治・選挙、AI半導体規制などの政策動向、金利・為替、決算等）」を具体的に捉えた短評レポートを作成してください。
 
 {market_info_text}
+
+【主要市況ニュースヘッドライン】
+{news_headlines_text}
 
 【ユーザー保有ポートフォリオの本日の業種別変動データ】
 - 本日の保有資産全体の前日比増減額: {tot_sign}{tot_change:,.0f}円
 - 上昇を牽引した業種 TOP5: {gainers_text}
 - 軟調・下落した業種 TOP5: {losers_text}
 
+【ポートフォリオ内の主な騰落銘柄】
+[上昇を牽引した主な保有銘柄 TOP5]
+{top_gainers_assets_text}
+
+[軟調・下落した主な保有銘柄 TOP5]
+{top_losers_assets_text}
+
 【分析・要約の指示】
-1. なぜ本日はこれらの業種が上昇・下落したのか（マクロ経済、為替、金利、市況テーマ、セクターローテーション等の客観的背景）。
-2. その業種動向がユーザーの保有ポートフォリオ全体にどのような影響（プラス要因・マイナス要因）を与えたのか。
-3. 長文にせず、簡潔で視認性の高い3〜4行程度の読みやすい日本語でまとめてください。
+1. なぜ本日はこれらの業種・銘柄が動いたのか、表面的な値動きだけでなく「根本的な引き金（トリガー）」を具体的に明記してください。
+   - 政治・選挙動向（大統領選、政権人事、議会情勢など）
+   - 政策・規制（AI・先端半導体輸出規制、関税措置、対中投資規制、経済対策など）
+   - マクロ経済材料（日米金利・日銀/FRB動向、急激な為替変動、CPI等指標）
+   - 個別企業・業界材料（決算発表、業績修正、業界市況）
+2. 主な下落・軟調要因（downside_factors）および上昇・牽引要因（upside_factors）をそれぞれ独立して解説してください（該当がない場合は空文字）。
+3. 各要因分析について、報道・客観材料との結びつきの強さや因果関係の明確さに応じた確信度（0〜100の整数値）を評価してください。
+4. 長文にせず、簡潔で視認性の高い読みやすい日本語でまとめてください。
 
 【出力形式】
 必ず以下のキーを持つ有効なJSONオブジェクトのみを返してください。マークダウンの ```json ... ``` ブロックで囲んで構いません。
 {{
   "market_trend_summary": "本日のセクター・市況動向のポイント（1行・50字程度）",
-  "portfolio_impact_summary": "保有ポートフォリオへの具体的な影響と要因の解説（2〜3行・150字程度）",
-  "key_takeaway": "本日の着眼点・一言まとめ（例: 半導体・電機が牽引し円高圧力を吸収 / 内需ディフェンシブが下支え等、30字以内）"
+  "downside_factors": "主な下落・軟調要因と政治・政策・マクロ等の引き金解説（2〜3行・120字程度。該当なしの場合は空文字）",
+  "downside_confidence": 80,
+  "upside_factors": "主な上昇・牽引要因と好材料・テーマ等の引き金解説（2〜3行・120字程度。該当なしの場合は空文字）",
+  "upside_confidence": 85,
+  "portfolio_impact_summary": "保有ポートフォリオ全体への具体的な影響とセクター偏りの解説（2〜3行・120字程度）",
+  "key_takeaway": "本日の着眼点・一言まとめ（30字以内）"
 }}
 """
 
@@ -1638,10 +1703,19 @@ fit_levelの基準:
             json_str = json_match.group(1) if json_match else raw_text
             parsed = json.loads(json_str)
 
+            downside_factors = str(parsed.get("downside_factors", "")).strip()
+            downside_conf = self._normalize_confidence(parsed.get("downside_confidence"))
+            upside_factors = str(parsed.get("upside_factors", "")).strip()
+            upside_conf = self._normalize_confidence(parsed.get("upside_confidence"))
+
             diagnosed_at_str = time.strftime("%H:%M", time.localtime(now))
             result = {
                 "error": False,
                 "market_trend_summary": parsed.get("market_trend_summary", ""),
+                "downside_factors": downside_factors,
+                "downside_confidence": downside_conf,
+                "upside_factors": upside_factors,
+                "upside_confidence": upside_conf,
                 "portfolio_impact_summary": parsed.get("portfolio_impact_summary", ""),
                 "key_takeaway": parsed.get("key_takeaway", ""),
                 "diagnosed_at": diagnosed_at_str,

@@ -173,7 +173,8 @@ def test_llm_diagnose_market_volatility_success_and_cache():
         "equity_factors": "米国市場でのハイテク株高と円安進行を好感し、輸出関連株を中心に買い優勢となりました。",
         "fx_factors": "米経済指標の堅調さを背景に日米金利差拡大が意識され、ドル買い・円売りが進行しました。",
         "anomaly_insight": "10月下旬のアノマリー通り大底形成後の反転基調。年末ラリーを意識した仕込み好機です。",
-        "portfolio_action_hint": "急騰局面での高値掴みを避け、出遅れている内需ディフェンシブ高配当株の押し目を待つのが有効です。"
+        "portfolio_action_hint": "急騰局面での高値掴みを避け、出遅れている内需ディフェンシブ高配当株の押し目を待つのが有効です。",
+        "action_confidence": 85
     }
     mock_post_resp = MagicMock()
     mock_post_resp.status_code = 200
@@ -203,19 +204,22 @@ def test_llm_diagnose_market_volatility_success_and_cache():
         assert res1["error"] is False
         assert res1["headline_summary"] == mock_ai_json["headline_summary"]
         assert res1["anomaly_insight"] == mock_ai_json["anomaly_insight"]
+        assert res1["action_confidence"] == 85
         assert len(res1["key_drivers"]) == 3
         assert res1["is_cached"] is False
         assert mock_post.call_count == 1
-        # プロンプトにアノマリー情報が含まれていること
+        # プロンプトにアノマリー情報および確信度指示が含まれていること
         sent_payload = mock_post.call_args[1]["json"]
         prompt_text = sent_payload["contents"][0]["parts"][0]["text"]
         assert "大底形成 (October Bottom)" in prompt_text
         assert "10月下旬" in prompt_text
+        assert "action_confidence" in prompt_text
 
         # 2回目はキャッシュから返却されること
         res2 = service.diagnose_market_volatility_factors(indices, headlines, sectors, force=False)
         assert res2["is_cached"] is True
         assert res2["anomaly_insight"] == mock_ai_json["anomaly_insight"]
+        assert res2["action_confidence"] == 85
         assert mock_post.call_count == 1
 
         # clear_cache() でクリアされること
@@ -248,6 +252,7 @@ def test_api_market_volatility_summary_endpoint():
         "equity_factors": "外需大型株に買いが集まりました。",
         "fx_factors": "米金利上昇によりドル高・円安が進行しました。",
         "portfolio_action_hint": "急騰銘柄の追いかけ買いは控え、高配当内需株の押し目を狙いましょう。",
+        "action_confidence": 85,
         "model_used": "gemini-flash-latest",
         "diagnosed_at": "2026-10-23 15:35:00",
         "is_cached": False,
@@ -275,6 +280,7 @@ def test_api_market_volatility_summary_endpoint():
         assert data["sector_summary"]["top_losers"][0]["industry"] == "情報・通信業"
         assert data["news_headlines"] == fake_news
         assert data["ai_analysis"]["headline_summary"] == fake_ai["headline_summary"]
+        assert data["ai_analysis"]["action_confidence"] == 85
         assert "anomaly_context" in data
         assert "title" in data["anomaly_context"]
         assert "tags" in data["anomaly_context"]
@@ -392,3 +398,70 @@ def test_frontend_market_volatility_ui_elements():
     assert '[data-theme="dark"] .mv-index-mini-card' in css_content
     assert '[data-theme="dark"] .mv-section-title' in css_content
     assert '[data-theme="dark"] .mv-news-source' in css_content
+
+    # Issue #378: 立ち回り確信度バッジのCSS & JS整合性検証
+    assert ".mv-action-hint-badge-group" in css_content
+    assert ".mv-action-confidence-badge" in css_content
+    assert ".mv-action-confidence-badge.is-high" in css_content
+    assert ".mv-action-confidence-badge.is-mid" in css_content
+    assert ".mv-action-confidence-badge.is-caution" in css_content
+    assert '[data-theme="dark"] .mv-action-confidence-badge.is-high' in css_content
+    assert '[data-theme="dark"] .mv-action-confidence-badge.is-mid' in css_content
+    assert '[data-theme="dark"] .mv-action-confidence-badge.is-caution' in css_content
+
+    assert "mv-action-confidence-badge" in js_content
+    assert "mv-action-hint-badge-group" in js_content
+    assert "ai.action_confidence" in js_content
+    assert "🎯 確信度:" in js_content
+
+
+# ==========================================
+# 7. 立ち回りヒント確信度正規化 (Issue #378) のテスト
+# ==========================================
+@pytest.mark.parametrize("raw_input, expected", [
+    (85, 85),
+    ("85%", 85),
+    (" 92 ", 92),
+    (0.90, 90),
+    (0.65, 65),
+    (120, 100),       # 100上限クランプ
+    (-15, 0),         # 0下限クランプ
+    (0, 0),
+    (100, 100),
+    (None, None),     # NoneはNone
+    ("invalid", None),# 解析不可はNone
+    ("", None),       # 空文字列はNone
+])
+def test_market_volatility_action_confidence_normalization(raw_input, expected):
+    """LLMからの出力の型揺らぎ（文字列、パーセント表記、小数、範囲外）に対する正規化堅牢性テスト"""
+    service = LLMDiagnosisService()
+    mock_ai_json = {
+        "headline_summary": "テストサマリー",
+        "key_drivers": ["テスト要因"],
+        "equity_factors": "株式要因",
+        "fx_factors": "為替要因",
+        "anomaly_insight": "アノマリー要因",
+        "portfolio_action_hint": "高配当株は押し目買いチャンスです。",
+        "action_confidence": raw_input
+    }
+    mock_post_resp = MagicMock()
+    mock_post_resp.status_code = 200
+    mock_post_resp.json.return_value = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [{"text": json.dumps(mock_ai_json, ensure_ascii=False)}]
+                }
+            }
+        ]
+    }
+
+    with patch.object(service.policy_manager, "get_effective_api_key", return_value="dummy-key"), \
+         patch.object(service.policy_manager, "load_config", return_value={"selected_model": "gemini-flash-latest"}), \
+         patch("llm_service.requests.post", return_value=mock_post_resp):
+
+        res = service.diagnose_market_volatility_factors(
+            market_indices=[], news_headlines=[], sector_summary={}, force=True
+        )
+        assert res["error"] is False
+        assert res["action_confidence"] == expected

@@ -1801,7 +1801,8 @@ fit_levelの基準:
   "equity_factors": "【日経平均・TOPIXの変動要因】なぜ株式市場が上昇/下落/推移しているのか（米株・半導体・日銀政策・企業決算・セクター動向等を120〜180文字程度で解説）",
   "fx_factors": "【為替（ドル円）の変動要因】なぜドル円が動いているのか、および輸出株・内需株への波及効果（日米金利差・経済指標・要人発言等を100〜150文字程度で解説）",
   "anomaly_insight": "【アノマリー・日柄の視点】現在の時期特有の需給（月次アノマリー、日柄、月末月初・SQ等）が本日の相場・為替に与えている影響や、数日〜数週間の先行きで意識すべき季節的な注意点を80〜120文字程度で解説",
-  "portfolio_action_hint": "【高配当株投資家への示唆】現在の相場環境において長期・高配当投資家が意識すべき立ち回り（押し目買い好機・過熱警戒・静観等を80〜120文字程度で解説）"
+  "portfolio_action_hint": "【高配当株投資家への示唆】現在の相場環境において長期・高配当投資家が意識すべき立ち回り（押し目買い好機・過熱警戒・静観等を80〜120文字程度で解説）",
+  "action_confidence": この立ち回りヒントに対するAIアナリスト自身の【確信度・自信度】(0〜100の整数値のみ。%記号は付けない。相場材料の明確さ、需給やアノマリーの裏付けの強さに基づいて算出。通常70〜95程度)
 }}
 """
 
@@ -1829,6 +1830,26 @@ fit_levelの基準:
             if not isinstance(key_drivers, list):
                 key_drivers = []
 
+            # action_confidence のパースと正規化 (Issue #378)
+            action_confidence = None
+            raw_conf = parsed.get("action_confidence")
+            if raw_conf is not None:
+                try:
+                    if isinstance(raw_conf, (int, float)):
+                        val = float(raw_conf)
+                    else:
+                        cleaned = str(raw_conf).replace("%", "").strip()
+                        m = re.search(r"[-+]?\d*\.?\d+", cleaned)
+                        val = float(m.group(0)) if m else None
+
+                    if val is not None:
+                        # 0.0〜1.0 の小数の場合はパーセント換算 (例: 0.85 -> 85)
+                        if 0.0 <= val <= 1.0:
+                            val = val * 100
+                        action_confidence = int(round(max(0.0, min(100.0, val))))
+                except (ValueError, TypeError, AttributeError):
+                    action_confidence = None
+
             diagnosed_at_str = time.strftime("%H:%M", time.localtime(now))
             result = {
                 "error": False,
@@ -1838,6 +1859,7 @@ fit_levelの基準:
                 "fx_factors": str(parsed.get("fx_factors", "")).strip(),
                 "anomaly_insight": str(parsed.get("anomaly_insight", "")).strip(),
                 "portfolio_action_hint": str(parsed.get("portfolio_action_hint", "")).strip(),
+                "action_confidence": action_confidence,
                 "model_used": api_res.get("model_used", selected_model),
                 "diagnosed_at": diagnosed_at_str,
                 "is_cached": False

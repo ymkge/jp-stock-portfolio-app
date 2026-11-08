@@ -544,6 +544,95 @@ class LLMDiagnosisService:
         metrics["summary_text"] = "\n".join(text_lines)
         return metrics
 
+    def _calculate_target_buy_price_hint(self, stock_data: Dict[str, Any]) -> str:
+        """
+        案件 #382: AIおすすめ5選等で提示する仕込み目標株価（下値メド）を安全・適正に算出する。
+        - 現在利回りに応じて目標利回りを動的に設定（現在利回りがすでに4.5%以上の銘柄で現在値超過を起こさない）
+        - 物理的上限絶対ルール: target_price <= price（いかなる場合も現在株価以下にクランプ）
+        - 現在値近傍または同値の場合は「現在値水準 (約○円 / 利回り○.○%)」と明記
+        """
+        price_num = 0.0
+        raw_price = stock_data.get("price")
+        if raw_price not in [None, "", "N/A", "--"]:
+            try:
+                price_num = float(str(raw_price).replace(',', ''))
+            except (ValueError, TypeError):
+                price_num = 0.0
+
+        if price_num <= 0:
+            return "現在値近辺で打診買い"
+
+        raw_yield = stock_data.get("yield")
+        if raw_yield in [None, "", "N/A", "--"]:
+            raw_yield = stock_data.get("dividend_yield")
+        yield_pct = 0.0
+        if raw_yield not in [None, "", "N/A", "--"]:
+            try:
+                yield_pct = float(str(raw_yield).replace('%', '').replace(',', ''))
+            except (ValueError, TypeError):
+                yield_pct = 0.0
+
+        raw_dps = stock_data.get("dps") or stock_data.get("dividend")
+        dps_val = None
+        if raw_dps not in [None, "", "N/A", "--"]:
+            try:
+                dps_val = float(str(raw_dps).replace(',', ''))
+            except (ValueError, TypeError):
+                dps_val = None
+
+        if (dps_val is None or dps_val <= 0) and price_num > 0 and yield_pct > 0:
+            dps_val = round(price_num * (yield_pct / 100.0), 2)
+
+        dm = self._calculate_downside_metrics(stock_data)
+
+        # 配当データが存在する場合の動的目標算出
+        if dps_val and dps_val > 0:
+            if yield_pct < 3.5:
+                # 低利回り銘柄: 利回り4.0%目標、またはBPS水準
+                target_yield = 0.040
+                calc_p = dps_val / target_yield
+                bps = dm.get("bps")
+                if bps and 0 < bps < price_num:
+                    calc_p = min(calc_p, bps)
+                final_p = min(calc_p, price_num)
+                if final_p >= price_num * 0.995:
+                    return f"現在値水準: 約{int(round(price_num)):,}円 (利回り{yield_pct:.2f}%)"
+                return f"約{int(round(final_p)):,}円 (利回り4.0%水準)"
+
+            elif yield_pct < 4.5:
+                # 標準〜良好利回り: 利回り4.5%目標
+                target_yield = 0.045
+                calc_p = dps_val / target_yield
+                final_p = min(calc_p, price_num)
+                if final_p >= price_num * 0.995:
+                    return f"現在値水準: 約{int(round(price_num)):,}円 (利回り{yield_pct:.2f}%)"
+                return f"約{int(round(final_p)):,}円 (利回り4.5%)"
+
+            elif yield_pct < 5.0:
+                # 4.5%〜5.0%の高利回り銘柄 (例: VTホールディングス 4.94%): 利回り5.0%目標
+                target_yield = 0.050
+                calc_p = dps_val / target_yield
+                final_p = min(calc_p, price_num)
+                if final_p >= price_num * 0.995:
+                    return f"現在値水準: 約{int(round(price_num)):,}円 (利回り{yield_pct:.2f}%)"
+                return f"約{int(round(final_p)):,}円 (利回り5.0%)"
+
+            else:
+                # 5.0%以上の超高利回り銘柄 (例: UBE 5.10%): 利回り5.5%目標または現在値水準
+                target_yield = 0.055
+                calc_p = dps_val / target_yield
+                final_p = min(calc_p, price_num)
+                if final_p >= price_num * 0.995:
+                    return f"現在値水準: 約{int(round(price_num)):,}円 (利回り{yield_pct:.2f}%)"
+                return f"約{int(round(final_p)):,}円 (利回り5.5%)"
+
+        # 配当逆算ができない場合: BPS水準または打診買い
+        bps = dm.get("bps")
+        if bps and 0 < bps < price_num:
+            return f"約{int(round(bps)):,}円 (PBR1.0倍)"
+
+        return f"現在値水準: 約{int(round(price_num)):,}円で打診買い"
+
     def _build_prompt(self, stock_data: Dict[str, Any], portfolio_summary: Optional[Dict[str, Any]], policy_prompt: str) -> str:
         code = stock_data.get("code", "")
         name = stock_data.get("name", "")
@@ -1306,14 +1395,8 @@ fit_levelの基準:
             elif a.get("is_diamond"):
                 sig_label = "💎ダイヤモンド"
 
-            # 下値メド（利回り4.5%株価またはBPS）の事前算出
-            down_metrics = self._calculate_downside_metrics(a)
-            if down_metrics.get("yield_45_price"):
-                down_str = f"仕込:約{int(down_metrics['yield_45_price']):,}円"
-            elif down_metrics.get("bps"):
-                down_str = f"仕込:約{int(down_metrics['bps']):,}円"
-            else:
-                down_str = "仕込:-"
+            # 下値メド・仕込み目安（利回り帯別動的算出・現在値上限クランプ、Issue #382）
+            down_str = f"仕込:{self._calculate_target_buy_price_hint(a)}"
 
             line = f"{code}|{name}|{ind}|{price}|{per}|{pbr}|{roe}|{div}|{payout}|{doe}|{consec_str}|{div_contrib_str}|{qty_str}|{score}|{sig_label}|{down_str}"
             lines.append(line)
@@ -1354,9 +1437,9 @@ fit_levelの基準:
         policy_prompt = config.get("policy_prompt", "")
         prompt_hash = self._get_prompt_hash(policy_prompt)
 
-        # キャッシュキー作成
+        # キャッシュキー作成 (v2: Issue #382 仕込み株価現在値逆転解消)
         codes_str = "_".join(sorted([str(a.get("code", "")) for a in filtered_assets]))
-        cache_key_raw = f"filtered_rec_{codes_str}_{preset_name or ''}"
+        cache_key_raw = f"filtered_rec_v2_{codes_str}_{preset_name or ''}"
         cache_key = hashlib.sha256(cache_key_raw.encode('utf-8')).hexdigest()[:24]
 
         now = time.time()
@@ -1368,9 +1451,27 @@ fit_levelの基準:
                     same_model = (cached_entry["model"] == selected_model)
                     same_hash = (cached_entry["prompt_hash"] == prompt_hash)
                     if not is_expired and same_model and same_hash:
-                        res = dict(cached_entry["result"])
+                        res = copy.deepcopy(cached_entry["result"])
                         res["is_cached"] = True
                         res["diagnosed_at"] = cached_entry["diagnosed_at_str"]
+                        # キャッシュ返却時のサニタイズ多層防御 (Issue #382)
+                        for r in res.get("recommendations", []):
+                            code_str = str(r.get("code", ""))
+                            matched = next((a for a in filtered_assets if str(a.get("code")) == code_str), None)
+                            if matched:
+                                raw_p = matched.get("price")
+                                try:
+                                    matched_price = float(str(raw_p).replace(',', '')) if raw_p not in [None, "", "N/A", "--"] else 0.0
+                                except (ValueError, TypeError):
+                                    matched_price = 0.0
+                                cur_t = str(r.get("target_buy_price", ""))
+                                m = re.search(r'約?([\d,]+)円', cur_t)
+                                if m and matched_price > 0:
+                                    try:
+                                        if float(m.group(1).replace(',', '')) > matched_price:
+                                            r["target_buy_price"] = self._calculate_target_buy_price_hint(matched)
+                                    except ValueError:
+                                        pass
                         return res
 
         # パイプ区切り形式に圧縮
@@ -1435,7 +1536,7 @@ fit_levelの基準:
       "name": "銘柄名",
       "industry": "業種",
       "dividend_yield_str": "予想利回り (例: 4.2%)",
-      "target_buy_price": "仕込み目標株価 (例: 約2,450円 / 利回り4.5%水準)",
+      "target_buy_price": "仕込み目標株価 (例: 約2,450円 / 利回り4.5%水準、または 現在値水準: 約486円 / 利回り4.9%水準)。※最重要: 仕込み目標株価は押し目買い・下値拾いを前提とするため、絶対に現在株価を上回ってはなりません（必ず現在株価以下とすること）。",
       "investment_cap_str": "購入上限目安 (例: 最大約15万円 (約3%) または 約5万〜10万円 (約1〜2%))",
       "shield_summary": "還元の盾の要約 (例: DOE 4.8% または 連続増配11年 または 累進配当)",
       "role_badge": "枠組み (例: 【コア枠】新規分散 または 【高利回りブースター】 または 【コア枠】買い増し)",
@@ -1476,19 +1577,42 @@ fit_levelの基準:
             json_str = json_match.group(1) if json_match else raw_text
             parsed_res = json.loads(json_str)
 
-            # target_buy_price および investment_cap_str の安全なフォールバック補完
+            # target_buy_price および investment_cap_str の安全なフォールバック補完とサニタイズ (Issue #382)
             recs = parsed_res.get("recommendations", [])
             for r in recs:
-                if not r.get("target_buy_price"):
-                    matched = next((a for a in filtered_assets if str(a.get("code")) == str(r.get("code"))), None)
+                code_str = str(r.get("code", ""))
+                matched = next((a for a in filtered_assets if str(a.get("code")) == code_str), None)
+
+                # target_buy_price のサニタイズ（現在値超過の物理遮断）とフォールバック
+                cur_target = str(r.get("target_buy_price", "")).strip()
+                need_sanitize = False
+                matched_price = 0.0
+                if matched:
+                    raw_p = matched.get("price")
+                    try:
+                        matched_price = float(str(raw_p).replace(',', '')) if raw_p not in [None, "", "N/A", "--"] else 0.0
+                    except (ValueError, TypeError):
+                        matched_price = 0.0
+
+                if not cur_target:
+                    need_sanitize = True
+                elif matched_price > 0:
+                    # 数値抽出 (例: "約533円", "仕込み目標株価: 約3,556円")
+                    m = re.search(r'約?([\d,]+)円', cur_target)
+                    if m:
+                        try:
+                            parsed_val = float(m.group(1).replace(',', ''))
+                            if parsed_val > matched_price:
+                                logger.warning(
+                                    f"Sanitizing target_buy_price for {code_str}: '{cur_target}' ({parsed_val}円) exceeds current price ({matched_price}円)"
+                                )
+                                need_sanitize = True
+                        except ValueError:
+                            pass
+
+                if need_sanitize:
                     if matched:
-                        dm = self._calculate_downside_metrics(matched)
-                        if dm.get("yield_45_price"):
-                            r["target_buy_price"] = f"約{int(dm['yield_45_price']):,}円 (利回り4.5%)"
-                        elif dm.get("bps"):
-                            r["target_buy_price"] = f"約{int(dm['bps']):,}円 (PBR1.0倍)"
-                        else:
-                            r["target_buy_price"] = "現在値近辺で打診買い"
+                        r["target_buy_price"] = self._calculate_target_buy_price_hint(matched)
                     else:
                         r["target_buy_price"] = "現在値近辺で打診買い"
 

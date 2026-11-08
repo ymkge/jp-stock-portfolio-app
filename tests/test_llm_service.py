@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import re
 import pytest
 from unittest.mock import MagicMock, patch
 from llm_service import LLMDiagnosisService
@@ -1149,6 +1150,155 @@ def test_filtered_recommendations_cap_str_and_fallback(mock_post):
     assert recs[0]["investment_cap_str"] == "最大約15万円 (総資産の約3%)"
     # 欠落していた2件目はサテライト枠として上限約100,000円（約1〜2%）にフォールバック補完される
     assert "上限: 約100,000円 (約1〜2%)" in recs[1]["investment_cap_str"]
+
+
+# ==============================================================================
+# Issue #382: AIおすすめ5選における仕込み目標株価の現在値逆転解消テスト
+# ==============================================================================
+
+def test_calculate_target_buy_price_hint_tiers():
+    """案件 #382: 利回り帯別の仕込み目標株価算出と、いかなる場合も現在値以下となることの検証"""
+    service = LLMDiagnosisService()
+
+    # 1. 低利回り銘柄 (利回り2.0%, 株価2,000円, DPS=40円)
+    stock_low = {"code": "7011", "name": "低利回り株", "price": 2000, "yield": 2.0, "dps": 40}
+    hint_low = service._calculate_target_buy_price_hint(stock_low)
+    assert "約1,000円" in hint_low or "利回り4.0%" in hint_low
+    # 数値抽出して現在値以下であることを検証
+    m = re.search(r'約?([\d,]+)円', hint_low)
+    assert m and float(m.group(1).replace(',', '')) <= 2000
+
+    # 2. 標準利回り銘柄 (利回り4.1%, 株価1,000円, DPS=41円)
+    stock_mid = {"code": "8593", "name": "標準高配当株", "price": 1000, "yield": 4.1, "dps": 41}
+    hint_mid = service._calculate_target_buy_price_hint(stock_mid)
+    assert "約911円" in hint_mid
+    assert "利回り4.5%" in hint_mid
+    m = re.search(r'約?([\d,]+)円', hint_mid)
+    assert m and float(m.group(1).replace(',', '')) <= 1000
+
+    # 3. 高利回り銘柄 (VTホールディングス実例: 利回り4.94%, 株価486円, DPS=24円)
+    # ※修正前は利回り4.5%換算で約533円と現在値を超えていた
+    stock_vt = {"code": "7593", "name": "VTホールディングス", "price": 486, "yield": 4.94, "dps": 24}
+    hint_vt = service._calculate_target_buy_price_hint(stock_vt)
+    m_vt = re.search(r'約?([\d,]+)円', hint_vt)
+    assert m_vt is not None
+    parsed_vt = float(m_vt.group(1).replace(',', ''))
+    assert parsed_vt <= 486  # 必ず現在株価486円以下！
+    assert "533" not in hint_vt
+    assert "5.0%" in hint_vt or "現在値水準" in hint_vt
+
+    # 4. 超高利回り銘柄 (UBE実例: 利回り5.10%, 株価3,138円, DPS=160円)
+    # ※修正前は利回り4.5%換算で約3,556円と現在値を超えていた
+    stock_ube = {"code": "4208", "name": "UBE", "price": 3138, "yield": 5.10, "dps": 160}
+    hint_ube = service._calculate_target_buy_price_hint(stock_ube)
+    m_ube = re.search(r'約?([\d,]+)円', hint_ube)
+    assert m_ube is not None
+    parsed_ube = float(m_ube.group(1).replace(',', ''))
+    assert parsed_ube <= 3138  # 必ず現在株価3,138円以下！
+    assert "3,556" not in hint_ube
+    assert "5.5%" in hint_ube or "現在値水準" in hint_ube
+
+    # 5. 株価0・無配・データ欠損ケース
+    stock_zero = {"code": "9999", "name": "欠損株", "price": 0, "yield": "N/A"}
+    assert "現在値近辺で打診買い" in service._calculate_target_buy_price_hint(stock_zero)
+
+
+@patch("requests.post")
+def test_filtered_recommendations_target_price_sanitization(mock_post, policy_manager):
+    """案件 #382: Geminiが現在値を超える仕込み株価を出力した場合の自動サニタイズ（強制補正）テスト"""
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    assets = [
+        {"code": "7593", "name": "VTホールディングス", "price": 486, "yield": 4.94, "dps": 24, "industry": "小売業", "pbr": 0.8},
+        {"code": "4208", "name": "UBE", "price": 3138, "yield": 5.10, "dps": 160, "industry": "化学", "pbr": 0.69}
+    ]
+
+    # Geminiが誤って現在値を超える仕込み株価を返却してきたモック
+    mock_llm_output = {
+        "recommendations": [
+            {
+                "rank": 1,
+                "code": "7593",
+                "name": "VTホールディングス",
+                "target_buy_price": "仕込み目標株価: 約533円",  # 現在値486円を超過！
+                "role_badge": "【コア枠】"
+            },
+            {
+                "rank": 2,
+                "code": "4208",
+                "name": "UBE",
+                "target_buy_price": "約3,556円 (利回り4.5%)",     # 現在値3,138円を超過！
+                "role_badge": "【高利回りブースター】"
+            }
+        ]
+    }
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "candidates": [{"content": {"parts": [{"text": json.dumps(mock_llm_output)}]}}]
+    }
+    mock_post.return_value = mock_resp
+
+    res = service.diagnose_filtered_recommendations(assets, force=True)
+    recs = res.get("recommendations", [])
+    assert len(recs) == 2
+
+    # 1件目 (VTホールディングス: 現在値486円) -> 533円はサニタイズされて486円以下になる
+    target_1 = recs[0]["target_buy_price"]
+    assert "533" not in target_1
+    m1 = re.search(r'約?([\d,]+)円', target_1)
+    assert m1 and float(m1.group(1).replace(',', '')) <= 486
+
+    # 2件目 (UBE: 現在値3,138円) -> 3,556円はサニタイズされて3,138円以下になる
+    target_2 = recs[1]["target_buy_price"]
+    assert "3,556" not in target_2
+    m2 = re.search(r'約?([\d,]+)円', target_2)
+    assert m2 and float(m2.group(1).replace(',', '')) <= 3138
+
+    # キャッシュヒット時にもサニタイズが維持されることを検証
+    res_cached = service.diagnose_filtered_recommendations(assets, force=False)
+    assert res_cached.get("is_cached") is True
+    assert "533" not in res_cached["recommendations"][0]["target_buy_price"]
+    assert "3,556" not in res_cached["recommendations"][1]["target_buy_price"]
+
+
+@patch("requests.post")
+def test_filtered_recommendations_target_price_fallback_for_high_yield(mock_post, policy_manager):
+    """案件 #382: Geminiがtarget_buy_priceを出力しなかった場合のフォールバックでも高利回り株が現在値以下となるテスト"""
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    assets = [
+        {"code": "7593", "name": "VTホールディングス", "price": 486, "yield": 4.94, "dps": 24, "industry": "小売業", "pbr": 0.8}
+    ]
+
+    mock_llm_output = {
+        "recommendations": [
+            {
+                "rank": 1,
+                "code": "7593",
+                "name": "VTホールディングス",
+                "role_badge": "【コア枠】"
+                # target_buy_price は欠落
+            }
+        ]
+    }
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "candidates": [{"content": {"parts": [{"text": json.dumps(mock_llm_output)}]}}]
+    }
+    mock_post.return_value = mock_resp
+
+    res = service.diagnose_filtered_recommendations(assets, force=True)
+    recs = res.get("recommendations", [])
+    assert len(recs) == 1
+    target = recs[0]["target_buy_price"]
+    # 欠落時でも新ヘルパーにより現在値486円以下に補完される
+    m = re.search(r'約?([\d,]+)円', target)
+    assert m and float(m.group(1).replace(',', '')) <= 486
+    assert "533" not in target
 
 
 # ==============================================================================

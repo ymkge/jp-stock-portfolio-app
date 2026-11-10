@@ -1106,6 +1106,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentRankingPeriod = 'daily'; // 'daily' or 'monthly'
     let currentRankingTab = 'gainers'; // 'gainers' or 'losers'
+    let currentRankingNoPurchaseOnly = false; // #384: 先月比での当月買付なし絞り込みフラグ
 
     function renderRankingModalContent() {
         const rankingContainer = document.getElementById('daily-ranking-content');
@@ -1114,6 +1115,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const tabGainersBtn = document.getElementById('tab-gainers-top20') || document.getElementById('tab-gainers-top10');
         const tabLosersBtn = document.getElementById('tab-losers-top20') || document.getElementById('tab-losers-top10');
         const tabSoldOutBtn = document.getElementById('tab-sold-out-monthly');
+        const filterNoPurchaseContainer = document.getElementById('ranking-filter-no-purchase-container');
+        const chkRankingNoPurchase = document.getElementById('chk-ranking-no-purchase');
         const monthLabelSpan = document.getElementById('ranking-month-label');
         const modalTitle = document.getElementById('modal-ranking-title');
 
@@ -1128,6 +1131,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const soldOutList = (monthlyRankings && monthlyRankings.month_sold_out) || [];
 
+        // 当月買付なしフィルタUIの表示/非表示制御とイベント登録 (#384)
+        if (filterNoPurchaseContainer) {
+            if (currentRankingPeriod === 'monthly' && currentRankingTab !== 'sold_out') {
+                filterNoPurchaseContainer.classList.remove('hidden');
+            } else {
+                filterNoPurchaseContainer.classList.add('hidden');
+            }
+        }
+        if (chkRankingNoPurchase) {
+            chkRankingNoPurchase.checked = currentRankingNoPurchaseOnly;
+            chkRankingNoPurchase.onchange = (e) => {
+                currentRankingNoPurchaseOnly = e.target.checked;
+                renderRankingModalContent();
+            };
+        }
+
         if (tabPeriodDailyBtn && tabPeriodMonthlyBtn) {
             tabPeriodDailyBtn.onclick = () => {
                 currentRankingPeriod = 'daily';
@@ -1135,6 +1154,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 tabPeriodDailyBtn.classList.add('active');
                 tabPeriodMonthlyBtn.classList.remove('active');
                 if (tabSoldOutBtn) tabSoldOutBtn.classList.add('hidden');
+                if (filterNoPurchaseContainer) filterNoPurchaseContainer.classList.add('hidden');
                 if (modalTitle) modalTitle.textContent = '🚀 当日 資産変動ランキング (TOP20)';
                 renderRankingModalContent();
             };
@@ -1146,8 +1166,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     tabSoldOutBtn.classList.remove('hidden');
                     tabSoldOutBtn.textContent = `🏷️ 当月売却済 (${soldOutList.length})`;
                 }
+                if (filterNoPurchaseContainer && currentRankingTab !== 'sold_out') {
+                    filterNoPurchaseContainer.classList.remove('hidden');
+                }
                 const mLabel = (monthlyRankings && monthlyRankings.month_label) ? monthlyRankings.month_label : '先月末比';
-                if (modalTitle) modalTitle.textContent = `🚀 先月比 資産変動ランキング (${mLabel} TOP20)`;
+                const noPurchaseSuffix = currentRankingNoPurchaseOnly ? ' (当月買付なし)' : '';
+                if (modalTitle) modalTitle.textContent = `🚀 先月比 資産変動ランキング (${mLabel} TOP20)${noPurchaseSuffix}`;
                 renderRankingModalContent();
             };
         }
@@ -1184,6 +1208,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (tabLosersBtn) tabLosersBtn.classList.remove('active');
                 renderRankingModalContent();
             };
+        }
+
+        // モーダルタイトルの同期
+        if (currentRankingPeriod === 'daily') {
+            if (modalTitle) modalTitle.textContent = '🚀 当日 資産変動ランキング (TOP20)';
+        } else {
+            const mLabel = (monthlyRankings && monthlyRankings.month_label) ? monthlyRankings.month_label : '先月末比';
+            const noPurchaseSuffix = (currentRankingNoPurchaseOnly && currentRankingTab !== 'sold_out') ? ' (当月買付なし)' : '';
+            if (modalTitle) modalTitle.textContent = `🚀 先月比 資産変動ランキング (${mLabel} TOP20)${noPurchaseSuffix}`;
         }
 
         if (currentRankingPeriod === 'daily') {
@@ -1299,9 +1332,29 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const gainers = rankingsData.month_gainers_top20 || rankingsData.month_gainers_top10 || [];
-        const losers = rankingsData.month_losers_top20 || rankingsData.month_losers_top10 || [];
+        let gainers = rankingsData.month_gainers_top20 || rankingsData.month_gainers_top10 || [];
+        let losers = rankingsData.month_losers_top20 || rankingsData.month_losers_top10 || [];
         const soldOuts = rankingsData.month_sold_out || [];
+
+        // 当月買付なし絞り込み適用 (#384)
+        if (currentRankingNoPurchaseOnly && currentRankingTab !== 'sold_out') {
+            if (rankingsData.month_gainers_no_purchase_top20) {
+                gainers = rankingsData.month_gainers_no_purchase_top20;
+            } else {
+                // フォールバック: クライアント側で除外＆再採番
+                gainers = gainers
+                    .filter(item => !item.is_purchased_this_month && !item.is_newly_added)
+                    .map((item, idx) => ({ ...item, rank: idx + 1 }));
+            }
+
+            if (rankingsData.month_losers_no_purchase_top20) {
+                losers = rankingsData.month_losers_no_purchase_top20;
+            } else {
+                losers = losers
+                    .filter(item => !item.is_purchased_this_month && !item.is_newly_added)
+                    .map((item, idx) => ({ ...item, rank: idx + 1 }));
+            }
+        }
 
         let currentList = gainers;
         if (currentRankingTab === 'losers') {
@@ -1312,7 +1365,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (currentList.length === 0) {
             let msg = '先月比の資産増加銘柄はありません。';
-            if (currentRankingTab === 'losers') {
+            if (currentRankingNoPurchaseOnly && currentRankingTab === 'gainers') {
+                msg = '当月買付なしの資産増加銘柄はありません。';
+            } else if (currentRankingNoPurchaseOnly && currentRankingTab === 'losers') {
+                msg = '当月買付なしの資産減少銘柄はありません。';
+            } else if (currentRankingTab === 'losers') {
                 msg = '先月比の資産減少銘柄はありません。';
             } else if (currentRankingTab === 'sold_out') {
                 msg = '当月売却された銘柄はありません。';

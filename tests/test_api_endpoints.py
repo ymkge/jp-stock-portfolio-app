@@ -573,6 +573,32 @@ def test_monthly_ranking_purchase_tag_ui_issue272():
     assert 'color: #38bdf8' in css_content or '#38bdf8' in css_content
 
 
+def test_monthly_ranking_no_purchase_filter_ui_issue384():
+    """案件 #384: 先月比ランキングの当月買付なし絞り込みUIおよびJS連携の検証"""
+    import os
+
+    # 1. HTML内フィルタコンテナおよびチェックボックス要素の検証
+    html_path = os.path.join(os.path.dirname(__file__), "..", "templates", "analysis.html")
+    with open(html_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
+
+    assert 'id="ranking-filter-no-purchase-container"' in html_content
+    assert 'id="chk-ranking-no-purchase"' in html_content
+    assert '当月買付なしのみ' in html_content
+
+    # 2. JS内フィルタトグル・データ連携・フォールバックの検証
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "analysis.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        js_content = f.read()
+
+    assert 'currentRankingNoPurchaseOnly' in js_content
+    assert 'ranking-filter-no-purchase-container' in js_content
+    assert 'chk-ranking-no-purchase' in js_content
+    assert 'month_gainers_no_purchase_top20' in js_content
+    assert 'month_losers_no_purchase_top20' in js_content
+    assert '(当月買付なし)' in js_content
+
+
 def test_profit_taking_grouped_by_code_issue277():
     """Issue #277: 同一銘柄が複数口座 (新NISA/特定等) に存在する場合に1行に合算されるか検証"""
     from app import app

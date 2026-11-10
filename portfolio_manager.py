@@ -1058,6 +1058,8 @@ def calculate_monthly_change_rankings(
             "month_label": "先月末データなし",
             "month_gainers_top20": [],
             "month_losers_top20": [],
+            "month_gainers_no_purchase_top20": [],
+            "month_losers_no_purchase_top20": [],
             "month_gainers_top10": [],
             "month_losers_top10": [],
             "month_sold_out": [],
@@ -1172,19 +1174,37 @@ def calculate_monthly_change_rankings(
     losers = [r for r in aggregated_results if r["monthly_change_jpy"] < 0 and not r["is_sold_out"]]
     sold_outs = [r for r in aggregated_results if r["is_sold_out"]]
 
-    gainers_sorted = sorted(gainers, key=lambda x: x["monthly_change_jpy"], reverse=True)[:top_n]
-    losers_sorted = sorted(losers, key=lambda x: x["monthly_change_jpy"])[:top_n]
-    sold_outs_sorted = sorted(sold_outs, key=lambda x: abs(x["monthly_change_jpy"]), reverse=True)[:top_n]
+    # 当月買付なし（純粋価格変動）のリスト (#384)
+    # 当月買い増し（is_purchased_this_month）および新規買付（is_newly_added）を除外
+    gainers_no_purchase = [
+        r for r in aggregated_results 
+        if r["monthly_change_jpy"] > 0 and not r.get("is_purchased_this_month") and not r.get("is_newly_added")
+    ]
+    losers_no_purchase = [
+        r for r in aggregated_results 
+        if r["monthly_change_jpy"] < 0 and not r["is_sold_out"] and not r.get("is_purchased_this_month") and not r.get("is_newly_added")
+    ]
+
+    gainers_sorted = [dict(r) for r in sorted(gainers, key=lambda x: x["monthly_change_jpy"], reverse=True)[:top_n]]
+    losers_sorted = [dict(r) for r in sorted(losers, key=lambda x: x["monthly_change_jpy"])[:top_n]]
+    sold_outs_sorted = [dict(r) for r in sorted(sold_outs, key=lambda x: abs(x["monthly_change_jpy"]), reverse=True)[:top_n]]
+
+    gainers_no_purchase_sorted = [dict(r) for r in sorted(gainers_no_purchase, key=lambda x: x["monthly_change_jpy"], reverse=True)[:top_n]]
+    losers_no_purchase_sorted = [dict(r) for r in sorted(losers_no_purchase, key=lambda x: x["monthly_change_jpy"])[:top_n]]
 
     for i, g in enumerate(gainers_sorted, 1): g["rank"] = i
     for i, l in enumerate(losers_sorted, 1): l["rank"] = i
     for i, s in enumerate(sold_outs_sorted, 1): s["rank"] = i
+    for i, g in enumerate(gainers_no_purchase_sorted, 1): g["rank"] = i
+    for i, l in enumerate(losers_no_purchase_sorted, 1): l["rank"] = i
 
     return {
         "has_last_month_data": True,
         "month_label": month_label,
         "month_gainers_top20": gainers_sorted,
         "month_losers_top20": losers_sorted,
+        "month_gainers_no_purchase_top20": gainers_no_purchase_sorted,
+        "month_losers_no_purchase_top20": losers_no_purchase_sorted,
         "month_gainers_top10": gainers_sorted,
         "month_losers_top10": losers_sorted,
         "month_sold_out": sold_outs_sorted,

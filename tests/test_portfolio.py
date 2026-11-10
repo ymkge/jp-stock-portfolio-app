@@ -585,6 +585,82 @@ def test_calculate_rankings_top20_issue274():
         assert monthly_res["month_gainers_top20"][19]["rank"] == 20
 
 
+def test_calculate_monthly_change_rankings_no_purchase_filter_issue384():
+    """Issue #384: 先月比 資産変動ランキングにおける「当月買付なし」絞り込み・独立ランク付与の検証"""
+    from portfolio_manager import calculate_monthly_change_rankings
+    from unittest.mock import patch
+
+    # 1. 先月末データなし時のキー存在確認
+    with patch("history_manager.get_last_month_end_holdings_snapshot", return_value=(None, {})):
+        res_empty = calculate_monthly_change_rankings([], {"JPY": 1.0})
+        assert res_empty["has_last_month_data"] is False
+        assert "month_gainers_no_purchase_top20" in res_empty
+        assert "month_losers_no_purchase_top20" in res_empty
+        assert res_empty["month_gainers_no_purchase_top20"] == []
+        assert res_empty["month_losers_no_purchase_top20"] == []
+
+    # 2. 先月末スナップショットと当月保有データの準備
+    mock_snapshot = {
+        "STOCK_BUY": {"code": "STOCK_BUY", "name": "買い増し株", "market_value": 100000.0, "quantity": 100.0, "asset_type": "jp_stock"},
+        "STOCK_PURE1": {"code": "STOCK_PURE1", "name": "値上がり株1", "market_value": 100000.0, "quantity": 100.0, "asset_type": "jp_stock"},
+        "STOCK_PURE2": {"code": "STOCK_PURE2", "name": "値上がり株2", "market_value": 100000.0, "quantity": 100.0, "asset_type": "jp_stock"},
+        "STOCK_DROP_PURE": {"code": "STOCK_DROP_PURE", "name": "値下がり株", "market_value": 100000.0, "quantity": 100.0, "asset_type": "jp_stock"},
+        "STOCK_DROP_BUY": {"code": "STOCK_DROP_BUY", "name": "買増値下がり株", "market_value": 100000.0, "quantity": 100.0, "asset_type": "jp_stock"},
+    }
+
+    raw_holdings = [
+        # 買い増し: 100株->150株 (+50株買付), 評価額 100,000 -> 160,000 (+60,000円) ➔ 通常1位
+        {"code": "STOCK_BUY", "name": "買い増し株", "asset_type": "jp_stock", "quantity": 150.0, "market_value": 160000.0},
+        # 新規買付: 先月0株->100株 (+100株買付), 評価額 0 -> 50,000 (+50,000円) ➔ 通常2位
+        {"code": "STOCK_NEW", "name": "新規買付株", "asset_type": "jp_stock", "quantity": 100.0, "market_value": 50000.0},
+        # 純粋値上がり1: 100株 (買付0), 評価額 100,000 -> 140,000 (+40,000円) ➔ 通常3位、買付なし1位
+        {"code": "STOCK_PURE1", "name": "値上がり株1", "asset_type": "jp_stock", "quantity": 100.0, "market_value": 140000.0},
+        # 純粋値上がり2: 100株 (買付0), 評価額 100,000 -> 130,000 (+30,000円) ➔ 通常4位、買付なし2位
+        {"code": "STOCK_PURE2", "name": "値上がり株2", "asset_type": "jp_stock", "quantity": 100.0, "market_value": 130000.0},
+        # 純粋値下がり: 100株 (買付0), 評価額 100,000 -> 80,000 (-20,000円) ➔ 通常・買付なし1位
+        {"code": "STOCK_DROP_PURE", "name": "値下がり株", "asset_type": "jp_stock", "quantity": 100.0, "market_value": 80000.0},
+        # 買増値下がり: 100株->120株 (+20株買付), 評価額 100,000 -> 90,000 (-10,000円) ➔ 通常2位、買付なしからは除外
+        {"code": "STOCK_DROP_BUY", "name": "買増値下がり株", "asset_type": "jp_stock", "quantity": 120.0, "market_value": 90000.0},
+    ]
+
+    with patch("history_manager.get_last_month_end_holdings_snapshot", return_value=("2026-10", mock_snapshot)), \
+         patch("history_manager.get_applied_split_alerts", return_value=[]):
+        res = calculate_monthly_change_rankings(raw_holdings, {"JPY": 1.0})
+
+        # --- 通常ランキングの検証 ---
+        normal_gainers = res["month_gainers_top20"]
+        assert len(normal_gainers) == 4
+        assert [g["code"] for g in normal_gainers] == ["STOCK_BUY", "STOCK_NEW", "STOCK_PURE1", "STOCK_PURE2"]
+        assert normal_gainers[0]["rank"] == 1
+        assert normal_gainers[1]["rank"] == 2
+        assert normal_gainers[2]["rank"] == 3
+        assert normal_gainers[3]["rank"] == 4
+
+        normal_losers = res["month_losers_top20"]
+        assert len(normal_losers) == 2
+        assert [l["code"] for l in normal_losers] == ["STOCK_DROP_PURE", "STOCK_DROP_BUY"]
+        assert normal_losers[0]["rank"] == 1
+        assert normal_losers[1]["rank"] == 2
+
+        # --- 当月買付なしランキングの検証 (#384) ---
+        no_purchase_gainers = res["month_gainers_no_purchase_top20"]
+        assert len(no_purchase_gainers) == 2
+        # STOCK_BUY (買い増し) と STOCK_NEW (新規買付) が除外され、純粋値上がりのみで繰り上がり
+        assert [g["code"] for g in no_purchase_gainers] == ["STOCK_PURE1", "STOCK_PURE2"]
+        assert no_purchase_gainers[0]["rank"] == 1
+        assert no_purchase_gainers[1]["rank"] == 2
+
+        # 【超重要】辞書オブジェクトの独立性検証: 通常リスト側の rank が汚染されていないこと
+        assert normal_gainers[2]["code"] == "STOCK_PURE1"
+        assert normal_gainers[2]["rank"] == 3  # 通常リスト側では 3位 を維持していること
+
+        # 減少側でも買い増し銘柄 (STOCK_DROP_BUY) が除外されていること
+        no_purchase_losers = res["month_losers_no_purchase_top20"]
+        assert len(no_purchase_losers) == 1
+        assert no_purchase_losers[0]["code"] == "STOCK_DROP_PURE"
+        assert no_purchase_losers[0]["rank"] == 1
+
+
 def test_calculate_daily_industry_changes():
     """案件 #317: 保有銘柄の本日の業種別資産増減集約の単体テスト"""
     from portfolio_manager import calculate_daily_industry_changes

@@ -734,11 +734,11 @@ def test_diagnose_industry_daily_changes_success_and_model_fallback(policy_manag
 
 
 def test_diagnose_industry_daily_changes_with_factors_and_confidence(policy_manager):
-    """案件 #380: 下落・上昇要因の具体化、政治・政策引き金指示、および確信度バッジの検証"""
+    """案件 #380 & #367: 下落・上昇要因の具体化、政治・政策引き金指示、市況背景理由の義務化、および確信度バッジの検証"""
     service = LLMDiagnosisService(policy_manager=policy_manager)
 
     mock_ai_response = json.dumps({
-        "market_trend_summary": "米大統領選後の政策懸念と為替変動によりセクター間で明暗が分かれました。",
+        "market_trend_summary": "前日の米ハイテク株安と急激な円高進行を背景に輸出関連株が軟調となった一方、日銀利上げ観測から銀行株に資金がシフトし下値を支える展開となりました。",
         "downside_factors": "大統領選を受けた民主党優勢の報道からAI半導体規制の強化懸念が浮上し、関連ハイテク株が急落しました。",
         "downside_confidence": "85%",
         "upside_factors": "円安恩恵を受ける輸送用機器や高利回り内需株に資金が流入しました。",
@@ -784,12 +784,13 @@ def test_diagnose_industry_daily_changes_with_factors_and_confidence(policy_mana
         )
 
         assert res.get("error") is False
+        assert "円高進行を背景に" in res.get("market_trend_summary")
         assert "大統領選" in res.get("downside_factors")
         assert res.get("downside_confidence") == 85  # "85%" -> 85
         assert res.get("upside_confidence") == 80    # 0.80 -> 80
         assert res.get("upside_factors") == "円安恩恵を受ける輸送用機器や高利回り内需株に資金が流入しました。"
 
-        # プロンプトにニュースやトリガー指示、個別銘柄情報が含まれているか検証
+        # プロンプトにニュースやトリガー指示、個別銘柄情報、市況の背景・理由義務化が含まれているか検証 (#367)
         sent_payload = mock_post.call_args[1]["json"]
         prompt_text = sent_payload["contents"][0]["parts"][0]["text"]
         assert "米大統領選受けAI半導体規制強化の観測" in prompt_text
@@ -797,8 +798,15 @@ def test_diagnose_industry_daily_changes_with_factors_and_confidence(policy_mana
         assert "トヨタ自動車" in prompt_text
         assert "根本的な引き金" in prompt_text
         assert "AI・先端半導体輸出規制" in prompt_text
+        assert "なぜ本日このような市況展開になったのか" in prompt_text
+        assert "根本的な背景・理由" in prompt_text
+        assert "本日のマクロ市況・セクター動向の背景・理由を含めた要約" in prompt_text
         assert "downside_confidence" in prompt_text
         assert "upside_confidence" in prompt_text
+
+        # キャッシュキーが v3 に更新されていることの検証 (#367)
+        cached_keys = list(service._industry_daily_cache.keys())
+        assert any(k.startswith("industry_daily_v3_") for k in cached_keys)
 
 
 @pytest.mark.parametrize("input_val, expected", [

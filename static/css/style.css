@@ -5287,6 +5287,8 @@ body.dark-mode .ai-section-title,
 
 .ai-section-text {
     font-size: 0.84rem;
+    line-height: 1.55;
+    word-break: break-word;
     color: var(--text-color, #334155);
 }
 

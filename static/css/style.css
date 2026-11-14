@@ -331,6 +331,8 @@ button {
 .action-buttons {
     display: flex;
     gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
 }
 
 .btn-primary { background-color: var(--primary-color); }
@@ -6051,6 +6053,31 @@ body.dark-mode .rec-mini-badge.badge-cap-satellite,
     background-color: rgba(245, 158, 11, 0.2);
     color: #fde047;
     border-color: rgba(245, 158, 11, 0.4);
+}
+
+/* おすすめ5選カード: 個別銘柄メイン一覧フィルタボタン (#387) */
+.btn-filter-single-rec {
+    border-color: #6366f1;
+    color: #4f46e5;
+    background-color: #f5f3ff;
+    transition: all 0.2s ease;
+}
+.btn-filter-single-rec:hover {
+    background-color: #6366f1;
+    color: #ffffff;
+}
+[data-theme="dark"] .btn-filter-single-rec,
+body.dark-mode .btn-filter-single-rec,
+.dark-mode .btn-filter-single-rec {
+    border-color: #818cf8;
+    color: #c7d2fe;
+    background-color: rgba(99, 102, 241, 0.15);
+}
+[data-theme="dark"] .btn-filter-single-rec:hover,
+body.dark-mode .btn-filter-single-rec:hover,
+.dark-mode .btn-filter-single-rec:hover {
+    background-color: #6366f1;
+    color: #ffffff;
 }
 
 /* 株式売却モーダル & 再投資プール (#332, #335) */

@@ -2959,18 +2959,65 @@ document.addEventListener('DOMContentLoaded', () => {
     // 過去の免責バナー閉じる記憶キーの自動クリーンアップ (常時表示仕様 #288)
     localStorage.removeItem('disclaimer_agreed');
 
-    // --- 絞り込み銘柄 AI購入推奨 Top 5 レポート制御 (#313) ---
+    // --- 絞り込み銘柄 AI購入推奨 Top 5 レポート制御 (#313, #387) ---
     const recommendFilteredBtn = document.getElementById('recommend-filtered-stocks-btn');
+    const applyLastRecBtn = document.getElementById('btn-apply-last-recommendations');
     const filteredRecModal = document.getElementById('filtered-recommendation-modal');
     const filteredRecCloseBtn = document.getElementById('btn-close-filtered-rec-modal');
     const filteredRecCloseFooterBtn = document.getElementById('btn-close-filtered-rec-modal-footer');
     const filteredRecRefreshBtn = document.getElementById('btn-refresh-filtered-rec');
     const filteredRecCopyBtn = document.getElementById('btn-copy-filtered-rec-report');
+    const filteredRecFilterBtn = document.getElementById('btn-filter-recommended-stocks');
     const filteredRecSummaryBox = document.getElementById('filtered-rec-summary-box');
     const filteredRecLoading = document.getElementById('filtered-rec-loading');
     const filteredRecResultsContainer = document.getElementById('filtered-rec-results-container');
 
     let currentRecReportData = null;
+    let lastRecommendedCodes = [];
+    let lastRecommendedAssetType = 'jp_stock';
+
+    // 推奨銘柄によるメイン一覧テーブル絞り込みヘルパー (#387)
+    function applyRecommendedStocksFilter(codes, targetAssetType) {
+        if (!codes || codes.length === 0) return;
+
+        // 1. モーダルが開いていれば閉じる
+        closeFilteredRecModal();
+
+        // 2. タブ同期: 診断対象のアセットタイプと現在の activeTab が異なる場合、自動でタブ切り替え
+        const desiredTab = targetAssetType || lastRecommendedAssetType || 'jp_stock';
+        if (activeTab !== desiredTab) {
+            const tabBtn = document.querySelector(`.tab-link[data-tab="${desiredTab}"]`);
+            if (tabBtn) tabBtn.click();
+        }
+
+        // 3. 競合フィルタ（業種、シグナル、配当性向、保有のみ）の安全なクリア
+        if (industryFilter) industryFilter.value = '';
+        const indSearch = document.getElementById('industry-search');
+        if (indSearch) indSearch.value = '';
+        if (signalFilter) signalFilter.value = '';
+        if (payoutRatioFilter) payoutRatioFilter.value = '';
+        if (showOnlyManagedAssetsCheckbox) showOnlyManagedAssetsCheckbox.checked = false;
+
+        // 4. 検索窓にスペース区切りでコードを設定
+        if (filterInput) {
+            filterInput.value = codes.join(' ');
+        }
+
+        // 5. 描画とプリセット選択状態の解除
+        filterAndRender();
+        updatePresetActiveStates(null);
+
+        // 6. テーブルへスクロール＆ハイライト通知
+        const tableContainer = document.querySelector(`#${activeTab} .table-container`) || document.getElementById('filter-input');
+        if (tableContainer) {
+            tableContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        showAlert(`🤖 AIおすすめ銘柄（${codes.join(', ')}）で一覧を絞り込みました。各KPI指標をご確認いただけます。`, 'success');
+    }
+
+    // グローバル公開 (テストおよびインライン呼び出し用)
+    window.applyRecommendedStocksFilter = applyRecommendedStocksFilter;
 
     // おすすめ5選モーダルのドラッグ初期化 (#376)
     const filteredRecModalDraggable = makeModalDraggable(filteredRecModal, '#filtered-rec-modal-header');
@@ -3035,6 +3082,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (filteredRecCopyBtn) filteredRecCopyBtn.disabled = true;
             if (filteredRecRefreshBtn) filteredRecRefreshBtn.disabled = false;
+            if (filteredRecFilterBtn) filteredRecFilterBtn.disabled = true;
             return;
         }
 
@@ -3050,9 +3098,10 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }
 
-        // 診断開始時のボタン状態制御 (#370)
+        // 診断開始時のボタン状態制御 (#370, #387)
         if (filteredRecCopyBtn) filteredRecCopyBtn.disabled = true;
         if (filteredRecRefreshBtn) filteredRecRefreshBtn.disabled = true;
+        if (filteredRecFilterBtn) filteredRecFilterBtn.disabled = true;
         if (filteredRecLoading) filteredRecLoading.classList.remove('hidden');
         if (filteredRecResultsContainer) filteredRecResultsContainer.innerHTML = '';
 
@@ -3101,6 +3150,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     if (filteredRecCopyBtn) filteredRecCopyBtn.disabled = true;
                     if (filteredRecRefreshBtn) filteredRecRefreshBtn.disabled = false;
+                    if (filteredRecFilterBtn) filteredRecFilterBtn.disabled = true;
                     return;
                 }
 
@@ -3129,6 +3179,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 if (filteredRecCopyBtn) filteredRecCopyBtn.disabled = true;
                 if (filteredRecRefreshBtn) filteredRecRefreshBtn.disabled = false;
+                if (filteredRecFilterBtn) filteredRecFilterBtn.disabled = true;
                 return;
             }
 
@@ -3155,6 +3206,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (filteredRecCopyBtn) filteredRecCopyBtn.disabled = true;
             if (filteredRecRefreshBtn) filteredRecRefreshBtn.disabled = false;
+            if (filteredRecFilterBtn) filteredRecFilterBtn.disabled = true;
         }
     }
 
@@ -3175,7 +3227,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
             if (filteredRecCopyBtn) filteredRecCopyBtn.disabled = true;
+            if (filteredRecFilterBtn) filteredRecFilterBtn.disabled = true;
             return;
+        }
+
+        lastRecommendedCodes = recs.map(r => String(r.code)).filter(Boolean);
+        lastRecommendedAssetType = activeTab;
+
+        if (filteredRecFilterBtn) {
+            filteredRecFilterBtn.disabled = (lastRecommendedCodes.length === 0);
+            filteredRecFilterBtn.textContent = `🔍 メイン画面でこの${lastRecommendedCodes.length}銘柄をフィルタ`;
+        }
+        if (applyLastRecBtn && lastRecommendedCodes.length > 0) {
+            applyLastRecBtn.classList.remove('hidden');
+            applyLastRecBtn.textContent = `🎯 おすすめ${lastRecommendedCodes.length}銘柄で絞込`;
         }
 
         const rankBadges = ['🥇 1位', '🥈 2位', '🥉 3位', '4位', '5位'];
@@ -3266,6 +3331,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="fit-score-box text-end flex-shrink-0">
                                 <span class="fit-stars" style="color: #f59e0b; font-size: 0.95rem;">${escapeHtml(fitStars)}</span>
                                 <span class="badge bg-primary ms-1" style="font-size: 0.8rem;">適合度 ${fitScore}%</span>
+                                <div class="mt-1">
+                                    <button type="button" class="btn-outline btn-sm btn-filter-single-rec" data-code="${escapeHtml(item.code)}" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;" title="この銘柄のみをメイン一覧で確認">
+                                        🔍 一覧で確認
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         ${(roleBadge || yieldBadge || shieldBadge || contribBadge || currentPriceBadge || targetBuyBadge || capLimitBadge) ? `
@@ -3361,6 +3431,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error('コピー失敗:', e);
                 alert('コピーに失敗しました。');
             });
+        });
+    }
+
+    // 推奨銘柄メイン一覧フィルタボタンのクリック連携 (#387)
+    if (filteredRecFilterBtn) {
+        filteredRecFilterBtn.addEventListener('click', () => {
+            applyRecommendedStocksFilter(lastRecommendedCodes, lastRecommendedAssetType);
+        });
+    }
+
+    if (applyLastRecBtn) {
+        applyLastRecBtn.addEventListener('click', () => {
+            applyRecommendedStocksFilter(lastRecommendedCodes, lastRecommendedAssetType);
+        });
+    }
+
+    if (filteredRecResultsContainer) {
+        filteredRecResultsContainer.addEventListener('click', (e) => {
+            const singleBtn = e.target.closest('.btn-filter-single-rec');
+            if (singleBtn && singleBtn.dataset.code) {
+                applyRecommendedStocksFilter([singleBtn.dataset.code], lastRecommendedAssetType);
+            }
         });
     }
 

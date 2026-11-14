@@ -140,6 +140,7 @@
 
                     <div class="action-buttons">
                         <button id="recommend-filtered-stocks-btn" class="btn-purple" title="現在絞り込まれている銘柄からAIがおすすめTop5を厳選">🤖 AIおすすめ5選</button>
+                        <button type="button" id="btn-apply-last-recommendations" class="btn-outline hidden" style="font-size: 0.8rem; padding: 6px 12px; border-color: #6366f1; color: #6366f1; font-weight: 600;" title="直前のAIおすすめ銘柄でメイン一覧テーブルを絞り込みます">🎯 AIおすすめ銘柄で絞込</button>
                         <button id="download-csv-button" class="btn-success">CSV</button>
                         <button id="delete-selected-stocks-button" class="btn-danger" disabled>削除</button>
                     </div>
@@ -662,13 +663,16 @@
                     <!-- JSにて Top 1〜5 カード・総評を描画 -->
                 </div>
             </div>
-            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
-                <div class="d-flex gap-2">
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div class="d-flex gap-2 flex-wrap align-items-center">
                     <button type="button" id="btn-copy-filtered-rec-report" class="btn-outline" style="font-size: 0.8rem; padding: 6px 12px;" title="レポートテキストをクリップボードにコピー">
                         📋 レポートをコピー
                     </button>
                     <button type="button" id="btn-refresh-filtered-rec" class="btn-outline" style="font-size: 0.8rem; padding: 6px 12px;" title="再診断を実行">
                         🔄 再診断
+                    </button>
+                    <button type="button" id="btn-filter-recommended-stocks" class="btn-primary" style="font-size: 0.8rem; padding: 6px 14px; background-color: #6366f1; border-color: #6366f1; font-weight: 600;" title="推奨された銘柄でメイン一覧テーブルを絞り込み、全KPIを横断確認します" disabled>
+                        🔍 メイン画面でこの5銘柄をフィルタ
                     </button>
                 </div>
                 <button type="button" id="btn-close-filtered-rec-modal-footer" class="btn-secondary">閉じる</button>

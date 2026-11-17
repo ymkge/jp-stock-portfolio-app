@@ -169,6 +169,7 @@
         "timezone": "Asia/Tokyo"
       }
     },
+    "market_indices_cache_ttl_seconds": 900,
     "update_cooldown_seconds": 600,
     "scraping": {
       "concurrency_limit": 1,

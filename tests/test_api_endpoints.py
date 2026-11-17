@@ -2019,6 +2019,123 @@ def test_api_reinvestment_pool_endpoints():
     assert res.status_code == 400
 
 
+def test_market_indices_trade_time_and_intraday_cache_issue390(mocker):
+    """Issue #390: 市場指標の日中15分キャッシュ判定および trade_time レスポンスの検証"""
+    import history_manager
+    from datetime import datetime
+    import pytz
+
+    jst = pytz.timezone("Asia/Tokyo")
+    # 平日 11:30 (市場開催中) を設定
+    mock_now_intraday = jst.localize(datetime(2026, 11, 17, 11, 30, 0))
+
+    # 1. 直近10分前のデータ (11:20保存: 15分以内のためDBキャッシュ有効)
+    fresh_db_data = {
+        "7203": {
+            "name": "トヨタ自動車", "price": "3000", "code": "7203", "asset_type": "jp_stock",
+            "_db_updated_at_jst": "2026-11-17T11:20:00+09:00"
+        },
+        "998407.O": {
+            "name": "日経平均株価", "price": "59100.00", "code": "998407.O", "asset_type": "market_index",
+            "change": "-500.00", "change_percent": "-0.84%", "trade_time": "11:20",
+            "_db_updated_at_jst": "2026-11-17T11:20:00+09:00"
+        },
+        "998405.T": {
+            "name": "TOPIX", "price": "3845.00", "code": "998405.T", "asset_type": "market_index",
+            "change": "-50.00", "change_percent": "-1.28%", "trade_time": "11:20",
+            "_db_updated_at_jst": "2026-11-17T11:20:00+09:00"
+        },
+        "5040469.O": {
+            "name": "日経先物", "price": "59150.00", "code": "5040469.O", "asset_type": "market_index",
+            "change": "-550.00", "change_percent": "-0.92%", "trade_time": "11:20",
+            "_db_updated_at_jst": "2026-11-17T11:20:00+09:00"
+        },
+        "USDJPY=X": {
+            "name": "ドル円", "price": "159.2000", "code": "USDJPY=X", "asset_type": "market_index",
+            "change": "-0.20", "change_percent": "-0.13%", "trade_time": "11:20",
+            "_db_updated_at_jst": "2026-11-17T11:20:00+09:00"
+        }
+    }
+
+    # 2. 2時間前の古いデータ (09:05保存: 15分超過のため日中キャッシュ無効・再取得へ)
+    stale_db_data = {
+        "7203": {
+            "name": "トヨタ自動車", "price": "3000", "code": "7203", "asset_type": "jp_stock",
+            "_db_updated_at_jst": "2026-11-17T11:20:00+09:00"
+        },
+        "998407.O": {
+            "name": "日経平均株価", "price": "59500.00", "code": "998407.O", "asset_type": "market_index",
+            "change": "-100.00", "change_percent": "-0.17%", "trade_time": "09:05",
+            "_db_updated_at_jst": "2026-11-17T09:05:00+09:00"
+        },
+        "998405.T": {
+            "name": "TOPIX", "price": "3880.00", "code": "998405.T", "asset_type": "market_index",
+            "change": "-10.00", "change_percent": "-0.25%", "trade_time": "09:05",
+            "_db_updated_at_jst": "2026-11-17T09:05:00+09:00"
+        },
+        "5040469.O": {
+            "name": "日経先物", "price": "59600.00", "code": "5040469.O", "asset_type": "market_index",
+            "change": "-100.00", "change_percent": "-0.16%", "trade_time": "09:05",
+            "_db_updated_at_jst": "2026-11-17T09:05:00+09:00"
+        },
+        "USDJPY=X": {
+            "name": "ドル円", "price": "159.5000", "code": "USDJPY=X", "asset_type": "market_index",
+            "change": "-0.05", "change_percent": "-0.03%", "trade_time": "09:05",
+            "_db_updated_at_jst": "2026-11-17T09:05:00+09:00"
+        }
+    }
+
+    # 本番DBへの書き込みを完全にモック保護 (規約0.2)
+    mocker.patch("history_manager.save_daily_data")
+    mocker.patch("history_manager.get_now_jst", return_value=mock_now_intraday)
+    mocker.patch("app.is_jp_market_holiday", return_value=False)
+    mocker.patch("portfolio_manager.load_portfolio", return_value=[{"code": "7203", "name": "トヨタ自動車", "asset_type": "jp_stock", "holdings": []}])
+
+    # A. 鮮度が高い(10分前)場合、スクレイピングせずDBキャッシュが使われること
+    mock_scraper = mocker.MagicMock()
+    mock_scraper.is_cached.return_value = False
+    mocker.patch("app.scraper.get_scraper", return_value=mock_scraper)
+
+    # APIから /api/stocks を呼び出し
+    with patch("history_manager.get_latest_daily_data_all", return_value=fresh_db_data):
+        res = client.get("/api/stocks")
+        assert res.status_code == 200
+        data = res.json()
+        indices = data.get("metadata", {}).get("market_indices", [])
+        n225_entry = next((item for item in indices if item["code"] == "998407.O"), None)
+        assert n225_entry is not None
+        assert n225_entry["price"] == "59100.00"
+        assert n225_entry["trade_time"] == "11:20"
+        # 日経平均は鮮度が高いため、スクレイパーのフェッチは呼ばれていないこと (DBキャッシュHIT)
+        called_codes_a = [c.args[0] for c in mock_scraper.fetch_data.call_args_list if c.args]
+        assert "998407.O" not in called_codes_a
+
+    # B. 古い(2時間前)場合、日中市場中のためDBキャッシュは無効化され、スクレイパーが呼ばれること
+    mock_scraper.reset_mock()
+    mock_scraper.fetch_data.return_value = {
+        "name": "日経平均株価",
+        "price": "59085.92",
+        "code": "998407.O",
+        "change": "-576.10",
+        "change_percent": "-0.97%",
+        "trade_time": "11:30"
+    }
+
+    with patch("history_manager.get_latest_daily_data_all", return_value=stale_db_data):
+        res2 = client.get("/api/stocks")
+        assert res2.status_code == 200
+        data2 = res2.json()
+        indices2 = data2.get("metadata", {}).get("market_indices", [])
+        n225_entry2 = next((item for item in indices2 if item["code"] == "998407.O"), None)
+        assert n225_entry2 is not None
+        assert n225_entry2["price"] == "59085.92"
+        assert n225_entry2["trade_time"] == "11:30"
+        # 日経平均のスクレイパーが呼ばれて最新化されたこと
+        called_codes_b = [c.args[0] for c in mock_scraper.fetch_data.call_args_list if c.args]
+        assert "998407.O" in called_codes_b
+
+
+
 
 
 

@@ -6551,6 +6551,25 @@ body.dark-mode .trade-tax-nisa,
     gap: 6px;
 }
 
+.market-index-time {
+    font-size: 0.68rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    background-color: var(--bg-hover, rgba(0, 0, 0, 0.04));
+    padding: 1px 5px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+[data-theme="dark"] .market-index-time,
+body.dark-mode .market-index-time,
+.dark-mode .market-index-time {
+    background-color: rgba(255, 255, 255, 0.06);
+    color: #94a3b8;
+}
+
 .market-index-card.is-volatile-up {
     border: 1.5px solid #ef4444 !important;
     box-shadow: 0 2px 10px rgba(239, 68, 68, 0.16);

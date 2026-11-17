@@ -906,6 +906,10 @@ class USStockScraper(BaseScraper):
         return data
 
 class IndexScraper(BaseScraper):
+    def __init__(self, cache_size=16, ttl=900):
+        super().__init__(cache_size=cache_size)
+        self.cache = TTLCache(maxsize=cache_size, ttl=ttl)
+
     @cachedmethod(lambda self: self.cache, key=lambda self, code, **kwargs: code)
     def fetch_data(self, code: str) -> Optional[Dict[str, Any]]:
         logger.info(f"Fetching Market Index: {code}")
@@ -922,10 +926,43 @@ class IndexScraper(BaseScraper):
             json_text = self._extract_legacy_data(res.text)
             
         data = self._scavenge_common_data(res.text, json_text)
+
+        # Yahoo!ファイナンス新DOM構造からの取引値・前日比・取引時刻抽出 (#390)
+        html = res.text
+        try:
+            # 1. 取引値 (PriceBoard内のStyledNumber)
+            p_m = re.search(r'class="[^"]*(?:CommonPriceBoard__price|BasePriceBoard__priceInfo)[^"]*".*?<span class="[^"]*StyledNumber__value[^"]*">([\d\.\,]+)</span>', html, re.S)
+            if not p_m:
+                p_m = re.search(r'class="[^"]*PriceBoard.*?StyledNumber__value[^"]*">([\d\.\,]+)</span>', html, re.S)
+            if p_m:
+                data['price'] = p_m.group(1).replace(',', '')
+
+            # 2. 前日比・前日比率
+            pcl_match = re.search(r'class="[^"]*PriceChangeLabel[^"]*".*?</dl>', html, re.S)
+            if not pcl_match:
+                pcl_match = re.search(r'class="[^"]*PriceChangeLabel[^"]*".*?</div>', html, re.S)
+            if pcl_match:
+                c_matches = re.findall(r'class="[^"]*StyledNumber__value[^"]*">([+\-\d\.\,]+)</span>', pcl_match.group(0))
+                if len(c_matches) >= 2:
+                    data['change'] = c_matches[0].replace(',', '')
+                    data['change_percent'] = f"{c_matches[1]}%"
+                elif len(c_matches) == 1:
+                    data['change'] = c_matches[0].replace(',', '')
+
+            # 3. 取引時刻 (例: <time>12:40</time>)
+            t_m = re.search(r'<time[^>]*>([^<]+)</time>', html)
+            if t_m:
+                raw_time = t_m.group(1).strip()
+                time_match = re.search(r'(\d{1,2}:\d{2})', raw_time)
+                if time_match:
+                    data['trade_time'] = time_match.group(1)
+        except Exception as e:
+            logger.warning(f"Failed to extract new PriceBoard DOM data for {code}: {e}")
+
         data.update({"code": code, "asset_type": "market_index", "currency": "JPY"})
         return data
 
-@cached(TTLCache(maxsize=10, ttl=CACHE_TTL))
+@cached(TTLCache(maxsize=10, ttl=900))
 def get_exchange_rate_detail(pair: str = 'USDJPY=X') -> Dict[str, Any]:
     """
     為替レートの現在値・前日比・高値/安値・52週高値/安値・ピーク差等の詳細を取得する。
@@ -936,6 +973,7 @@ def get_exchange_rate_detail(pair: str = 'USDJPY=X') -> Dict[str, Any]:
         "price": None,
         "change": None,
         "change_percent": None,
+        "trade_time": None,
         "is_up": True,
         "high": None,
         "low": None,
@@ -947,6 +985,8 @@ def get_exchange_rate_detail(pair: str = 'USDJPY=X') -> Dict[str, Any]:
         scraper = get_scraper('market_index')
         data = scraper.fetch_data(pair)
         if data and "error" not in data:
+            if data.get("trade_time"):
+                result["trade_time"] = data.get("trade_time")
             price_str = data.get("price")
             if price_str:
                 result["price"] = str(price_str)
@@ -983,6 +1023,13 @@ def get_exchange_rate_detail(pair: str = 'USDJPY=X') -> Dict[str, Any]:
                 m_52low = re.search(r'\"lowPrice52w\":\s*\"?([\d\.\,]+)\"?', html) or re.search(r'\"yearLow\":\s*\"?([\d\.\,]+)\"?', html)
                 if m_52high: result["high_52w"] = m_52high.group(1).replace(',', '')
                 if m_52low: result["low_52w"] = m_52low.group(1).replace(',', '')
+
+                if not result.get("trade_time"):
+                    t_m = re.search(r'<time[^>]*>([^<]+)</time>', html)
+                    if t_m:
+                        time_match = re.search(r'(\d{1,2}:\d{2})', t_m.group(1))
+                        if time_match:
+                            result["trade_time"] = time_match.group(1)
         except Exception as ex:
             logger.warning(f"HTML scraping for {pair} details failed: {ex}")
 

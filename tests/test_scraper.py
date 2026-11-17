@@ -317,4 +317,61 @@ def test_get_exchange_rate_detail_previous_close_fallback(mocker):
     assert detail["is_up"] is True
 
 
+def test_index_scraper_new_dom_and_trade_time_issue390(mocker):
+    """Issue #390: Yahoo!ファイナンス新DOM構造から取引値・前日比・取引時刻が正しく抽出されること"""
+    from scraper import IndexScraper
+    scraper = IndexScraper()
+    assert scraper.cache.ttl == 900
+
+    html_content = '''<!DOCTYPE html>
+    <html>
+        <head><title>日経平均株価【998407.O】：指標情報 - Yahoo!ファイナンス</title></head>
+        <body>
+            <div class="_CommonPriceBoard__priceInfo_b3h1j_64">
+                <div class="_CommonPriceBoard__priceBlock_b3h1j_81">
+                    <span class="_StyledNumber_1arhg_1 _CommonPriceBoard__price_b3h1j_64">
+                        <span class="_StyledNumber__item_1arhg_6">
+                            <span class="_StyledNumber__value_1arhg_9">59,085.92</span>
+                        </span>
+                    </span>
+                    <div class="_PriceChangeLabel_hse06_1">
+                        <dl class="_PriceChangeLabel__definition_hse06_35">
+                            <dt>前日比</dt>
+                            <dd>
+                                <span class="_PriceChangeLabel__prices_hse06_52">
+                                    <span class="_StyledNumber__item_1arhg_6">
+                                        <span class="_StyledNumber__value_1arhg_9">-576.10</span>
+                                    </span>
+                                    <span class="_StyledNumber__item_1arhg_6">
+                                        <span class="_StyledNumber__value_1arhg_9">-0.97</span>
+                                        <span class="_StyledNumber__suffix_1arhg_9">%</span>
+                                    </span>
+                                </span>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+                <div class="_CommonPriceBoard__mainFooter_b3h1j_48">
+                    <ul>
+                        <li class="_CommonPriceBoard__time_b3h1j_55">15分ディレイ株価</li>
+                        <li class="_CommonPriceBoard__time_b3h1j_55"><time>12:42</time></li>
+                    </ul>
+                </div>
+            </div>
+        </body>
+    </html>'''
+
+    mock_res = mocker.Mock()
+    mock_res.text = html_content
+    mocker.patch.object(scraper, '_make_request', return_value=mock_res)
+
+    data = scraper.fetch_data("998407.O")
+    assert data["code"] == "998407.O"
+    assert data["price"] == "59085.92"
+    assert data["change"] == "-576.10"
+    assert data["change_percent"] == "-0.97%"
+    assert data["trade_time"] == "12:42"
+
+
+
 

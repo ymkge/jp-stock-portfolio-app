@@ -1546,7 +1546,7 @@ async def _get_processed_asset_data(request: Optional[Any] = None, force: bool =
 
                     threshold_time = get_cache_threshold_time(asset_type, now_jst, market_times)
                     if asset_type == 'market_index':
-                        # 市場指標はボード用の最重要指標のため、直近の市場基準時刻以降または直近60分以内のキャッシュのみ有効とする
+                        # 市場指標（日経平均・TOPIX・先物・為替）のスマートキャッシュ判定 (#390)
                         updated_at_str = db_data.get("_db_updated_at_jst")
                         if updated_at_str:
                             try:
@@ -1555,10 +1555,43 @@ async def _get_processed_asset_data(request: Optional[Any] = None, force: bool =
                                     updated_at = updated_at.replace(tzinfo=history_manager.JST)
                                 else:
                                     updated_at = updated_at.astimezone(history_manager.JST)
-                                if updated_at >= threshold_time or (now_jst - updated_at).total_seconds() < 3600:
-                                    cached_data = db_data
-                                    source = "DB"
-                                    is_fresh = True
+
+                                idx_cache_ttl = int(get_config("system.market_indices_cache_ttl_seconds", get_config("market_indices_cache_ttl_seconds", 900)))
+                                age_seconds = (now_jst - updated_at).total_seconds()
+
+                                # 先物・為替（平日ほぼ24時間取引）
+                                is_24h_trading = (code == "USDJPY=X" or "USD" in code or code == "5040469.O" or "先物" in str(db_data.get("name", "")))
+                                if is_24h_trading:
+                                    # 週末休場（土曜朝06:00〜月曜朝06:00 JST）判定
+                                    is_weekend_closed = (now_jst.weekday() == 5 and now_jst.time() >= datetime.strptime("06:00", "%H:%M").time()) or \
+                                                        (now_jst.weekday() == 6) or \
+                                                        (now_jst.weekday() == 0 and now_jst.time() < datetime.strptime("06:00", "%H:%M").time())
+                                    if is_weekend_closed:
+                                        if updated_at >= threshold_time:
+                                            cached_data = db_data
+                                            source = "DB"
+                                            is_fresh = True
+                                    else:
+                                        if age_seconds < idx_cache_ttl:
+                                            cached_data = db_data
+                                            source = "DB"
+                                            is_fresh = True
+                                else:
+                                    # 国内現物指数 (日経平均 998407.O, TOPIX 998405.T 等)
+                                    is_holiday = is_jp_market_holiday(now_jst)
+                                    is_market_hours = (not is_holiday) and (datetime.strptime("09:00", "%H:%M").time() <= now_jst.time() < datetime.strptime("15:30", "%H:%M").time())
+                                    if is_market_hours:
+                                        # 日中市場開催中は設定されたTTL（15分）以内のキャッシュのみ有効
+                                        if age_seconds < idx_cache_ttl:
+                                            cached_data = db_data
+                                            source = "DB"
+                                            is_fresh = True
+                                    else:
+                                        # 市場時間外は大引け確定キャッシュ（直近クローズ以降）があれば有効
+                                        if updated_at >= threshold_time:
+                                            cached_data = db_data
+                                            source = "DB"
+                                            is_fresh = True
                             except ValueError:
                                 pass
                     else:
@@ -1754,6 +1787,8 @@ async def _get_processed_asset_data(request: Optional[Any] = None, force: bool =
                     if fx_detail.get("price"):
                         idx_result["price"] = fx_detail.get("price")
                         current_price = safe_float(fx_detail.get("price"))
+                    if fx_detail.get("trade_time"):
+                        idx_result["trade_time"] = fx_detail.get("trade_time")
                     if fx_detail.get("change") is not None:
                         idx_result["change"] = fx_detail.get("change")
                     if fx_detail.get("change_percent") is not None:
@@ -1808,6 +1843,7 @@ async def _get_processed_asset_data(request: Optional[Any] = None, force: bool =
                 "price": idx_result.get("price"),
                 "change": idx_result.get("change"),
                 "change_percent": idx_result.get("change_percent"),
+                "trade_time": idx_result.get("trade_time"),
                 "high": idx_result.get("high"),
                 "low": idx_result.get("low"),
                 "high_52w": idx_result.get("high_52w"),

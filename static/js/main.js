@@ -438,6 +438,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const volBadgeHtml = isVolatile
                 ? `<button type="button" class="volatile-factor-badge ${volDirection === 'down' ? 'badge-vol-down' : 'badge-vol-up'}" data-code="${idx.code}" title="クリックして急変動の要因ニュース・AI分析を表示">${idx.volatility_label || '⚡ 急変動'}・要因</button>`
                 : '';
+            const timeHtml = idx.trade_time
+                ? `<span class="market-index-time" title="取引・更新時刻: ${idx.trade_time}">${idx.trade_time}</span>`
+                : '';
 
             cardsHtml += `
                 <a href="https://finance.yahoo.co.jp/quote/${idx.code}" target="_blank" class="market-index-link" title="${cardTitle}">
@@ -446,6 +449,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span class="market-index-name">${idx.name}</span>
                             <div class="market-index-header-right">
                                 ${volBadgeHtml}
+                                ${timeHtml}
                                 <span class="market-index-code" style="font-size: 0.7rem; color: var(--text-muted);">${idx.code}</span>
                             </div>
                         </div>

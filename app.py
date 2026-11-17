@@ -2894,12 +2894,37 @@ def get_market_fibonacci():
         n225_data = _calculate_market_fibonacci_data(n225_high, n225_low, n225_cur, "日経平均株価", "998407.O", n225_hdate, n225_ldate)
         topix_data = _calculate_market_fibonacci_data(topix_high, topix_low, topix_cur, "TOPIX", "998405.T", topix_hdate, topix_ldate)
 
+        # 解説テキストの組み立てと重複排除サニタイズ (#389)
+        def _clean_comm(text: str, prefix: str) -> str:
+            text = text.strip()
+            if text.startswith(prefix):
+                text = text[len(prefix):].strip()
+            return text
+
+        cleaned_n225 = _clean_comm(n225_comm, "【日経平均】")
+        cleaned_topix = _clean_comm(topix_comm, "【TOPIX】")
+
+        if not cleaned_n225 and not cleaned_topix:
+            combined_comm = "直近3年間の高安値を基準としたフィボナッチ水準を分析しました。"
+        elif cleaned_n225 and not cleaned_topix:
+            combined_comm = f"【日経平均】{cleaned_n225}"
+        elif cleaned_topix and not cleaned_n225:
+            combined_comm = f"【TOPIX】{cleaned_topix}"
+        elif cleaned_n225 == cleaned_topix:
+            # 同一文章が重複保存されていた場合は2回繰り返さず単一で表示
+            combined_comm = cleaned_n225
+        else:
+            combined_comm = f"【日経平均】{cleaned_n225}\n\n【TOPIX】{cleaned_topix}"
+
+        n225_data["ai_commentary"] = cleaned_n225
+        topix_data["ai_commentary"] = cleaned_topix
+
         return {
             "error": False,
             "updated_at": str(n225_rule.get("updated_at", "2026-08-27")),
             "n225": n225_data,
             "topix": topix_data,
-            "commentary": f"【日経平均】{n225_comm}\n【TOPIX】{topix_comm}"
+            "commentary": combined_comm
         }
     except Exception as e:
         logger.error(f"Error in get_market_fibonacci: {e}")
@@ -2959,6 +2984,17 @@ def refresh_market_fibonacci():
             except: pass
 
         today_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # 指数別の固有解説を取得（旧形式や欠落時は market_commentary へフォールバック #389）
+        n225_commentary = (
+            llm_res.get("n225", {}).get("commentary")
+            or llm_res.get("market_commentary", "")
+        )
+        topix_commentary = (
+            llm_res.get("topix", {}).get("commentary")
+            or llm_res.get("market_commentary", "")
+        )
+
         rules_data["fibonacci_indices"] = {
             "nikkei225": {
                 "name": "日経平均株価",
@@ -2968,7 +3004,7 @@ def refresh_market_fibonacci():
                 "low_price": llm_res["n225"]["low_price"],
                 "low_date": llm_res["n225"]["low_date"],
                 "updated_at": today_str,
-                "ai_commentary": llm_res.get("market_commentary", "")
+                "ai_commentary": n225_commentary
             },
             "topix": {
                 "name": "TOPIX",
@@ -2978,7 +3014,7 @@ def refresh_market_fibonacci():
                 "low_price": llm_res["topix"]["low_price"],
                 "low_date": llm_res["topix"]["low_date"],
                 "updated_at": today_str,
-                "ai_commentary": llm_res.get("market_commentary", "")
+                "ai_commentary": topix_commentary
             }
         }
 

@@ -605,6 +605,46 @@ def test_fetch_market_fibonacci_llm_direct_issue293(policy_manager):
         assert result_new_high["topix"]["high_price"] == 4176.0
 
 
+def test_fetch_market_fibonacci_llm_individual_commentaries_issue389(policy_manager):
+    """Issue #389: fetch_market_fibonacci_llm が日経平均とTOPIXの個別解説を正常にパースするか検証"""
+    from unittest.mock import patch, MagicMock
+
+    policy_manager.save_config(api_key="test_api_key_dummy_389")
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    mock_gemini_json = """{
+        "n225": {
+            "high_price": 72353.0, "high_date": "2026-06", "low_price": 30500.29, "low_date": "2023-10",
+            "commentary": "日経平均は半導体株の調整一巡から反発基調です。"
+        },
+        "topix": {
+            "high_price": 4101.96, "high_date": "2026-07", "low_price": 2217.10, "low_date": "2023-10",
+            "commentary": "TOPIXは銀行株などバリュー株の買い支えが続いています。"
+        }
+    }"""
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [{"text": mock_gemini_json}]
+                }
+            }
+        ]
+    }
+
+    with patch("requests.post", return_value=mock_response):
+        result = service.fetch_market_fibonacci_llm(current_n225=39000, current_topix=2700)
+        assert result["error"] is False
+        assert result["n225"]["commentary"] == "日経平均は半導体株の調整一巡から反発基調です。"
+        assert result["topix"]["commentary"] == "TOPIXは銀行株などバリュー株の買い支えが続いています。"
+        # 後方互換性フォールバックで market_commentary も自動生成されていること
+        assert "日経平均は半導体株" in result["market_commentary"]
+        assert "TOPIXは銀行株" in result["market_commentary"]
+
+
 def test_diagnose_anomaly_no_api_key_issue298(tmp_path):
     """案件 #298: APIキー未設定時に diagnose_anomaly が NO_API_KEY を返却するか検証"""
     test_file = os.path.join(tmp_path, "no_key_policy_298.json")

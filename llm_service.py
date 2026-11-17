@@ -1185,13 +1185,15 @@ fit_levelの基準:
     "high_price": 最高値の数値 (float, 例: 72353.00),
     "high_date": "最高値の発生年月 (string, 例: 2026年6月)",
     "low_price": 最安値の数値 (float, 例: 30500.29),
-    "low_date": "最安値の発生年月 (string, 例: 2023年10月)"
+    "low_date": "最安値の発生年月 (string, 例: 2023年10月)",
+    "commentary": "日経平均株価の現在のフィボナッチ戻し水準における上値抵抗線・下値サポート帯の相場見通し解説 (1〜2文・80字程度)"
   }},
   "topix": {{
     "high_price": 最高値の数値 (float, 例: 4101.96),
     "high_date": "最高値の発生年月 (string, 例: 2026年7月)",
     "low_price": 最安値の数値 (float, 例: 2217.10),
-    "low_date": "最安値の発生年月 (string, 例: 2023年10月)"
+    "low_date": "最安値の発生年月 (string, 例: 2023年10月)",
+    "commentary": "TOPIXの現在のフィボナッチ戻し水準における上値抵抗線・下値サポート帯の相場見通し解説 (1〜2文・80字程度)"
   }},
   "market_commentary": "日経平均およびTOPIXの現在のフィボナッチ戻し水準における上値抵抗線・下値サポート帯の相場見通しワンポイント解説 (2〜3文)"
 }}
@@ -1212,15 +1214,37 @@ fit_levelの基準:
             parsed = json.loads(cleaned)
 
             # バリデーションチェック
-            n225_h = float(parsed["n225"]["high_price"])
-            n225_l = float(parsed["n225"]["low_price"])
-            n225_hd = str(parsed["n225"].get("high_date", "直近3年"))
-            n225_ld = str(parsed["n225"].get("low_date", "直近3年"))
+            n225_obj = parsed.get("n225", {})
+            topix_obj = parsed.get("topix", {})
 
-            topix_h = float(parsed["topix"]["high_price"])
-            topix_l = float(parsed["topix"]["low_price"])
-            topix_hd = str(parsed["topix"].get("high_date", "直近3年"))
-            topix_ld = str(parsed["topix"].get("low_date", "直近3年"))
+            n225_h = float(n225_obj["high_price"])
+            n225_l = float(n225_obj["low_price"])
+            n225_hd = str(n225_obj.get("high_date", "直近3年"))
+            n225_ld = str(n225_obj.get("low_date", "直近3年"))
+
+            topix_h = float(topix_obj["high_price"])
+            topix_l = float(topix_obj["low_price"])
+            topix_hd = str(topix_obj.get("high_date", "直近3年"))
+            topix_ld = str(topix_obj.get("low_date", "直近3年"))
+
+            raw_overall_comm = str(parsed.get("market_commentary", "")).strip()
+            n225_comm = str(n225_obj.get("commentary", "")).strip()
+            topix_comm = str(topix_obj.get("commentary", "")).strip()
+
+            if not n225_comm and raw_overall_comm:
+                n225_comm = raw_overall_comm
+            if not topix_comm and raw_overall_comm:
+                topix_comm = raw_overall_comm
+
+            if raw_overall_comm:
+                overall_comm = raw_overall_comm
+            elif n225_comm and topix_comm:
+                if n225_comm == topix_comm:
+                    overall_comm = n225_comm
+                else:
+                    overall_comm = f"【日経平均】{n225_comm}\n【TOPIX】{topix_comm}"
+            else:
+                overall_comm = n225_comm or topix_comm or "直近3年間の高安値を基準としたフィボナッチ水準を分析しました。"
 
             # リアルタイム現在値との比較・最高値繰り上げ / 最安値繰り下げ (双方向ガード)
             now_month_str = datetime.now().strftime("%Y年%m月")
@@ -1249,15 +1273,17 @@ fit_levelの基準:
                     "high_price": round(n225_h, 2),
                     "high_date": n225_hd,
                     "low_price": round(n225_l, 2),
-                    "low_date": n225_ld
+                    "low_date": n225_ld,
+                    "commentary": n225_comm
                 },
                 "topix": {
                     "high_price": round(topix_h, 2),
                     "high_date": topix_hd,
                     "low_price": round(topix_l, 2),
-                    "low_date": topix_ld
+                    "low_date": topix_ld,
+                    "commentary": topix_comm
                 },
-                "market_commentary": str(parsed.get("market_commentary", "直近3年間の高安値を基準としたフィボナッチ水準を分析しました。"))
+                "market_commentary": overall_comm
             }
         except Exception as e:
             logger.error(f"Failed to parse Market Fibonacci LLM response: {e}")

@@ -4343,6 +4343,11 @@ body.dark-mode #market-fib-ai-commentary-card,
     border-color: rgba(129, 140, 248, 0.4) !important;
 }
 
+#market-fib-ai-commentary-text {
+    white-space: pre-line;
+    word-break: break-word;
+}
+
 [data-theme="dark"] #market-fib-ai-commentary-text,
 body.dark-mode #market-fib-ai-commentary-text,
 .dark-mode #market-fib-ai-commentary-text {

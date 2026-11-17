@@ -958,6 +958,74 @@ def test_post_market_fibonacci_refresh_api_issue231():
                 f.write(backup)
 
 
+def test_market_fibonacci_commentary_deduplication_and_individual_issue389():
+    """Issue #389: フィボナッチ解説の同一重複防止サニタイズおよび個別解説保持の検証"""
+    rules_path = "highlight_rules.json"
+    backup = None
+    if os.path.exists(rules_path):
+        with open(rules_path, "r", encoding="utf-8") as f:
+            backup = f.read()
+
+    try:
+        # 1. 新形式: 日経平均とTOPIXで異なる固有解説が提供された場合
+        mock_individual = {
+            "error": False,
+            "n225": {
+                "high_price": 75000.0, "high_date": "2026年8月",
+                "low_price": 31000.0, "low_date": "2023年11月",
+                "commentary": "日経平均は半導体株主導で押し目からの反発局面にあります。"
+            },
+            "topix": {
+                "high_price": 4200.0, "high_date": "2026年8月",
+                "low_price": 2300.0, "low_date": "2023年11月",
+                "commentary": "TOPIXは内需・バリュー株の下支えで堅調に推移しています。"
+            }
+        }
+        with patch("app.llm_service_instance.fetch_market_fibonacci_llm", return_value=mock_individual):
+            res_refresh = client.post("/api/market/fibonacci/refresh")
+            assert res_refresh.status_code == 200
+
+        res_get = client.get("/api/market/fibonacci")
+        assert res_get.status_code == 200
+        data = res_get.json()
+        assert data["error"] is False
+        assert "【日経平均】" in data["commentary"]
+        assert "【TOPIX】" in data["commentary"]
+        assert "日経平均は半導体株主導" in data["commentary"]
+        assert "TOPIXは内需・バリュー株" in data["commentary"]
+        assert data["n225"]["ai_commentary"] == "日経平均は半導体株主導で押し目からの反発局面にあります。"
+        assert data["topix"]["ai_commentary"] == "TOPIXは内需・バリュー株の下支えで堅調に推移しています。"
+
+        # 2. サニタイズ防衛: 万が一、日経平均とTOPIXに全く同一の解説が入った場合、2回繰り返さず単一で返す
+        mock_identical = {
+            "error": False,
+            "n225": {
+                "high_price": 75000.0, "high_date": "2026年8月",
+                "low_price": 31000.0, "low_date": "2023年11月",
+                "commentary": "主要指数は節目の攻防が続いています。"
+            },
+            "topix": {
+                "high_price": 4200.0, "high_date": "2026年8月",
+                "low_price": 2300.0, "low_date": "2023年11月",
+                "commentary": "主要指数は節目の攻防が続いています。"
+            }
+        }
+        with patch("app.llm_service_instance.fetch_market_fibonacci_llm", return_value=mock_identical):
+            res_refresh2 = client.post("/api/market/fibonacci/refresh")
+            assert res_refresh2.status_code == 200
+
+        res_get2 = client.get("/api/market/fibonacci")
+        assert res_get2.status_code == 200
+        data2 = res_get2.json()
+        # 重複せず1回だけ出力され、【日経平均】【TOPIX】の連続見出しによる重複も排除されていること
+        assert data2["commentary"] == "主要指数は節目の攻防が続いています。"
+        assert data2["commentary"].count("主要指数は節目の攻防が続いています。") == 1
+    finally:
+        if backup is not None:
+            with open(rules_path, "w", encoding="utf-8") as f:
+                f.write(backup)
+
+
 def test_market_fibonacci_frontend_elements_issue231():
     """Issue #231: / および /analysis テンプレートのJS組み込み・ボタン・モーダル・タブの存在を検証"""
     res_main = client.get("/")

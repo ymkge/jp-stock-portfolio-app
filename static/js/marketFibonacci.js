@@ -92,19 +92,94 @@ function renderMarketFibonacciModal() {
         `;
     }
 
+    // 1.5 テクニカル反発強度 & 目処カード描画 (#393)
+    const biasEl = document.getElementById('fib-rebound-bias-card');
+    const bias = indexData.rebound_bias;
+    if (biasEl && bias) {
+        const unit = currentFibTab === 'n225' ? '円' : 'pt';
+        const factorsHtml = (bias.factors || []).map(f => {
+            const badgeClass = f.type === 'positive' ? 'factor-positive' : (f.type === 'negative' ? 'factor-negative' : 'factor-neutral');
+            return `<span class="bias-factor-chip ${badgeClass}">${f.emoji || ''} ${f.name} <small>(${f.points})</small></span>`;
+        }).join('');
+
+        const uTarget = bias.upper_target || {};
+        const lTarget = bias.lower_target || {};
+        const uDiffStr = typeof uTarget.diff_pct === 'number' ? `${uTarget.diff_pct > 0 ? '+' : ''}${uTarget.diff_pct}%` : '';
+        const lDiffStr = typeof lTarget.diff_pct === 'number' ? `${lTarget.diff_pct > 0 ? '+' : ''}${lTarget.diff_pct}%` : '';
+
+        biasEl.innerHTML = `
+            <div class="rebound-bias-grid">
+                <!-- 左側: 反発強度メーター & 要因チップ -->
+                <div class="bias-meter-panel">
+                    <div class="bias-panel-header">
+                        <span class="bias-panel-title">🎯 テクニカル反発強度</span>
+                        <span class="bias-status-badge">${bias.bias_label}</span>
+                    </div>
+                    <div class="bias-meter-container">
+                        <div class="bias-meter-bar" style="width: ${bias.rebound_probability}%;"></div>
+                    </div>
+                    <div class="bias-meter-labels">
+                        <span class="bias-label-rebound">📈 反転優位 <strong>${bias.rebound_probability}%</strong></span>
+                        <span class="bias-label-fall">📉 続落警戒 <strong>${bias.fall_probability}%</strong></span>
+                    </div>
+                    <div class="bias-factors-chips">
+                        ${factorsHtml}
+                    </div>
+                </div>
+
+                <!-- 右側: 上下目処カード & リスクリワード比 -->
+                <div class="bias-targets-panel">
+                    <div class="targets-two-cols">
+                        <div class="target-box target-upper">
+                            <div class="target-box-header">
+                                <span class="target-box-title">🔼 上値・反転目処</span>
+                                <span class="target-diff-pill diff-upper">${uDiffStr}</span>
+                            </div>
+                            <div class="target-box-price">${(uTarget.price || 0).toLocaleString()} <small>${unit}</small></div>
+                            <div class="target-box-sub">${uTarget.name || ''}</div>
+                        </div>
+                        <div class="target-box target-lower">
+                            <div class="target-box-header">
+                                <span class="target-box-title">🔽 下値・続落目処</span>
+                                <span class="target-diff-pill diff-lower">${lDiffStr}</span>
+                            </div>
+                            <div class="target-box-price">${(lTarget.price || 0).toLocaleString()} <small>${unit}</small></div>
+                            <div class="target-box-sub">${lTarget.name || ''}</div>
+                        </div>
+                    </div>
+                    <div class="rr-ratio-bar">
+                        <span>⚖️ リスクリワード比: <strong>1 : ${bias.risk_reward_ratio}</strong></span>
+                        <span class="rr-ratio-label">(${bias.risk_reward_label})</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
     // 2. テーブル描画
     if (tableBodyEl) {
         const unit = currentFibTab === 'n225' ? '円' : 'pt';
         let html = '';
+        const upperLvl = bias && bias.upper_target ? bias.upper_target.level : null;
+        const lowerLvl = bias && bias.lower_target ? bias.lower_target.level : null;
+
         (indexData.levels || []).forEach((item) => {
             const isHighlight = indexData.current_zone && indexData.current_zone.includes(item.emoji);
             const rowClass = isHighlight ? 'class="fib-row-highlight"' : '';
             
+            let targetPill = '';
+            if (upperLvl !== null && item.level === upperLvl) {
+                targetPill = `<span class="fib-target-badge badge-target-upper" title="反転時の上値ターゲット目処">🔼 上値目処</span>`;
+            } else if (lowerLvl !== null && item.level === lowerLvl) {
+                targetPill = `<span class="fib-target-badge badge-target-lower" title="続落時の下値サポート目処">🔽 下値目処</span>`;
+            }
+
             html += `
                 <tr ${rowClass} style="border-bottom: 1px solid var(--border-color, #e2e8f0);">
                     <td style="padding: 10px 12px;">
                         <span style="font-size: 1.1rem; margin-right: 6px;">${item.emoji}</span>
                         <span>${item.name}</span>
+                        ${targetPill}
                     </td>
                     <td style="padding: 10px 12px; text-align: right; font-family: monospace; font-size: 0.95rem;">
                         <strong>${item.price.toLocaleString()}</strong> <small>${unit}</small>
@@ -120,8 +195,32 @@ function renderMarketFibonacciModal() {
 
     // 3. AI解説描画
     if (commentaryEl) {
-        const commText = marketFibData.commentary || 'AIによる市場見通し解説を作成しました。';
-        commentaryEl.innerText = commText;
+        let aiHtml = '';
+        const rebScenario = indexData.rebound_scenario;
+        const contScenario = indexData.continuation_scenario;
+
+        if (rebScenario || contScenario) {
+            const rebProb = bias ? bias.rebound_probability : 60;
+            const contProb = bias ? bias.fall_probability : 40;
+            aiHtml += `
+                <div class="market-fib-scenarios-container">
+                    ${rebScenario ? `
+                    <div class="fib-scenario-item scenario-rebound">
+                        <div class="scenario-item-header">📈 反転シナリオ (${rebProb}% 推定)</div>
+                        <div class="scenario-item-body">${rebScenario}</div>
+                    </div>` : ''}
+                    ${contScenario ? `
+                    <div class="fib-scenario-item scenario-continuation">
+                        <div class="scenario-item-header">📉 続落シナリオ (${contProb}% 推定)</div>
+                        <div class="scenario-item-body">${contScenario}</div>
+                    </div>` : ''}
+                </div>
+            `;
+        }
+
+        const commText = indexData.ai_commentary || marketFibData.commentary || 'AIによる市場見通し解説を作成しました。';
+        aiHtml += `<div class="fib-general-commentary" style="margin-top: 8px;">${commText}</div>`;
+        commentaryEl.innerHTML = aiHtml;
     }
 }
 

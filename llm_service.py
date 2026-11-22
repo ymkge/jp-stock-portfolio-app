@@ -1149,8 +1149,8 @@ fit_levelの基準:
             "summary": str(data.get("summary", "利確AI診断を完了しました。"))
         }
 
-    def fetch_market_fibonacci_llm(self, current_n225: float = 0.0, current_topix: float = 0.0) -> Dict[str, Any]:
-        """Gemini AIに問い合わせて直近3年間の日経平均・TOPIXの最高値・最安値・発生年月および相場解説を取得する (#231)"""
+    def fetch_market_fibonacci_llm(self, current_n225: float = 0.0, current_topix: float = 0.0, n225_bias: Optional[Dict[str, Any]] = None, topix_bias: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Gemini AIに問い合わせて直近3年間の日経平均・TOPIXの最高値・最安値・発生年月および相場シナリオ解説を取得する (#231, #393)"""
         api_key = self.policy_manager.get_effective_api_key()
         if not api_key:
             return {"error": True, "message": "NO_API_KEY"}
@@ -1163,11 +1163,24 @@ fit_levelの基準:
         n225_str = f"{current_n225:,.2f}円" if current_n225 > 0 else "現在値取得中"
         topix_str = f"{current_topix:,.2f}pt" if current_topix > 0 else "現在値取得中"
 
+        bias_info_text = ""
+        if n225_bias or topix_bias:
+            lines = ["\n### 【テクニカル推計前提 (反発強度 & 目処)】"]
+            if n225_bias:
+                n225_u = n225_bias.get("upper_target", {})
+                n225_l = n225_bias.get("lower_target", {})
+                lines.append(f"- 日経平均株価: テクニカル反発強度 {n225_bias.get('rebound_probability', 50)}% [上値目処: {n225_u.get('name', '上値')} 約{n225_u.get('price', 0):,.0f}円 / 下値目処: {n225_l.get('name', '下値')} 約{n225_l.get('price', 0):,.0f}円]")
+            if topix_bias:
+                topix_u = topix_bias.get("upper_target", {})
+                topix_l = topix_bias.get("lower_target", {})
+                lines.append(f"- TOPIX: テクニカル反発強度 {topix_bias.get('rebound_probability', 50)}% [上値目処: {topix_u.get('name', '上値')} 約{topix_u.get('price', 0):,.1f}pt / 下値目処: {topix_l.get('name', '下値')} 約{topix_l.get('price', 0):,.1f}pt]")
+            bias_info_text = "\n".join(lines) + "\n"
+
         prompt = f"""
 あなたは日本の株式市場（日経平均株価およびTOPIX）のテクニカル分析およびフィボナッチリトレースメントに精通したプロのアナリストです。
 
 直近3年間（現在時点から遡って過去3年間）における「日経平均株価 (円)」および「TOPIX (ポイント)」の正確な最高値・最安値、ならびにその発生年月を提示し、現在の市場位置を踏まえた相場見通し・節目のワンポイント解説を作成してください。
-
+{bias_info_text}
 ---
 
 ### 【現在値情報】
@@ -1186,14 +1199,18 @@ fit_levelの基準:
     "high_date": "最高値の発生年月 (string, 例: 2026年6月)",
     "low_price": 最安値の数値 (float, 例: 30500.29),
     "low_date": "最安値の発生年月 (string, 例: 2023年10月)",
-    "commentary": "日経平均株価の現在のフィボナッチ戻し水準における上値抵抗線・下値サポート帯の相場見通し解説 (1〜2文・80字程度)"
+    "commentary": "日経平均株価の現在のフィボナッチ戻し水準における上値抵抗線・下値サポート帯の相場見通し解説 (1〜2文・80字程度)",
+    "rebound_scenario": "反転上昇する場合の背景・押し目買い材料の見通し (1文・60字程度)",
+    "continuation_scenario": "節目を下抜けて続落する場合の警戒要因・背景見通し (1文・60字程度)"
   }},
   "topix": {{
     "high_price": 最高値の数値 (float, 例: 4101.96),
     "high_date": "最高値の発生年月 (string, 例: 2026年7月)",
     "low_price": 最安値の数値 (float, 例: 2217.10),
     "low_date": "最安値の発生年月 (string, 例: 2023年10月)",
-    "commentary": "TOPIXの現在のフィボナッチ戻し水準における上値抵抗線・下値サポート帯の相場見通し解説 (1〜2文・80字程度)"
+    "commentary": "TOPIXの現在のフィボナッチ戻し水準における上値抵抗線・下値サポート帯の相場見通し解説 (1〜2文・80字程度)",
+    "rebound_scenario": "反転上昇する場合の背景・押し目買い材料の見通し (1文・60字程度)",
+    "continuation_scenario": "節目を下抜けて続落する場合の警戒要因・背景見通し (1文・60字程度)"
   }},
   "market_commentary": "日経平均およびTOPIXの現在のフィボナッチ戻し水準における上値抵抗線・下値サポート帯の相場見通しワンポイント解説 (2〜3文)"
 }}
@@ -1264,6 +1281,11 @@ fit_levelの基準:
                     topix_l = current_topix
                     topix_ld = now_month_str
 
+            n225_reb = str(n225_obj.get("rebound_scenario", "")).strip()
+            n225_cont = str(n225_obj.get("continuation_scenario", "")).strip()
+            topix_reb = str(topix_obj.get("rebound_scenario", "")).strip()
+            topix_cont = str(topix_obj.get("continuation_scenario", "")).strip()
+
             if n225_h <= n225_l or topix_h <= topix_l or n225_l <= 0 or topix_l <= 0:
                 raise ValueError("Invalid High/Low relationship")
 
@@ -1274,14 +1296,18 @@ fit_levelの基準:
                     "high_date": n225_hd,
                     "low_price": round(n225_l, 2),
                     "low_date": n225_ld,
-                    "commentary": n225_comm
+                    "commentary": n225_comm,
+                    "rebound_scenario": n225_reb,
+                    "continuation_scenario": n225_cont
                 },
                 "topix": {
                     "high_price": round(topix_h, 2),
                     "high_date": topix_hd,
                     "low_price": round(topix_l, 2),
                     "low_date": topix_ld,
-                    "commentary": topix_comm
+                    "commentary": topix_comm,
+                    "rebound_scenario": topix_reb,
+                    "continuation_scenario": topix_cont
                 },
                 "market_commentary": overall_comm
             }

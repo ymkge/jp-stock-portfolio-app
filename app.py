@@ -2819,6 +2819,293 @@ async def diagnose_profit_taking_with_llm(req: ProfitTakingLLMRequest):
         raise HTTPException(status_code=500, detail=f"利確AI診断の実行中にエラーが発生しました: {str(e)}")
 
 
+def _calculate_rebound_bias(cur_p: float, high_p: float, low_p: float, code: str, levels: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    フィボナッチ節目・移動平均線・RSI・直近モメンタムを複合評価し、
+    テクニカル反発強度（リバウンド優位度）、上下目処、リスクリワード比を算出する (#393)
+    """
+    diff = high_p - low_p
+    if cur_p <= 0 or diff <= 0:
+        return {
+            "rebound_probability": 50,
+            "fall_probability": 50,
+            "bias_label": "中立・攻防 (Neutral)",
+            "factors": [{"name": "現在値取得待ち", "points": "0%", "type": "neutral", "emoji": "⏳"}],
+            "upper_target": {"name": "上値目処", "price": high_p, "diff_pct": 0.0},
+            "lower_target": {"name": "下値目処", "price": low_p, "diff_pct": 0.0},
+            "risk_reward_ratio": 1.0,
+            "risk_reward_label": "ほぼ中立 (Balanced)",
+            "rsi14": 50.0,
+            "ma25": None,
+            "ma75": None,
+            "ma200": None
+        }
+
+    # 1. 履歴データの取得と移動平均線・RSIの算出
+    histories = []
+    try:
+        histories = history_manager.get_historical_data_for_analysis(code, limit=300)
+    except Exception as e:
+        logger.warning(f"Failed to fetch historical data for {code} rebound bias: {e}")
+
+    history_prices = []
+    for h in histories:
+        try:
+            p = float(str(h.get("closePrice") or h.get("price") or h.get("close") or 0).replace(',', ''))
+            if p > 0: history_prices.append(p)
+        except (ValueError, TypeError): pass
+
+    combined_prices = [cur_p] + history_prices if cur_p > 0 else history_prices
+
+    def _calc_ma(prices: List[float], window: int) -> Optional[float]:
+        if len(prices) >= window:
+            return round(sum(prices[:window]) / window, 2)
+        return None
+
+    ma25 = _calc_ma(combined_prices, 25)
+    ma75 = _calc_ma(combined_prices, 75)
+    ma200 = _calc_ma(combined_prices, 200)
+
+    # RSI(14) 算出 (欠損時は 50.0 中立)
+    rsi14 = 50.0
+    if len(combined_prices) >= 15:
+        try:
+            # combined_prices は [cur_p, p_1, p_2, ...] (新しい順)
+            p_slice = combined_prices[:15]
+            p_asc = list(reversed(p_slice))
+            diffs = [p_asc[i+1] - p_asc[i] for i in range(14)]
+            up = sum(d for d in diffs if d > 0)
+            down = sum(-d for d in diffs if d < 0)
+            if up + down > 0:
+                rsi14 = round((up / (up + down)) * 100.0, 1)
+        except Exception as e:
+            logger.warning(f"Failed to calculate RSI for {code}: {e}")
+
+    # 2. 4因子加減点スコアリング (初期値: 中立 50%)
+    score = 50.0
+    factors = []
+
+    # 因子①: フィボナッチ節目支持力 (最大 ±20pt)
+    # 現在値に最も近い節目レベルを探索
+    sorted_levels = sorted(levels, key=lambda l: abs(cur_p - l["price"]))
+    closest_lvl = sorted_levels[0] if sorted_levels else None
+    if closest_lvl:
+        lvl_val = closest_lvl.get("level", 0.0)
+        lvl_price = closest_lvl.get("price", cur_p)
+        diff_pct = abs(cur_p - lvl_price) / lvl_price * 100.0 if lvl_price > 0 else 999.0
+
+        if lvl_val in [38.2, 50.0, 61.8] and diff_pct <= 1.8:
+            pts = 20 if lvl_val == 61.8 else 15
+            score += pts
+            factors.append({
+                "name": f"{closest_lvl['name']}節目近傍サポート (乖離{diff_pct:.1f}%)",
+                "points": f"+{pts}%",
+                "type": "positive",
+                "emoji": closest_lvl.get("emoji", "🎯")
+            })
+        elif lvl_val in [23.6, 76.4] and diff_pct <= 1.8:
+            pts = 10
+            score += pts
+            factors.append({
+                "name": f"{closest_lvl['name']}ライン接近 (乖離{diff_pct:.1f}%)",
+                "points": f"+{pts}%",
+                "type": "positive",
+                "emoji": closest_lvl.get("emoji", "📉")
+            })
+
+    if cur_p < levels[-1]["price"]:
+        score -= 20
+        factors.append({
+            "name": "直近3年最安値ブレイクダウン（底割れ）",
+            "points": "-20%",
+            "type": "negative",
+            "emoji": "⚠️"
+        })
+
+    # 因子②: 移動平均線（75日/200日）重なり・支持力 (最大 ±15pt)
+    if ma75 and abs(cur_p - ma75) / ma75 <= 0.018:
+        score += 15
+        factors.append({
+            "name": f"75日移動平均線 ({ma75:,.0f}) 支持帯とコンバージェンス",
+            "points": "+15%",
+            "type": "positive",
+            "emoji": "📈"
+        })
+    elif ma200 and abs(cur_p - ma200) / ma200 <= 0.018:
+        score += 15
+        factors.append({
+            "name": f"200日移動平均線 ({ma200:,.0f}) 長期支持線と合致",
+            "points": "+15%",
+            "type": "positive",
+            "emoji": "🛡️"
+        })
+    elif ma75 and cur_p < ma75 * 0.98 and ma25 and cur_p < ma25:
+        score -= 10
+        factors.append({
+            "name": "25日線・75日線を下回り下落モメンタム優勢",
+            "points": "-10%",
+            "type": "negative",
+            "emoji": "📉"
+        })
+
+    # 因子③: RSIオシレーター (最大 ±15pt)
+    if rsi14 <= 30.0:
+        score += 15
+        factors.append({
+            "name": f"RSI(14)が {rsi14:.1f} で売られすぎ圏（自律反発余地大）",
+            "points": "+15%",
+            "type": "positive",
+            "emoji": "🟢"
+        })
+    elif rsi14 <= 42.0:
+        score += 8
+        factors.append({
+            "name": f"RSI(14)が {rsi14:.1f} で押し目圏に接近",
+            "points": "+8%",
+            "type": "positive",
+            "emoji": "🟢"
+        })
+    elif rsi14 >= 70.0:
+        score -= 15
+        factors.append({
+            "name": f"RSI(14)が {rsi14:.1f} で買われすぎ過熱圏（反落警戒）",
+            "points": "-15%",
+            "type": "negative",
+            "emoji": "⚠️"
+        })
+    elif rsi14 >= 60.0:
+        score -= 5
+        factors.append({
+            "name": f"RSI(14)が {rsi14:.1f} でやや高値警戒圏",
+            "points": "-5%",
+            "type": "negative",
+            "emoji": "🟡"
+        })
+    else:
+        factors.append({
+            "name": f"RSI(14)は {rsi14:.1f} で中立水準",
+            "points": "±0%",
+            "type": "neutral",
+            "emoji": "⚖️"
+        })
+
+    # 因子④: 直近モメンタム (最大 ±10pt)
+    if len(history_prices) >= 3:
+        if cur_p > history_prices[0]:
+            score += 10
+            factors.append({
+                "name": "前日比プラスまたは下ヒゲ反発サイン確認",
+                "points": "+10%",
+                "type": "positive",
+                "emoji": "⚡"
+            })
+        elif cur_p < history_prices[0] < history_prices[1] < history_prices[2]:
+            score -= 10
+            factors.append({
+                "name": "3日連続下落で短気モメンタム悪化中",
+                "points": "-10%",
+                "type": "negative",
+                "emoji": "🌧️"
+            })
+
+    # 15% 〜 85% にクリッピング
+    rebound_prob = int(round(max(15.0, min(85.0, score))))
+    fall_prob = 100 - rebound_prob
+
+    if rebound_prob >= 65:
+        bias_label = "反転優位 (Strong Rebound Bias)"
+    elif rebound_prob >= 55:
+        bias_label = "やや反転優位 (Moderate Rebound Bias)"
+    elif rebound_prob <= 35:
+        bias_label = "続落警戒 (Strong Continuation Bias)"
+    elif rebound_prob <= 45:
+        bias_label = "やや続落警戒 (Moderate Continuation Bias)"
+    else:
+        bias_label = "中立・攻防 (Neutral / Pivot Range)"
+
+    # 3. 上値・下値目処（ターゲット価格）の選定
+    # levels は level 0.0 (最高値) 〜 100.0 (最安値) の順
+    upper_target = None
+    lower_target = None
+
+    if cur_p >= levels[0]["price"]:
+        # 青天井 (直近最高値超え)
+        upper_target = {
+            "name": "最高値ブレイク中 (新高値圏)",
+            "price": round(high_p * 1.03, 2),
+            "diff_pct": 3.0,
+            "level": -1
+        }
+    else:
+        # cur_p より価格が高い水準の中で、最も cur_p に近い水準
+        candidates_upper = [l for l in levels if l["price"] > cur_p]
+        if candidates_upper:
+            target_l = candidates_upper[-1]
+            diff_u = round((target_l["price"] - cur_p) / cur_p * 100.0, 2)
+            upper_target = {
+                "name": target_l["name"],
+                "price": target_l["price"],
+                "diff_pct": diff_u,
+                "level": target_l["level"],
+                "emoji": target_l.get("emoji", "🎯")
+            }
+
+    if cur_p <= levels[-1]["price"]:
+        # 底割れ (直近最安値割れ)
+        lower_target = {
+            "name": "最安値下抜け (底値模索中)",
+            "price": round(low_p * 0.97, 2),
+            "diff_pct": -3.0,
+            "level": 101
+        }
+    else:
+        # cur_p より価格が低い水準の中で、最も cur_p に近い水準
+        candidates_lower = [l for l in levels if l["price"] < cur_p]
+        if candidates_lower:
+            target_l = candidates_lower[0]
+            diff_d = round((target_l["price"] - cur_p) / cur_p * 100.0, 2)
+            lower_target = {
+                "name": target_l["name"],
+                "price": target_l["price"],
+                "diff_pct": diff_d,
+                "level": target_l["level"],
+                "emoji": target_l.get("emoji", "🛡️")
+            }
+
+    # フォールバック
+    if not upper_target:
+        upper_target = {"name": levels[0]["name"], "price": levels[0]["price"], "diff_pct": 0.0, "level": 0.0}
+    if not lower_target:
+        lower_target = {"name": levels[-1]["name"], "price": levels[-1]["price"], "diff_pct": 0.0, "level": 100.0}
+
+    # 4. リスクリワード比 (R/R比) 算出
+    upside_yen = max(0.0, upper_target["price"] - cur_p)
+    downside_yen = max(1.0, cur_p - lower_target["price"])  # ゼロ除算を物理的に排除
+    rr_ratio = round(upside_yen / downside_yen, 2)
+
+    if rr_ratio >= 1.5:
+        rr_label = "押し目買い有利 (Favorable)"
+    elif rr_ratio >= 1.0:
+        rr_label = "ほぼ中立 (Balanced)"
+    else:
+        rr_label = "下値リスク先行 (Caution)"
+
+    return {
+        "rebound_probability": rebound_prob,
+        "fall_probability": fall_prob,
+        "bias_label": bias_label,
+        "factors": factors,
+        "upper_target": upper_target,
+        "lower_target": lower_target,
+        "risk_reward_ratio": rr_ratio,
+        "risk_reward_label": rr_label,
+        "rsi14": rsi14,
+        "ma25": ma25,
+        "ma75": ma75,
+        "ma200": ma200
+    }
+
+
 def _calculate_market_fibonacci_data(high_p: float, low_p: float, cur_p: float, name: str, code: str, high_date: str = "直近3年", low_date: str = "直近3年") -> Dict[str, Any]:
     """高安値と現在値から全7段階のフィボナッチリトレースメント水準および現在地ゾーンを計算する (#231)"""
     diff = high_p - low_p
@@ -2863,6 +3150,8 @@ def _calculate_market_fibonacci_data(high_p: float, low_p: float, cur_p: float, 
         else:
             zone_label = "🟢 最安値下抜け・底値圏"
 
+    rebound_bias = _calculate_rebound_bias(cur_p, high_p, low_p, code, calculated_levels)
+
     return {
         "name": name,
         "code": code,
@@ -2872,7 +3161,8 @@ def _calculate_market_fibonacci_data(high_p: float, low_p: float, cur_p: float, 
         "low_price": round(low_p, 2),
         "low_date": low_date,
         "current_zone": zone_label,
-        "levels": calculated_levels
+        "levels": calculated_levels,
+        "rebound_bias": rebound_bias
     }
 
 
@@ -2955,6 +3245,11 @@ def get_market_fibonacci():
         n225_data["ai_commentary"] = cleaned_n225
         topix_data["ai_commentary"] = cleaned_topix
 
+        n225_data["rebound_scenario"] = str(n225_rule.get("rebound_scenario", ""))
+        n225_data["continuation_scenario"] = str(n225_rule.get("continuation_scenario", ""))
+        topix_data["rebound_scenario"] = str(topix_rule.get("rebound_scenario", ""))
+        topix_data["continuation_scenario"] = str(topix_rule.get("continuation_scenario", ""))
+
         return {
             "error": False,
             "updated_at": str(n225_rule.get("updated_at", "2026-08-27")),
@@ -2982,7 +3277,27 @@ def refresh_market_fibonacci():
         n225_cur = _safe_float(n225_raw.get("price", 0))
         topix_cur = _safe_float(topix_raw.get("price", 0))
 
-        llm_res = llm_service_instance.fetch_market_fibonacci_llm(n225_cur, topix_cur)
+        # テクニカル反発強度・目処の事前推計 (#393)
+        fib_rules_pre = get_config("fibonacci_indices", {})
+        n225_rule_pre = fib_rules_pre.get("nikkei225", {})
+        topix_rule_pre = fib_rules_pre.get("topix", {})
+
+        n225_pre = _calculate_market_fibonacci_data(
+            float(n225_rule_pre.get("high_price", 72353.0)),
+            float(n225_rule_pre.get("low_price", 30500.29)),
+            n225_cur, "日経平均株価", "998407.O"
+        )
+        topix_pre = _calculate_market_fibonacci_data(
+            float(topix_rule_pre.get("high_price", 4101.96)),
+            float(topix_rule_pre.get("low_price", 2217.10)),
+            topix_cur, "TOPIX", "998405.T"
+        )
+
+        llm_res = llm_service_instance.fetch_market_fibonacci_llm(
+            n225_cur, topix_cur,
+            n225_bias=n225_pre.get("rebound_bias"),
+            topix_bias=topix_pre.get("rebound_bias")
+        )
         if llm_res.get("error"):
             msg = llm_res.get("message", "AIからの応答取得に失敗しました")
             if msg == "NO_API_KEY":
@@ -3040,7 +3355,9 @@ def refresh_market_fibonacci():
                 "low_price": llm_res["n225"]["low_price"],
                 "low_date": llm_res["n225"]["low_date"],
                 "updated_at": today_str,
-                "ai_commentary": n225_commentary
+                "ai_commentary": n225_commentary,
+                "rebound_scenario": llm_res.get("n225", {}).get("rebound_scenario", ""),
+                "continuation_scenario": llm_res.get("n225", {}).get("continuation_scenario", "")
             },
             "topix": {
                 "name": "TOPIX",
@@ -3050,7 +3367,9 @@ def refresh_market_fibonacci():
                 "low_price": llm_res["topix"]["low_price"],
                 "low_date": llm_res["topix"]["low_date"],
                 "updated_at": today_str,
-                "ai_commentary": topix_commentary
+                "ai_commentary": topix_commentary,
+                "rebound_scenario": llm_res.get("topix", {}).get("rebound_scenario", ""),
+                "continuation_scenario": llm_res.get("topix", {}).get("continuation_scenario", "")
             }
         }
 

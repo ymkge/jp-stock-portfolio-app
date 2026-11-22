@@ -2135,6 +2135,150 @@ def test_market_indices_trade_time_and_intraday_cache_issue390(mocker):
         assert "998407.O" in called_codes_b
 
 
+def test_market_fibonacci_rebound_bias_api_issue393():
+    """Issue #393: GET /api/market/fibonacci における反発強度・上下目処・シナリオ返却の検証"""
+    mock_idx = {
+        "998407.O": {"price": "38500.00", "code": "998407.O", "name": "日経平均株価"},
+        "998405.T": {"price": "2700.00", "code": "998405.T", "name": "TOPIX"}
+    }
+    with patch("scraper.get_scraper") as mock_get_sc:
+        mock_sc = MagicMock()
+        mock_sc.fetch_data.side_effect = lambda code: mock_idx.get(code, {"price": "1000", "code": code})
+        mock_get_sc.return_value = mock_sc
+
+        res = client.get("/api/market/fibonacci")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["error"] is False
+
+        for idx_key in ["n225", "topix"]:
+            assert idx_key in data
+            idx_data = data[idx_key]
+            assert "rebound_bias" in idx_data, f"{idx_key} must contain rebound_bias"
+            bias = idx_data["rebound_bias"]
+
+            assert 15 <= bias["rebound_probability"] <= 85
+            assert bias["fall_probability"] == 100 - bias["rebound_probability"]
+            assert any(term in bias["bias_label"] for term in ["反転優位", "続落警戒", "中立"])
+            assert isinstance(bias["factors"], list)
+            assert len(bias["factors"]) > 0
+
+            # 上値目処・下値目処の検証
+            assert "upper_target" in bias
+            assert "lower_target" in bias
+            assert isinstance(bias["risk_reward_ratio"], (int, float))
+
+            # シナリオの検証
+            assert "rebound_scenario" in idx_data
+            assert "continuation_scenario" in idx_data
+            assert isinstance(idx_data["rebound_scenario"], str)
+            assert isinstance(idx_data["continuation_scenario"], str)
+
+
+def test_calculate_rebound_bias_unit_issue393():
+    """Issue #393: _calculate_rebound_bias の因子判定・クリッピング・ゼロ除算耐性の単体検証"""
+    from app import _calculate_rebound_bias
+
+    levels = [
+        {"level": 0.0, "name": "直近高値", "price": 40000.0},
+        {"level": 23.6, "name": "23.6%戻し", "price": 38000.0},
+        {"level": 38.2, "name": "38.2%戻し", "price": 36500.0},
+        {"level": 50.0, "name": "50.0%戻し", "price": 35000.0},
+        {"level": 61.8, "name": "61.8%戻し", "price": 33500.0},
+        {"level": 78.6, "name": "78.6%戻し", "price": 32000.0},
+        {"level": 100.0, "name": "直近安値", "price": 30000.0},
+    ]
+
+    # 1. 価格履歴が空の場合でも安全にデフォルトスコア50%を返却すること
+    with patch("history_manager.get_historical_data_for_analysis", return_value=[]):
+        bias = _calculate_rebound_bias(
+            cur_p=36500.0,
+            high_p=40000.0,
+            low_p=30000.0,
+            code="998407.O",
+            levels=levels
+        )
+        assert 15 <= bias["rebound_probability"] <= 85
+        assert bias["upper_target"]["name"] == "23.6%戻し"
+        assert bias["lower_target"]["name"] == "50.0%戻し"
+        assert bias["risk_reward_ratio"] > 0
+
+    # 2. RSI売られすぎ (<30) かつ主要支持線付近での反発判定
+    # 下落トレンドでRSIが低下したダミー価格履歴 (最新から過去に向かって上昇 = 過去から最新に向かって大幅下落)
+    oversold_history = [{"close": 30000 + i * 500, "date": f"2026-01-{i+1:02d}"} for i in range(50)]
+    with patch("history_manager.get_historical_data_for_analysis", return_value=oversold_history):
+        bias_oversold = _calculate_rebound_bias(
+            cur_p=33500.0,  # 61.8%戻し (33500) 付近
+            high_p=40000.0,
+            low_p=30000.0,
+            code="998407.O",
+            levels=levels
+        )
+        assert bias_oversold["rebound_probability"] >= 50
+        # 因子に「節目近傍サポート」または「売られすぎ」が含まれていること
+        factor_names = [f["name"] for f in bias_oversold["factors"]]
+        assert any("節目近傍サポート" in fn or "売られすぎ" in fn for fn in factor_names)
+
+    # 3. ゼロ除算耐性: 現在値が下値目処（直近安値）と同一の場合
+    with patch("history_manager.get_historical_data_for_analysis", return_value=[]):
+        bias_zero_div = _calculate_rebound_bias(
+            cur_p=30000.0,
+            high_p=40000.0,
+            low_p=30000.0,
+            code="998407.O",
+            levels=levels
+        )
+        assert bias_zero_div["risk_reward_ratio"] >= 1.0
+
+
+def test_post_market_fibonacci_refresh_rebound_scenarios_issue393():
+    """Issue #393: POST /api/market/fibonacci/refresh でシナリオが更新・返却されることの検証"""
+    mock_llm_res = {
+        "error": False,
+        "n225": {
+            "high_price": 75000.00,
+            "high_date": "2026年8月",
+            "low_price": 31000.00,
+            "low_date": "2023年11月",
+            "commentary": "日経平均AI最新分析",
+            "rebound_scenario": "25日線支持からの反発を想定。",
+            "continuation_scenario": "直近安値割れで警戒。"
+        },
+        "topix": {
+            "high_price": 4200.00,
+            "high_date": "2026年8月",
+            "low_price": 2300.00,
+            "low_date": "2023年11月",
+            "commentary": "TOPIX AI最新分析",
+            "rebound_scenario": "38.2%押し目買い継続。",
+            "continuation_scenario": "75日線下抜けで調整拡大。"
+        },
+        "market_commentary": "モックAI市場分析"
+    }
+
+    rules_path = "highlight_rules.json"
+    backup = None
+    if os.path.exists(rules_path):
+        with open(rules_path, "r", encoding="utf-8") as f:
+            backup = f.read()
+
+    try:
+        with patch("app.llm_service_instance.fetch_market_fibonacci_llm", return_value=mock_llm_res):
+            res = client.post("/api/market/fibonacci/refresh")
+            assert res.status_code == 200
+            data = res.json()
+            assert data["error"] is False
+            assert data["n225"]["rebound_scenario"] == "25日線支持からの反発を想定。"
+            assert data["n225"]["continuation_scenario"] == "直近安値割れで警戒。"
+            assert data["topix"]["rebound_scenario"] == "38.2%押し目買い継続。"
+            assert data["topix"]["continuation_scenario"] == "75日線下抜けで調整拡大。"
+    finally:
+        if backup is not None:
+            with open(rules_path, "w", encoding="utf-8") as f:
+                f.write(backup)
+
+
+
 
 
 

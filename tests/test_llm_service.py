@@ -645,6 +645,78 @@ def test_fetch_market_fibonacci_llm_individual_commentaries_issue389(policy_mana
         assert "TOPIXは銀行株" in result["market_commentary"]
 
 
+def test_fetch_market_fibonacci_llm_rebound_scenarios_issue393(policy_manager):
+    """Issue #393: fetch_market_fibonacci_llm が反転/続落シナリオを正しくパースし、プロンプトにバイアス前提を含めるか検証"""
+    from unittest.mock import patch, MagicMock
+
+    policy_manager.save_config(api_key="test_api_key_dummy_393")
+    service = LLMDiagnosisService(policy_manager=policy_manager)
+
+    mock_gemini_json = """{
+        "n225": {
+            "high_price": 72353.0, "high_date": "2026-06", "low_price": 30500.29, "low_date": "2023-10",
+            "commentary": "日経平均の全体解説です。",
+            "rebound_scenario": "38.2%戻しラインおよび25日線が下支えとなり、直近高値を目指す展開が期待されます。",
+            "continuation_scenario": "下値支持線を割り込んだ場合、次の50%戻しラインまでの調整が警戒されます。"
+        },
+        "topix": {
+            "high_price": 4101.96, "high_date": "2026-07", "low_price": 2217.10, "low_date": "2023-10",
+            "commentary": "TOPIXの全体解説です。",
+            "rebound_scenario": "PBR1倍水準およびフィボナッチ節目での押し目買いが優勢です。",
+            "continuation_scenario": "200日線を下回ると戻り売り圧力が強まるリスクがあります。"
+        }
+    }"""
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [{"text": mock_gemini_json}]
+                }
+            }
+        ]
+    }
+
+    n225_bias = {
+        "rebound_probability": 65,
+        "fall_probability": 35,
+        "upper_target": {"name": "23.6%戻し", "price": 42000.0, "diff_pct": 5.2},
+        "lower_target": {"name": "50.0%戻し", "price": 37000.0, "diff_pct": -4.1},
+        "factors": [{"factor": "RSI売られすぎ", "impact": "+15%"}]
+    }
+    topix_bias = {
+        "rebound_probability": 60,
+        "fall_probability": 40,
+        "upper_target": {"name": "23.6%戻し", "price": 2850.0, "diff_pct": 4.5},
+        "lower_target": {"name": "38.2%戻し", "price": 2600.0, "diff_pct": -3.8},
+        "factors": [{"factor": "75日線支持", "impact": "+10%"}]
+    }
+
+    with patch("requests.post", return_value=mock_response) as mock_post:
+        result = service.fetch_market_fibonacci_llm(
+            current_n225=39000,
+            current_topix=2700,
+            n225_bias=n225_bias,
+            topix_bias=topix_bias
+        )
+        assert result["error"] is False
+        assert result["n225"]["rebound_scenario"] == "38.2%戻しラインおよび25日線が下支えとなり、直近高値を目指す展開が期待されます。"
+        assert result["n225"]["continuation_scenario"] == "下値支持線を割り込んだ場合、次の50%戻しラインまでの調整が警戒されます。"
+        assert result["topix"]["rebound_scenario"] == "PBR1倍水準およびフィボナッチ節目での押し目買いが優勢です。"
+        assert result["topix"]["continuation_scenario"] == "200日線を下回ると戻り売り圧力が強まるリスクがあります。"
+
+        # プロンプト内にテクニカル推計前提が埋め込まれていることを検証
+        call_kwargs = mock_post.call_args[1]
+        sent_body = call_kwargs.get("json", {})
+        prompt_text = sent_body["contents"][0]["parts"][0]["text"]
+        assert "テクニカル推計前提" in prompt_text
+        assert "テクニカル反発強度 65%" in prompt_text
+        assert "上値目処: 23.6%戻し" in prompt_text
+
+
+
 def test_diagnose_anomaly_no_api_key_issue298(tmp_path):
     """案件 #298: APIキー未設定時に diagnose_anomaly が NO_API_KEY を返却するか検証"""
     test_file = os.path.join(tmp_path, "no_key_policy_298.json")
